@@ -27,5 +27,3 @@ Thumbs.db
 
 # uv
 .venv/
-uv.lock
-!uv.lock           # we DO commit uv.lock
