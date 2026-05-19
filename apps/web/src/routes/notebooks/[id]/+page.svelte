@@ -5,6 +5,7 @@
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
   import { eventsStore } from '$lib/stores/events.svelte';
+  import { bindShortcuts } from '$lib/utils/keys';
   import Spinner from '$lib/components/Spinner.svelte';
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
   import ChatPanel from '$lib/components/ChatPanel.svelte';
@@ -15,6 +16,7 @@
   let viewerOpen = $state(true);
   let selectedSourceId = $state<string | null>(null);
   let selectedChunkId = $state<string | null>(null);
+  let unbindShortcuts: (() => void) | null = null;
 
   // when notebook changes, reset conversation (clear messages, drop current conv ref)
   $effect(() => {
@@ -26,11 +28,26 @@
   onMount(async () => {
     await currentNotebookStore.load(data.notebookId);
     eventsStore.start(data.notebookId);
+    unbindShortcuts = bindShortcuts([
+      {
+        combo: 'Mod+/',
+        allowInInput: true,
+        handler: () => {
+          const ta = document.querySelector<HTMLTextAreaElement>('main textarea');
+          ta?.focus();
+        },
+      },
+      {
+        combo: 'Mod+b',
+        handler: () => (viewerOpen = !viewerOpen),
+      },
+    ]);
   });
 
   onDestroy(() => {
     eventsStore.stop();
     currentNotebookStore.clear();
+    unbindShortcuts?.();
   });
 </script>
 
