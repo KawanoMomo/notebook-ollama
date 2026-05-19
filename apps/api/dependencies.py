@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from core.config import AppConfig
+from core.generation.stream import GenerationDeps, GenerationService
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
 from core.ollama.client import OllamaClient
 from core.ollama.gateway import OllamaGateway
+from core.retrieval.search import RetrievalService
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
 
@@ -25,6 +27,8 @@ class AppContext:
     ollama: OllamaGateway
     sse: SseBroker
     pipeline: IngestionPipeline
+    retrieval: RetrievalService
+    generation: GenerationService
 
 
 def build_context(config: AppConfig) -> AppContext:
@@ -44,6 +48,13 @@ def build_context(config: AppConfig) -> AppContext:
         ollama=gateway,
         embedding_model=config.ollama.embedding_model,
     ))
+    retrieval = RetrievalService(
+        conn=conn, vector_store=vs, ollama=gateway,
+        embedding_model=config.ollama.embedding_model,
+    )
+    generation = GenerationService(
+        deps=GenerationDeps(retrieval=retrieval, ollama=gateway)
+    )
     return AppContext(
         config=config,
         conn=conn,
@@ -51,4 +62,6 @@ def build_context(config: AppConfig) -> AppContext:
         ollama=gateway,
         sse=SseBroker(),
         pipeline=pipeline,
+        retrieval=retrieval,
+        generation=generation,
     )
