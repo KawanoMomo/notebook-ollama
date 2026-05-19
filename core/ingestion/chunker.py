@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from core.ingestion.types import ParsedDocument, ParsedSection
+from core.ingestion.types import ParsedDocument
 from core.tokens import count_tokens
 
 _SENT_SPLIT = re.compile(r"(?<=[。．！？\.\!\?])\s+|\n{2,}")

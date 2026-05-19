@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from core.ingestion.parsers import register
-from core.ingestion.parsers.base import Parser
 from core.ingestion.types import ParsedDocument, ParsedSection
 
 

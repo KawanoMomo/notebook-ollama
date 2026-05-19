@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from openpyxl import Workbook
+
 
 def main() -> None:
     out = Path(__file__).parent / "sample.xlsx"
@@ -13,6 +15,7 @@ def main() -> None:
     s2.append(["Item", "Detail"])
     s2.append(["MCU", "Cortex-M4"])
     wb.save(str(out))
+
 
 if __name__ == "__main__":
     main()

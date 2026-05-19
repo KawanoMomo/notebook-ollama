@@ -1,7 +1,9 @@
 from pathlib import Path
+
 from core.ingestion.parsers.web import WebParser
 
 FIXTURE = Path(__file__).parents[2] / "fixtures" / "sample.html"
+
 
 def test_web_parser_extracts_title_and_body():
     p = WebParser()

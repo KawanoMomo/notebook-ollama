@@ -1,10 +1,10 @@
-import json
+import httpx
 import pytest
 import respx
-import httpx
 from fastapi.testclient import TestClient
 
 from apps.api.main import create_app
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -14,15 +14,19 @@ def client(tmp_path, monkeypatch):
     with TestClient(app) as c:
         yield c
 
+
 def test_chat_streaming_returns_sse(client):
-    nb_id = client.post("/api/notebooks", json={"name": "N",
-                                                "default_model": "qwen2.5:14b"}).json()["id"]
+    nb_id = client.post(
+        "/api/notebooks", json={"name": "N", "default_model": "qwen2.5:14b"}
+    ).json()["id"]
     conv_id = client.post(f"/api/notebooks/{nb_id}/conversations").json()["id"]
 
-    payloads = b"".join([
-        b'{"message":{"content":"\xe5\x9b\x9e\xe7\xad\x94"},"done":false}\n',
-        b'{"message":{"content":"\xe3\x81\xa7\xe3\x81\x99"},"done":true}\n',
-    ])
+    payloads = b"".join(
+        [
+            b'{"message":{"content":"\xe5\x9b\x9e\xe7\xad\x94"},"done":false}\n',
+            b'{"message":{"content":"\xe3\x81\xa7\xe3\x81\x99"},"done":true}\n',
+        ]
+    )
     with respx.mock() as router:
         router.post("http://fake/api/show").mock(
             return_value=httpx.Response(200, json={"parameters": "num_ctx 4096"})
@@ -30,9 +34,7 @@ def test_chat_streaming_returns_sse(client):
         router.post("http://fake/api/embeddings").mock(
             return_value=httpx.Response(200, json={"embedding": [0.1] * 1024})
         )
-        router.post("http://fake/api/chat").mock(
-            return_value=httpx.Response(200, content=payloads)
-        )
+        router.post("http://fake/api/chat").mock(return_value=httpx.Response(200, content=payloads))
         r = client.post(
             f"/api/notebooks/{nb_id}/conversations/{conv_id}/messages",
             json={"content": "質問"},

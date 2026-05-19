@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
@@ -93,11 +93,7 @@ class VectorStore:
             collection_name=COLLECTION,
             query=query,
             query_filter=qm.Filter(
-                must=[
-                    qm.FieldCondition(
-                        key="notebook_id", match=qm.MatchValue(value=notebook_id)
-                    )
-                ]
+                must=[qm.FieldCondition(key="notebook_id", match=qm.MatchValue(value=notebook_id))]
             ),
             limit=limit,
         )
@@ -122,10 +118,6 @@ class VectorStore:
         self._client.delete(
             collection_name=COLLECTION,
             points_selector=qm.Filter(
-                must=[
-                    qm.FieldCondition(
-                        key="source_id", match=qm.MatchValue(value=source_id)
-                    )
-                ]
+                must=[qm.FieldCondition(key="source_id", match=qm.MatchValue(value=source_id))]
             ),
         )

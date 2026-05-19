@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -92,9 +93,7 @@ class OllamaClient:
     async def show(self, model: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             try:
-                r = await client.post(
-                    f"{self._endpoint}/api/show", json={"name": model}
-                )
+                r = await client.post(f"{self._endpoint}/api/show", json={"name": model})
             except httpx.HTTPError as exc:
                 raise AppError(
                     ErrorCode.OLLAMA_UNREACHABLE, "Ollama unreachable", detail=str(exc)

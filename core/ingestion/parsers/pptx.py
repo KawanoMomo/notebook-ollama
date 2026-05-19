@@ -51,9 +51,7 @@ class PptxParser:
             )
 
         if not sections:
-            raise AppError(
-                ErrorCode.INGESTION_PARSE_FAILED, "no text in pptx"
-            )
+            raise AppError(ErrorCode.INGESTION_PARSE_FAILED, "no text in pptx")
         return ParsedDocument(title=source_hint or "deck.pptx", sections=sections)
 
 

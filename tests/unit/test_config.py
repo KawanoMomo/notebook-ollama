@@ -1,5 +1,5 @@
-from pathlib import Path
 from core.config import AppConfig
+
 
 def test_app_config_defaults(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
@@ -16,6 +16,7 @@ def test_app_config_defaults(tmp_path, monkeypatch):
     assert cfg.server.port == 8765
     assert cfg.mcp.enabled is True
 
+
 def test_data_subdirs(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
     cfg = AppConfig()
@@ -24,6 +25,7 @@ def test_data_subdirs(tmp_path, monkeypatch):
     assert cfg.sources_dir == tmp_path / "sources"
     assert cfg.logs_dir == tmp_path / "logs"
     assert cfg.mcp_token_path == tmp_path / "mcp.token"
+
 
 def test_ensure_dirs_creates_layout(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path / "nb"))

@@ -1,5 +1,4 @@
 import pytest
-from pathlib import Path
 
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
 from core.storage.database import connect, migrate
@@ -7,10 +6,12 @@ from core.storage.notebooks_repo import create_notebook
 from core.storage.sources_repo import SourceStatus, create_source, get_source
 from core.storage.vector_store import VectorStore
 
+
 class FakeGateway:
     async def embed(self, *, model: str, text: str) -> list[float]:
         # 4-dim toy vector
         return [float(len(text)), 0.0, 0.0, 0.0]
+
 
 @pytest.mark.qdrant
 @pytest.mark.asyncio
@@ -19,8 +20,11 @@ async def test_pipeline_processes_markdown_end_to_end(tmp_path):
     migrate(conn)
     nb = create_notebook(conn, name="N")
     src = create_source(
-        conn, notebook_id=nb.id, kind="markdown",
-        origin="x.md", content_hash="h",
+        conn,
+        notebook_id=nb.id,
+        kind="markdown",
+        origin="x.md",
+        content_hash="h",
     )
 
     vs = VectorStore(path=tmp_path / "qdrant", dim=4)
@@ -46,6 +50,7 @@ async def test_pipeline_processes_markdown_end_to_end(tmp_path):
 
     hits = vs.search(query=[1.0, 0, 0, 0], notebook_id=nb.id, limit=5)
     assert len(hits) > 0
+
 
 @pytest.mark.asyncio
 async def test_pipeline_marks_error_on_parse_failure(tmp_path):

@@ -18,6 +18,7 @@ Sub content.
 Body of section 2.
 """
 
+
 def test_markdown_parser_splits_by_heading():
     p = MarkdownParser()
     doc = p.parse_bytes(SAMPLE.encode("utf-8"), source_hint="doc.md")
@@ -28,11 +29,13 @@ def test_markdown_parser_splits_by_heading():
     assert ["Title", "Section 1", "Sub 1.1"] in headings
     assert ["Title", "Section 2"] in headings
 
+
 def test_markdown_parser_ord_is_monotonic():
     p = MarkdownParser()
     doc = p.parse_bytes(SAMPLE.encode("utf-8"))
     ords = [s.ord for s in doc.sections]
     assert ords == sorted(ords)
+
 
 def test_markdown_parser_handles_no_heading():
     p = MarkdownParser()

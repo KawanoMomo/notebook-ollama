@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter, Request, status
 from sse_starlette.sse import EventSourceResponse
@@ -16,7 +17,6 @@ from core.storage import (
     notebooks_repo,
 )
 
-
 router = APIRouter(prefix="/api/notebooks/{notebook_id}/conversations", tags=["chat"])
 
 
@@ -26,8 +26,11 @@ async def create_conv(request: Request, notebook_id: str) -> Conversation:
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
     conv = conversations_repo.create_conversation(ctx.conn, notebook_id=notebook_id)
     return Conversation(
-        id=conv.id, notebook_id=conv.notebook_id, title=conv.title,
-        created_at=conv.created_at, updated_at=conv.updated_at,
+        id=conv.id,
+        notebook_id=conv.notebook_id,
+        title=conv.title,
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
     )
 
 
@@ -37,8 +40,13 @@ async def list_convs(request: Request, notebook_id: str) -> list[Conversation]:
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
     items = conversations_repo.list_conversations(ctx.conn, notebook_id=notebook_id)
     return [
-        Conversation(id=c.id, notebook_id=c.notebook_id, title=c.title,
-                     created_at=c.created_at, updated_at=c.updated_at)
+        Conversation(
+            id=c.id,
+            notebook_id=c.notebook_id,
+            title=c.title,
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+        )
         for c in items
     ]
 
@@ -49,22 +57,26 @@ async def list_messages(request: Request, notebook_id: str, conv_id: str) -> lis
     msgs = messages_repo.list_messages(ctx.conn, conversation_id=conv_id)
     return [
         Message(
-            id=m.id, conversation_id=m.conversation_id, role=m.role, content=m.content,
-            citations=m.citations, model=m.model, created_at=m.created_at,
+            id=m.id,
+            conversation_id=m.conversation_id,
+            role=m.role,
+            content=m.content,
+            citations=m.citations,
+            model=m.model,
+            created_at=m.created_at,
         )
         for m in msgs
     ]
 
 
 @router.post("/{conv_id}/messages")
-async def send_message(
-    request: Request, notebook_id: str, conv_id: str, body: MessageInput
-):
+async def send_message(request: Request, notebook_id: str, conv_id: str, body: MessageInput):
     ctx = request.app.state.ctx
     nb = notebooks_repo.get_notebook(ctx.conn, notebook_id)
     conv = conversations_repo.get_conversation(ctx.conn, conv_id)
     if conv.notebook_id != notebook_id:
         from core.exceptions import AppError, ErrorCode
+
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "conversation not in notebook")
 
     user_msg = messages_repo.append_message(
@@ -114,8 +126,12 @@ async def send_message(
                 citations = ev.data["citations"]
         # persist assistant message
         messages_repo.append_message(
-            ctx.conn, conversation_id=conv.id, role="assistant",
-            content="".join(buffer), citations=citations, model=model,
+            ctx.conn,
+            conversation_id=conv.id,
+            role="assistant",
+            content="".join(buffer),
+            citations=citations,
+            model=model,
         )
 
     return EventSourceResponse(event_gen())

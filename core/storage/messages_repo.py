@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from core.ids import new_id
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass
@@ -24,7 +24,7 @@ class MessageRecord:
     created_at: str = ""
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "MessageRecord":
+    def from_row(cls, row: sqlite3.Row) -> MessageRecord:
         return cls(
             id=row["id"],
             conversation_id=row["conversation_id"],
@@ -60,9 +60,7 @@ def append_message(
             now,
         ),
     )
-    conn.execute(
-        "UPDATE conversations SET updated_at=? WHERE id=?", (now, conversation_id)
-    )
+    conn.execute("UPDATE conversations SET updated_at=? WHERE id=?", (now, conversation_id))
     row = conn.execute("SELECT * FROM messages WHERE id=?", (mid,)).fetchone()
     return MessageRecord.from_row(row)
 

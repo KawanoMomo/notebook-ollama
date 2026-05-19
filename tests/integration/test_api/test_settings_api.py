@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
+
 from apps.api.main import create_app
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -9,12 +11,14 @@ def client(tmp_path, monkeypatch):
     with TestClient(app) as c:
         yield c
 
+
 def test_get_settings_returns_defaults(client):
     r = client.get("/api/settings")
     assert r.status_code == 200
     s = r.json()
     assert s["generation"]["response_budget_tokens"] == 1024
     assert s["retrieval"]["top_k"] == 8
+
 
 def test_get_stats(client):
     r = client.get("/api/stats")

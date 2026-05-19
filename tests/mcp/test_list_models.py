@@ -1,19 +1,27 @@
 import pytest
+
 from core.mcp.tools.list_models import list_models_tool
 from core.storage.database import connect, migrate
 from core.storage.notebooks_repo import create_notebook
 
+
 class FakeClient:
     async def list_tags(self):
-        return [{
-            "name": "qwen2.5:14b",
-            "size": 1,
-            "modified_at": "2026-05-01T00:00:00Z",
-            "details": {"family": "qwen", "parameter_size": "14B"},
-        }]
+        return [
+            {
+                "name": "qwen2.5:14b",
+                "size": 1,
+                "modified_at": "2026-05-01T00:00:00Z",
+                "details": {"family": "qwen", "parameter_size": "14B"},
+            }
+        ]
+
     async def show(self, model):
-        return {"parameters": "num_ctx 32768",
-                "details": {"family": "qwen", "parameter_size": "14B"}}
+        return {
+            "parameters": "num_ctx 32768",
+            "details": {"family": "qwen", "parameter_size": "14B"},
+        }
+
 
 @pytest.mark.asyncio
 async def test_list_models_returns_models_and_defaults(tmp_path):

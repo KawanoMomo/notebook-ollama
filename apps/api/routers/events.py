@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 
 from core.storage import notebooks_repo
-
 
 router = APIRouter(prefix="/api/notebooks", tags=["events"])
 
@@ -27,8 +26,11 @@ async def stream_events(request: Request, notebook_id: str):
                     return
                 try:
                     payload = await asyncio.wait_for(queue.get(), timeout=15)
-                    yield {"event": "source_status", "data": json.dumps(payload, ensure_ascii=False)}
-                except asyncio.TimeoutError:
+                    yield {
+                        "event": "source_status",
+                        "data": json.dumps(payload, ensure_ascii=False),
+                    }
+                except TimeoutError:
                     yield {"event": "ping", "data": ""}
         finally:
             ctx.sse.unsubscribe(topic, queue)

@@ -3,6 +3,7 @@ from core.storage.database import connect, migrate
 from core.storage.notebooks_repo import create_notebook
 from core.storage.sources_repo import create_source
 
+
 def test_list_notebooks_returns_id_name_description_source_count(tmp_path):
     conn = connect(tmp_path / "m.db")
     migrate(conn)
@@ -12,7 +13,12 @@ def test_list_notebooks_returns_id_name_description_source_count(tmp_path):
     out = list_notebooks_tool(conn)
     assert out == {
         "notebooks": [
-            {"id": a.id, "name": "A", "description": "desc",
-             "default_model": None, "source_count": 2},
+            {
+                "id": a.id,
+                "name": "A",
+                "description": "desc",
+                "default_model": None,
+                "source_count": 2,
+            },
         ]
     }

@@ -1,7 +1,8 @@
 import json
-import logging
 from io import StringIO
+
 from core.logging import configure_logging, get_logger
+
 
 def test_configure_logging_emits_json_lines(monkeypatch):
     buffer = StringIO()

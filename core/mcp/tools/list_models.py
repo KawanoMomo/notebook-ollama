@@ -20,18 +20,20 @@ async def list_models_tool(*, conn: sqlite3.Connection, client: _ClientLike) -> 
         details = tag.get("details", {}) or {}
         show = await client.show(name)
         ctx_window = parse_context_window(show.get("parameters", ""))
-        models.append({
-            "name": name,
-            "size_bytes": tag.get("size"),
-            "context_window": ctx_window,
-            "modified_at": tag.get("modified_at"),
-            "recommended_for": classify_recommendation(
-                name=name,
-                family=details.get("family", ""),
-                parameter_size=details.get("parameter_size", ""),
-                context_window=ctx_window,
-            ),
-        })
+        models.append(
+            {
+                "name": name,
+                "size_bytes": tag.get("size"),
+                "context_window": ctx_window,
+                "modified_at": tag.get("modified_at"),
+                "recommended_for": classify_recommendation(
+                    name=name,
+                    family=details.get("family", ""),
+                    parameter_size=details.get("parameter_size", ""),
+                    context_window=ctx_window,
+                ),
+            }
+        )
     defaults = [
         {"notebook_id": n.id, "name": n.name, "default_model": n.default_model}
         for n in notebooks_repo.list_notebooks(conn)

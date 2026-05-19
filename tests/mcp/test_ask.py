@@ -3,32 +3,48 @@ import pytest
 from core.mcp.tools.ask import ask_tool
 from core.retrieval.search import RetrievedChunk
 
+
 class FakeRetrieval:
     async def search(self, *, notebook_id, query, limit):
         return [
             RetrievedChunk(
-                chunk_id="c1", source_id="s1", source_title="ARM",
-                source_kind="pdf", page=42, heading_path="§3",
-                ord=0, text="Cortex content.", token_count=4, score=0.9,
+                chunk_id="c1",
+                source_id="s1",
+                source_title="ARM",
+                source_kind="pdf",
+                page=42,
+                heading_path="§3",
+                ord=0,
+                text="Cortex content.",
+                token_count=4,
+                score=0.9,
             ),
         ]
+
 
 class FakeGateway:
     async def chat_stream(self, *, model, messages, options=None):
         for tok in ["answer ", "[^1]"]:
             yield tok
 
+
 class FakeClient:
     async def show(self, model):
         return {"parameters": "num_ctx 8192"}
 
+
 class FakeNotebooks:
-    def get(self, nb_id): return self
-    name = "N"; default_model = "qwen2.5:14b"
+    def get(self, nb_id):
+        return self
+
+    name = "N"
+    default_model = "qwen2.5:14b"
+
 
 @pytest.mark.asyncio
 async def test_ask_returns_answer_and_citations():
     from types import SimpleNamespace
+
     result = await ask_tool(
         notebook_id="nb1",
         question="?",

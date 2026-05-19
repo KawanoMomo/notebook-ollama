@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from core.exceptions import AppError, ErrorCode
 from core.ids import new_id
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass
@@ -22,7 +22,7 @@ class NotebookRecord:
     updated_at: str
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "NotebookRecord":
+    def from_row(cls, row: sqlite3.Row) -> NotebookRecord:
         return cls(
             id=row["id"],
             name=row["name"],
@@ -58,18 +58,14 @@ def create_notebook(
 
 
 def get_notebook(conn: sqlite3.Connection, notebook_id: str) -> NotebookRecord:
-    row = conn.execute(
-        "SELECT * FROM notebooks WHERE id = ?", (notebook_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM notebooks WHERE id = ?", (notebook_id,)).fetchone()
     if row is None:
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, f"notebook {notebook_id} not found")
     return NotebookRecord.from_row(row)
 
 
 def list_notebooks(conn: sqlite3.Connection) -> list[NotebookRecord]:
-    rows = conn.execute(
-        "SELECT * FROM notebooks ORDER BY updated_at DESC, id DESC"
-    ).fetchall()
+    rows = conn.execute("SELECT * FROM notebooks ORDER BY updated_at DESC, id DESC").fetchall()
     return [NotebookRecord.from_row(r) for r in rows]
 
 

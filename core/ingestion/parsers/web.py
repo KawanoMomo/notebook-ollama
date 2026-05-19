@@ -36,9 +36,7 @@ class WebParser:
                 ErrorCode.INGESTION_PARSE_FAILED,
                 "could not extract readable content from HTML",
             )
-        sections = [
-            ParsedSection(text=extracted, page=None, heading_path=[title], ord=0)
-        ]
+        sections = [ParsedSection(text=extracted, page=None, heading_path=[title], ord=0)]
         return ParsedDocument(title=title, sections=sections)
 
 

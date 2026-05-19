@@ -43,9 +43,7 @@ class DocxParser:
             if not body:
                 return
             path = [label for _, label in heading_stack]
-            sections.append(
-                ParsedSection(text=body, page=None, heading_path=path, ord=ord_)
-            )
+            sections.append(ParsedSection(text=body, page=None, heading_path=path, ord=ord_))
             ord_ += 1
             buffer = []
 
@@ -65,9 +63,7 @@ class DocxParser:
         flush()
 
         if not sections:
-            raise AppError(
-                ErrorCode.INGESTION_PARSE_FAILED, "no extractable text in docx"
-            )
+            raise AppError(ErrorCode.INGESTION_PARSE_FAILED, "no extractable text in docx")
         return ParsedDocument(title=title or (source_hint or "document.docx"), sections=sections)
 
 

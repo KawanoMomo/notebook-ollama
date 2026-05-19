@@ -3,7 +3,6 @@ from __future__ import annotations
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.parsers.base import Parser
 
-
 _REGISTRY: dict[str, Parser] = {}
 
 
@@ -23,7 +22,7 @@ def known_kinds() -> list[str]:
 
 
 def _eager_load() -> None:
-    from core.ingestion.parsers import txt, markdown, web, pdf, docx, pptx, xlsx  # noqa: F401
+    from core.ingestion.parsers import docx, markdown, pdf, pptx, txt, web, xlsx  # noqa: F401
 
 
 _eager_load()

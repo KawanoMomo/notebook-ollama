@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from functools import lru_cache
 
+from apps.api.sse import SseBroker
 from core.config import AppConfig
 from core.generation.stream import GenerationDeps, GenerationService
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
@@ -12,9 +12,6 @@ from core.ollama.gateway import OllamaGateway
 from core.retrieval.search import RetrievalService
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
-
-from apps.api.sse import SseBroker
-
 
 _EMBEDDING_DIM = 1024  # bge-m3
 
@@ -43,20 +40,22 @@ def build_context(config: AppConfig) -> AppContext:
     )
     gateway = OllamaGateway(client=raw_client)
     sse_broker = SseBroker()
-    pipeline = IngestionPipeline(deps=PipelineDeps(
+    pipeline = IngestionPipeline(
+        deps=PipelineDeps(
+            conn=conn,
+            vector_store=vs,
+            ollama=gateway,
+            embedding_model=config.ollama.embedding_model,
+            broker=sse_broker,
+        )
+    )
+    retrieval = RetrievalService(
         conn=conn,
         vector_store=vs,
         ollama=gateway,
         embedding_model=config.ollama.embedding_model,
-        broker=sse_broker,
-    ))
-    retrieval = RetrievalService(
-        conn=conn, vector_store=vs, ollama=gateway,
-        embedding_model=config.ollama.embedding_model,
     )
-    generation = GenerationService(
-        deps=GenerationDeps(retrieval=retrieval, ollama=gateway)
-    )
+    generation = GenerationService(deps=GenerationDeps(retrieval=retrieval, ollama=gateway))
     return AppContext(
         config=config,
         conn=conn,

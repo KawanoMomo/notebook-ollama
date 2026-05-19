@@ -7,9 +7,7 @@ from core.retrieval.search import RetrievedChunk
 
 
 class _RetrievalLike(Protocol):
-    async def search(
-        self, *, notebook_id: str, query: str, limit: int
-    ) -> list[RetrievedChunk]: ...
+    async def search(self, *, notebook_id: str, query: str, limit: int) -> list[RetrievedChunk]: ...
 
 
 async def find_quotes_tool(

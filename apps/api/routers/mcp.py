@@ -14,15 +14,11 @@ from __future__ import annotations
 # FastMCP sse_app() sub-application. This works for SSE transport but has not
 # been validated end-to-end with a real MCP client in this test suite; the
 # integration tests only cover 401 rejection, which is fully implemented here.
-
 from fastapi import APIRouter, Header, Request
-from fastapi.responses import JSONResponse, Response
-from starlette.types import Receive, Scope, Send
+from fastapi.responses import Response
 
-from core.exceptions import AppError, ErrorCode
 from core.mcp.auth import verify_token
 from core.mcp.server import build_mcp_server
-
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 

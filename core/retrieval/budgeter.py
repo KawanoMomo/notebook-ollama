@@ -47,9 +47,7 @@ def allocate_budget(inp: BudgetInput) -> BudgetOutput:
         )
 
     chunk_token_counts = [count_tokens(t) for t in inp.chunks_text]
-    hist_token_counts = [
-        count_tokens(t.user) + count_tokens(t.assistant) for t in inp.history
-    ]
+    hist_token_counts = [count_tokens(t.user) + count_tokens(t.assistant) for t in inp.history]
 
     # Try chunk counts from full down to 0; for each pick history greedily from newest
     available_for_dyn = available - fixed

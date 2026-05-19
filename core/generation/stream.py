@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Protocol
+from typing import Any, Protocol
 
 from core.generation.citations import (
     CitationSpec,
     build_citations,
-    find_citation_numbers,
 )
 from core.generation.locations import format_location
 from core.generation.prompts import SYSTEM_PROMPT, PromptChunk, build_user_prompt
@@ -18,14 +18,11 @@ from core.retrieval.budgeter import (
 )
 from core.retrieval.search import RetrievedChunk
 
-
 log = get_logger("generation")
 
 
 class _RetrievalLike(Protocol):
-    async def search(
-        self, *, notebook_id: str, query: str, limit: int
-    ) -> list[RetrievedChunk]: ...
+    async def search(self, *, notebook_id: str, query: str, limit: int) -> list[RetrievedChunk]: ...
 
 
 class _GatewayLike(Protocol):
@@ -70,24 +67,26 @@ class GenerationService:
         )
         yield GenerationEvent(
             kind="retrieval",
-            data={"hits": [
-                {
-                    "chunk_id": h.chunk_id,
-                    "source_title": h.source_title,
-                    "location": format_location(page=h.page, heading_path=h.heading_path),
-                    "score": h.score,
-                }
-                for h in hits
-            ]},
+            data={
+                "hits": [
+                    {
+                        "chunk_id": h.chunk_id,
+                        "source_title": h.source_title,
+                        "location": format_location(page=h.page, heading_path=h.heading_path),
+                        "score": h.score,
+                    }
+                    for h in hits
+                ]
+            },
         )
 
         prompt_chunks: list[PromptChunk] = []
         spec_by_n: dict[int, CitationSpec] = {}
         for idx, hit in enumerate(hits, start=1):
             location = format_location(page=hit.page, heading_path=hit.heading_path)
-            prompt_chunks.append(PromptChunk(
-                n=idx, title=hit.source_title, location=location, text=hit.text
-            ))
+            prompt_chunks.append(
+                PromptChunk(n=idx, title=hit.source_title, location=location, text=hit.text)
+            )
             spec_by_n[idx] = CitationSpec(
                 chunk_id=hit.chunk_id,
                 source_id=hit.source_id,
@@ -97,16 +96,18 @@ class GenerationService:
                 snippet=hit.text[:200],
             )
 
-        budget = allocate_budget(BudgetInput(
-            num_ctx=num_ctx,
-            context_budget_ratio=context_budget_ratio,
-            response_budget_tokens=response_budget_tokens,
-            system_prompt=SYSTEM_PROMPT,
-            question=question,
-            chunks_text=[c.text for c in prompt_chunks],
-            history=history,
-            min_history_turns=min_history_turns,
-        ))
+        budget = allocate_budget(
+            BudgetInput(
+                num_ctx=num_ctx,
+                context_budget_ratio=context_budget_ratio,
+                response_budget_tokens=response_budget_tokens,
+                system_prompt=SYSTEM_PROMPT,
+                question=question,
+                chunks_text=[c.text for c in prompt_chunks],
+                history=history,
+                min_history_turns=min_history_turns,
+            )
+        )
         prompt_chunks = prompt_chunks[: budget.included_chunks]
         spec_by_n = {n: s for n, s in spec_by_n.items() if n <= budget.included_chunks}
 

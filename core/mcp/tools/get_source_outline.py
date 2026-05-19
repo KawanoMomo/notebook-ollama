@@ -9,8 +9,7 @@ from core.storage import sources_repo
 def get_source_outline_tool(*, conn: sqlite3.Connection, source_id: str) -> dict[str, Any]:
     src = sources_repo.get_source(conn, source_id)
     rows = conn.execute(
-        "SELECT DISTINCT heading_path, page FROM chunks "
-        "WHERE source_id = ? ORDER BY ord ASC",
+        "SELECT DISTINCT heading_path, page FROM chunks WHERE source_id = ? ORDER BY ord ASC",
         (source_id,),
     ).fetchall()
     headings = [

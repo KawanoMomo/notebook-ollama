@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
+
 from apps.api.main import create_app
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -8,6 +10,7 @@ def client(tmp_path, monkeypatch):
     app = create_app()
     with TestClient(app) as c:
         yield c
+
 
 def test_create_list_get_update_delete_notebook(client):
     # create
@@ -37,6 +40,7 @@ def test_create_list_get_update_delete_notebook(client):
 
     r = client.get(f"/api/notebooks/{nb_id}")
     assert r.status_code == 404
+
 
 def test_create_notebook_validation_error(client):
     r = client.post("/api/notebooks", json={"name": ""})

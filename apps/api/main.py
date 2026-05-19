@@ -3,18 +3,29 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 from fastapi.requests import Request
-
-from core.config import AppConfig
-from core.exceptions import AppError
-from core.logging import configure_logging
+from fastapi.responses import JSONResponse
 
 from apps.api.dependencies import build_context
 from apps.api.routers import (
-    health, notebooks, sources, chat, models as models_router,
-    settings as settings_router, events, mcp as mcp_router,
+    chat,
+    events,
+    health,
+    notebooks,
+    sources,
 )
+from apps.api.routers import (
+    mcp as mcp_router,
+)
+from apps.api.routers import (
+    models as models_router,
+)
+from apps.api.routers import (
+    settings as settings_router,
+)
+from core.config import AppConfig
+from core.exceptions import AppError
+from core.logging import configure_logging
 
 
 @asynccontextmanager

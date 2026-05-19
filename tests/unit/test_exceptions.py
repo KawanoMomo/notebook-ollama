@@ -1,5 +1,7 @@
 import pytest
+
 from core.exceptions import AppError, ErrorCode
+
 
 def test_app_error_carries_code_message_detail_remediation():
     err = AppError(
@@ -13,6 +15,7 @@ def test_app_error_carries_code_message_detail_remediation():
     assert err.detail == "connection refused"
     assert err.remediation == "Settings から確認してください"
 
+
 def test_app_error_to_dict_matches_response_schema():
     err = AppError(ErrorCode.INGESTION_PARSE_FAILED, "parse failed")
     payload = err.to_dict()
@@ -25,10 +28,12 @@ def test_app_error_to_dict_matches_response_schema():
         }
     }
 
+
 def test_error_code_enum_uses_dotted_namespace():
     assert ErrorCode.OLLAMA_UNREACHABLE.value == "ollama.unreachable"
     assert ErrorCode.GENERATION_CONTEXT_OVERFLOW.value == "generation.context_overflow"
     assert ErrorCode.MCP_UNAUTHORIZED.value == "mcp.unauthorized"
+
 
 def test_app_error_is_raisable():
     with pytest.raises(AppError) as excinfo:

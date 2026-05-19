@@ -1,7 +1,9 @@
 import asyncio
+
 import pytest
 
 from apps.api.sse import SseBroker
+
 
 @pytest.mark.asyncio
 async def test_subscribe_and_publish_delivers_to_each_subscriber():
@@ -14,6 +16,7 @@ async def test_subscribe_and_publish_delivers_to_each_subscriber():
     assert m1 == {"event": "x"}
     assert m2 == {"event": "x"}
 
+
 @pytest.mark.asyncio
 async def test_publish_to_unrelated_topic_does_not_deliver():
     broker = SseBroker()
@@ -21,6 +24,7 @@ async def test_publish_to_unrelated_topic_does_not_deliver():
     await broker.publish("b", {"event": "y"})
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(sub.get(), timeout=0.1)
+
 
 @pytest.mark.asyncio
 async def test_unsubscribe_removes_queue():

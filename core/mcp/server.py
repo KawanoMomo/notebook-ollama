@@ -30,8 +30,10 @@ def build_mcp_server(ctx: Any) -> FastMCP:
 
     @server.tool()
     async def ask(
-        notebook_id: str, question: str,
-        model: str | None = None, style: str = "concise",
+        notebook_id: str,
+        question: str,
+        model: str | None = None,
+        style: str = "concise",
     ) -> dict[str, Any]:
         nb = notebooks_repo.get_notebook(ctx.conn, notebook_id)
         client = OllamaClient(
@@ -39,17 +41,23 @@ def build_mcp_server(ctx: Any) -> FastMCP:
             timeout=ctx.config.ollama.request_timeout_seconds,
         )
         return await ask_tool(
-            notebook_id=notebook_id, question=question, model=model, style=style,
-            retrieval=ctx.retrieval, ollama=ctx.ollama, client=client, config=ctx.config,
+            notebook_id=notebook_id,
+            question=question,
+            model=model,
+            style=style,
+            retrieval=ctx.retrieval,
+            ollama=ctx.ollama,
+            client=client,
+            config=ctx.config,
             notebook_default_model=nb.default_model,
         )
 
     @server.tool()
-    async def find_quotes(
-        notebook_id: str, query: str, max_quotes: int = 5
-    ) -> dict[str, Any]:
+    async def find_quotes(notebook_id: str, query: str, max_quotes: int = 5) -> dict[str, Any]:
         return await find_quotes_tool(
-            notebook_id=notebook_id, query=query, max_quotes=max_quotes,
+            notebook_id=notebook_id,
+            query=query,
+            max_quotes=max_quotes,
             retrieval=ctx.retrieval,
         )
 

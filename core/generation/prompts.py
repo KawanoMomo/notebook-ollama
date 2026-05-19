@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 SYSTEM_PROMPT = """\
 あなたはユーザのノートブックに含まれるソースのみに基づいて回答するアシスタントです。
 以下のルールに従ってください:
@@ -27,7 +26,7 @@ def build_user_prompt(*, chunks: list[PromptChunk], question: str) -> str:
     if chunks:
         source_xml = "\n".join(
             f'<source id="{c.n}" title="{_escape(c.title)}" location="{_escape(c.location)}">\n'
-            f'{c.text}\n</source>'
+            f"{c.text}\n</source>"
             for c in chunks
         )
         return f"<sources>\n{source_xml}\n</sources>\n\n質問: {question}"

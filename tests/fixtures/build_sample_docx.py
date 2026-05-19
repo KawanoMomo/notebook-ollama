@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from docx import Document
+
 
 def main() -> None:
     out = Path(__file__).parent / "sample.docx"
@@ -11,6 +13,7 @@ def main() -> None:
     d.add_heading("Section B", level=2)
     d.add_paragraph("Body of section B.")
     d.save(str(out))
+
 
 if __name__ == "__main__":
     main()

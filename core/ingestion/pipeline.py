@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from core.exceptions import AppError, ErrorCode
@@ -12,7 +12,6 @@ from core.logging import get_logger
 from core.storage.chunks_repo import ChunkRecord, insert_chunks
 from core.storage.sources_repo import SourceStatus, get_source, update_source_status
 from core.storage.vector_store import ChunkVector, VectorStore
-
 
 log = get_logger("ingestion.pipeline")
 
@@ -85,9 +84,7 @@ class IngestionPipeline:
             await _publish(SourceStatus.EMBEDDING)
             vectors: list[ChunkVector] = []
             for rec in chunk_records:
-                vec = await self._deps.ollama.embed(
-                    model=self._deps.embedding_model, text=rec.text
-                )
+                vec = await self._deps.ollama.embed(model=self._deps.embedding_model, text=rec.text)
                 vectors.append(
                     ChunkVector(
                         id=rec.id,
@@ -118,14 +115,10 @@ class IngestionPipeline:
             )
 
         except AppError as exc:
-            update_source_status(
-                conn, source_id, status=SourceStatus.ERROR, error_msg=exc.message
-            )
+            update_source_status(conn, source_id, status=SourceStatus.ERROR, error_msg=exc.message)
             await _publish(SourceStatus.ERROR, error_msg=exc.message)
             log.error("ingestion_failed", source_id=source_id, code=exc.code, error=exc.message)
         except Exception as exc:  # last-resort safety
-            update_source_status(
-                conn, source_id, status=SourceStatus.ERROR, error_msg=str(exc)
-            )
+            update_source_status(conn, source_id, status=SourceStatus.ERROR, error_msg=str(exc))
             await _publish(SourceStatus.ERROR, error_msg=str(exc))
             log.exception("ingestion_unexpected", source_id=source_id)

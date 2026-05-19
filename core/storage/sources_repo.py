@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from core.exceptions import AppError, ErrorCode
@@ -19,7 +19,7 @@ class SourceStatus(StrEnum):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass
@@ -39,7 +39,7 @@ class SourceRecord:
     updated_at: str
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "SourceRecord":
+    def from_row(cls, row: sqlite3.Row) -> SourceRecord:
         return cls(
             id=row["id"],
             notebook_id=row["notebook_id"],

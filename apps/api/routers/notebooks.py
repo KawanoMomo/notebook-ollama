@@ -6,7 +6,6 @@ from fastapi.responses import Response
 from apps.api.schemas.notebook import Notebook, NotebookCreate, NotebookUpdate
 from core.storage import notebooks_repo, sources_repo
 
-
 router = APIRouter(prefix="/api/notebooks", tags=["notebooks"])
 
 

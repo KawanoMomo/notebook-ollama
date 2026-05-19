@@ -11,7 +11,6 @@ from apps.api.schemas.settings import (
     RetrievalSettingsSchema,
 )
 
-
 router = APIRouter(prefix="/api", tags=["settings"])
 
 

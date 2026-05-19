@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, File, Path, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Path, Request, UploadFile
 from fastapi.responses import Response
 
 from apps.api.schemas.source import Source, SourceUrlCreate
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.hashing import sha256_bytes
-from core.ingestion.parsers import known_kinds
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import delete_chunks_for_source
-
 
 router = APIRouter(prefix="/api/notebooks", tags=["sources"])
 

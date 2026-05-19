@@ -1,29 +1,41 @@
 import pytest
 
-from core.generation.stream import GenerationService, GenerationDeps, GenerationEvent
+from core.generation.stream import GenerationDeps, GenerationEvent, GenerationService
 from core.retrieval.search import RetrievedChunk
+
 
 class FakeRetrieval:
     async def search(self, *, notebook_id, query, limit):
         return [
             RetrievedChunk(
-                chunk_id="c1", source_id="s1", source_title="ARM",
-                source_kind="pdf", page=42, heading_path="§3",
-                ord=0, text="Cortex content [...]", token_count=10, score=0.9,
+                chunk_id="c1",
+                source_id="s1",
+                source_title="ARM",
+                source_kind="pdf",
+                page=42,
+                heading_path="§3",
+                ord=0,
+                text="Cortex content [...]",
+                token_count=10,
+                score=0.9,
             ),
         ]
+
 
 class FakeGateway:
     async def chat_stream(self, *, model, messages, options=None):
         for tok in ["回", "答", "[^1]"]:
             yield tok
 
+
 @pytest.mark.asyncio
 async def test_generation_emits_retrieval_then_tokens_then_done():
-    svc = GenerationService(deps=GenerationDeps(
-        retrieval=FakeRetrieval(),
-        ollama=FakeGateway(),
-    ))
+    svc = GenerationService(
+        deps=GenerationDeps(
+            retrieval=FakeRetrieval(),
+            ollama=FakeGateway(),
+        )
+    )
     events: list[GenerationEvent] = []
     async for ev in svc.run(
         notebook_id="nb",

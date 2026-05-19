@@ -48,9 +48,7 @@ class XlsxParser:
             )
         wb.close()
         if not sections:
-            raise AppError(
-                ErrorCode.INGESTION_PARSE_FAILED, "no content in xlsx"
-            )
+            raise AppError(ErrorCode.INGESTION_PARSE_FAILED, "no content in xlsx")
         return ParsedDocument(title=source_hint or "workbook.xlsx", sections=sections)
 
 

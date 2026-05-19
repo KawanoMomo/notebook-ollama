@@ -1,6 +1,9 @@
 import asyncio
+
 import pytest
+
 from core.ollama.gateway import OllamaGateway
+
 
 class FakeClient:
     def __init__(self):
@@ -18,12 +21,14 @@ class FakeClient:
         for tok in ["a", "b"]:
             yield tok
 
+
 @pytest.mark.asyncio
 async def test_gateway_embeds_concurrently_serialized():
     client = FakeClient()
     gw = OllamaGateway(client=client)
     await asyncio.gather(*(gw.embed(model="m", text=f"t{i}") for i in range(5)))
     assert len(client.embed_calls) == 5
+
 
 @pytest.mark.asyncio
 async def test_chat_serialized_by_fifo():
@@ -40,6 +45,7 @@ async def test_chat_serialized_by_fifo():
     await asyncio.gather(*(run(i) for i in range(3)))
     # FIFO: tasks resolve in dispatch order
     assert started == sorted(started)
+
 
 @pytest.mark.asyncio
 async def test_chat_and_embed_use_separate_queues():

@@ -1,5 +1,6 @@
 from core.ollama.models_info import classify_recommendation, parse_context_window
 
+
 def test_classify_recommendation_japanese_for_qwen():
     labels = classify_recommendation(
         name="qwen2.5:14b",
@@ -10,6 +11,7 @@ def test_classify_recommendation_japanese_for_qwen():
     assert "japanese" in labels
     assert "general" in labels
 
+
 def test_classify_recommendation_long_context():
     labels = classify_recommendation(
         name="gpt-oss:20b-128k",
@@ -18,6 +20,7 @@ def test_classify_recommendation_long_context():
         context_window=131072,
     )
     assert "long-context" in labels
+
 
 def test_classify_recommendation_code():
     labels = classify_recommendation(
@@ -28,9 +31,11 @@ def test_classify_recommendation_code():
     )
     assert "code" in labels
 
+
 def test_parse_context_window_from_parameters_string():
-    params = "num_ctx 32768\nstop \"</s>\""
+    params = 'num_ctx 32768\nstop "</s>"'
     assert parse_context_window(params) == 32768
+
 
 def test_parse_context_window_missing_returns_none():
     assert parse_context_window("stop foo") is None
