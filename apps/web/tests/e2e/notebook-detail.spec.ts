@@ -34,7 +34,10 @@ test.describe("notebook detail", () => {
       mimeType: "text/markdown",
       buffer: Buffer.from("# Hello\n\nE2E body."),
     });
-    await page.getByLabel("ソース追加").getByRole("button", { name: "追加" }).click();
+    await page
+      .getByLabel("ソース追加")
+      .getByRole("button", { name: "追加" })
+      .click();
     await expect(page.getByText("hello.md")).toBeVisible({ timeout: 10_000 });
   });
 });
