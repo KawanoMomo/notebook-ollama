@@ -12,6 +12,18 @@ uv run pytest
 uv run uvicorn apps.api.main:app --reload --port 8765
 ```
 
+## Frontend
+
+See `apps/web/README.md`.
+
+Production serves UI + API on one port:
+```
+cd apps/web && npm run build
+cd ../..
+uv run uvicorn apps.api.main:app --port 8765
+```
+Open http://localhost:8765.
+
 ## Smoke Test
 
 1. Start Ollama: `ollama serve`

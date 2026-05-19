@@ -23,3 +23,8 @@ uv run pytest -m ollama        # requires running Ollama
 - `tests/unit` — pure unit, no IO
 - `tests/integration` — sqlite/qdrant local, fake ollama
 - `tests/mcp` — MCP server contract
+
+## Frontend
+
+SvelteKit web UI in `apps/web/`. Dev: `cd apps/web && npm run dev` (proxies API to :8765).
+Build: `npm run build` outputs to `apps/web/dist/`, served by FastAPI in production.
