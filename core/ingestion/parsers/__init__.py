@@ -20,3 +20,10 @@ def get_parser(kind: str) -> Parser:
 
 def known_kinds() -> list[str]:
     return sorted(_REGISTRY.keys())
+
+
+def _eager_load() -> None:
+    from core.ingestion.parsers import txt, markdown, web, pdf, docx, pptx, xlsx  # noqa: F401
+
+
+_eager_load()
