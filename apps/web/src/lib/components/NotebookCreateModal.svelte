@@ -38,7 +38,15 @@
   <form onsubmit={submit}>
     <label>
       <span>名前</span>
-      <input type="text" bind:value={name} required maxlength="200" autofocus />
+      <input
+        id="nb-name"
+        type="text"
+        bind:value={name}
+        required
+        maxlength="200"
+        autofocus
+        aria-label="名前"
+      />
     </label>
     <label>
       <span>説明（任意）</span>
