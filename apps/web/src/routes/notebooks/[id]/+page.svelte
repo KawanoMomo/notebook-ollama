@@ -6,10 +6,12 @@
   import { conversationStore } from '$lib/stores/conversation.svelte';
   import { eventsStore } from '$lib/stores/events.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import SourcesPanel from '$lib/components/SourcesPanel.svelte';
 
   let { data } = $props<{ data: { notebookId: string } }>();
 
   let viewerOpen = $state(true);
+  let selectedSourceId = $state<string | null>(null);
 
   onMount(async () => {
     await currentNotebookStore.load(data.notebookId);
@@ -37,8 +39,10 @@
   {:else}
     <div class="cols" class:viewer-open={viewerOpen}>
       <aside class="sources">
-        <!-- SourcesPanel filled in Task 6.2 -->
-        <p style="padding: 16px; color: var(--color-fg-muted);">Sources (TBD)</p>
+        <SourcesPanel
+          notebookId={data.notebookId}
+          onSourceSelect={(id) => (selectedSourceId = id)}
+        />
       </aside>
       <section class="chat">
         <!-- ChatPanel filled in Task 7.x -->
