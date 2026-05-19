@@ -23,6 +23,16 @@ _KIND_BY_EXT = {
     ".xlsx": "xlsx",
 }
 
+_EXT_BY_KIND = {
+    "pdf": ".pdf",
+    "markdown": ".md",
+    "txt": ".txt",
+    "docx": ".docx",
+    "pptx": ".pptx",
+    "xlsx": ".xlsx",
+    "web": ".html",
+}
+
 
 def _kind_from_filename(name: str) -> str:
     name_lower = name.lower()
@@ -73,6 +83,9 @@ async def upload_file(
         bytes_=len(data),
     )
     if was_new:
+        ext = _EXT_BY_KIND.get(kind, ".bin")
+        source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
+        source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
     return _to_schema(rec)
 
@@ -106,6 +119,9 @@ async def upload_url(
         bytes_=len(data),
     )
     if was_new:
+        ext = _EXT_BY_KIND.get("web", ".bin")
+        source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
+        source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind="web", data=data)
     return _to_schema(rec)
 
@@ -126,6 +142,10 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
     delete_chunks_for_source(ctx.conn, source_id)
     ctx.vector_store.delete_by_source(source_id)
     ctx.conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+    ext = _EXT_BY_KIND.get(src.kind, ".bin")
+    source_path = ctx.config.sources_dir / f"{src.id}{ext}"
+    if source_path.exists():
+        source_path.unlink()
     return Response(status_code=204)
 
 
@@ -140,10 +160,23 @@ async def retry_source(
     src = sources_repo.get_source(ctx.conn, source_id)
     if src.notebook_id != notebook_id:
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
-    # the actual bytes must be re-supplied or we read from sources_dir;
-    # for MVP, retry is only valid for URL sources (re-fetch) or when we kept the file
-    raise AppError(
-        ErrorCode.INPUT_INVALID,
-        "retry not yet supported via API in this sprint",
-        remediation="re-upload the file",
+    ext = _EXT_BY_KIND.get(src.kind, ".bin")
+    source_path = ctx.config.sources_dir / f"{src.id}{ext}"
+    if not source_path.exists():
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "original source data not found on disk",
+            remediation="re-upload the file",
+        )
+    data = source_path.read_bytes()
+    # clear prior chunks (vector + sqlite)
+    delete_chunks_for_source(ctx.conn, source_id)
+    ctx.vector_store.delete_by_source(source_id)
+    # reset status
+    sources_repo.update_source_status(
+        ctx.conn, source_id,
+        status=sources_repo.SourceStatus.PENDING,
+        error_msg=None,
     )
+    background.add_task(ctx.pipeline.run, source_id=src.id, kind=src.kind, data=data)
+    return _to_schema(sources_repo.get_source(ctx.conn, source_id))

@@ -62,3 +62,32 @@ def test_delete_source(client):
     sid = r.json()["id"]
     r = client.delete(f"/api/notebooks/{nb}/sources/{sid}")
     assert r.status_code == 204
+
+
+def test_retry_source_with_saved_bytes(client):
+    nb = _create_nb(client)
+    files = {"file": ("hello.md", io.BytesIO(b"# Hello\n\nbody."), "text/markdown")}
+    r = client.post(f"/api/notebooks/{nb}/sources", files=files)
+    sid = r.json()["id"]
+    # mark as error to exercise retry path
+    from core.storage.sources_repo import SourceStatus, update_source_status
+    ctx = client.app.state.ctx
+    update_source_status(ctx.conn, sid, status=SourceStatus.ERROR, error_msg="forced")
+    r = client.post(f"/api/notebooks/{nb}/sources/{sid}/retry")
+    assert r.status_code == 200
+    assert r.json()["status"] in {"pending", "ready"}
+
+
+def test_retry_source_missing_bytes_returns_400(client, tmp_path):
+    nb = _create_nb(client)
+    files = {"file": ("hello.md", io.BytesIO(b"# X"), "text/markdown")}
+    r = client.post(f"/api/notebooks/{nb}/sources", files=files)
+    sid = r.json()["id"]
+    # delete the saved bytes manually
+    ctx = client.app.state.ctx
+    from pathlib import Path
+    for p in Path(ctx.config.sources_dir).glob(f"{sid}.*"):
+        p.unlink()
+    r = client.post(f"/api/notebooks/{nb}/sources/{sid}/retry")
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "input.invalid"
