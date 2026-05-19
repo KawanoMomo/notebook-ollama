@@ -42,11 +42,13 @@ def build_context(config: AppConfig) -> AppContext:
         timeout=config.ollama.request_timeout_seconds,
     )
     gateway = OllamaGateway(client=raw_client)
+    sse_broker = SseBroker()
     pipeline = IngestionPipeline(deps=PipelineDeps(
         conn=conn,
         vector_store=vs,
         ollama=gateway,
         embedding_model=config.ollama.embedding_model,
+        broker=sse_broker,
     ))
     retrieval = RetrievalService(
         conn=conn, vector_store=vs, ollama=gateway,
@@ -60,7 +62,7 @@ def build_context(config: AppConfig) -> AppContext:
         conn=conn,
         vector_store=vs,
         ollama=gateway,
-        sse=SseBroker(),
+        sse=sse_broker,
         pipeline=pipeline,
         retrieval=retrieval,
         generation=generation,

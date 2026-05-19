@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 from core.exceptions import AppError, ErrorCode
 from core.ids import new_id
@@ -21,12 +21,17 @@ class _GatewayLike(Protocol):
     async def embed(self, *, model: str, text: str) -> list[float]: ...
 
 
+class _BrokerLike(Protocol):
+    async def publish(self, topic: str, payload: dict[str, Any]) -> None: ...
+
+
 @dataclass
 class PipelineDeps:
     conn: sqlite3.Connection
     vector_store: VectorStore
     ollama: _GatewayLike
     embedding_model: str
+    broker: _BrokerLike | None = None
 
 
 class IngestionPipeline:
@@ -35,12 +40,24 @@ class IngestionPipeline:
 
     async def run(self, *, source_id: str, kind: str, data: bytes) -> None:
         conn = self._deps.conn
+
+        async def _publish(status: SourceStatus, **extra: Any) -> None:
+            if self._deps.broker is None:
+                return
+            notebook_id = get_source(conn, source_id).notebook_id
+            await self._deps.broker.publish(
+                f"notebook:{notebook_id}",
+                {"source_id": source_id, "status": status.value, **extra},
+            )
+
         try:
             update_source_status(conn, source_id, status=SourceStatus.PARSING)
+            await _publish(SourceStatus.PARSING)
             parser = get_parser(kind)
             doc = parser.parse_bytes(data, source_hint=get_source(conn, source_id).origin)
 
             update_source_status(conn, source_id, status=SourceStatus.CHUNKING, title=doc.title)
+            await _publish(SourceStatus.CHUNKING)
             chunk_outs = chunk_document(doc)
             if not chunk_outs:
                 raise AppError(
@@ -65,6 +82,7 @@ class IngestionPipeline:
             insert_chunks(conn, chunk_records)
 
             update_source_status(conn, source_id, status=SourceStatus.EMBEDDING)
+            await _publish(SourceStatus.EMBEDDING)
             vectors: list[ChunkVector] = []
             for rec in chunk_records:
                 vec = await self._deps.ollama.embed(
@@ -92,6 +110,7 @@ class IngestionPipeline:
                 chunk_count=len(chunk_records),
                 page_count=page_count,
             )
+            await _publish(SourceStatus.READY, chunk_count=len(chunk_records))
             log.info(
                 "ingestion_complete",
                 source_id=source_id,
@@ -102,9 +121,11 @@ class IngestionPipeline:
             update_source_status(
                 conn, source_id, status=SourceStatus.ERROR, error_msg=exc.message
             )
+            await _publish(SourceStatus.ERROR, error_msg=exc.message)
             log.error("ingestion_failed", source_id=source_id, code=exc.code, error=exc.message)
         except Exception as exc:  # last-resort safety
             update_source_status(
                 conn, source_id, status=SourceStatus.ERROR, error_msg=str(exc)
             )
+            await _publish(SourceStatus.ERROR, error_msg=str(exc))
             log.exception("ingestion_unexpected", source_id=source_id)

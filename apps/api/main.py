@@ -12,7 +12,8 @@ from core.logging import configure_logging
 
 from apps.api.dependencies import build_context
 from apps.api.routers import (
-    health, notebooks, sources, chat, models as models_router, settings as settings_router,
+    health, notebooks, sources, chat, models as models_router,
+    settings as settings_router, events,
 )
 
 
@@ -50,6 +51,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(models_router.router)
     app.include_router(settings_router.router)
+    app.include_router(events.router)
     return app
 
 
