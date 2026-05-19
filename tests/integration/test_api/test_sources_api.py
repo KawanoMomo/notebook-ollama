@@ -91,3 +91,21 @@ def test_retry_source_missing_bytes_returns_400(client, tmp_path):
     r = client.post(f"/api/notebooks/{nb}/sources/{sid}/retry")
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "input.invalid"
+
+
+def test_get_chunk_returns_chunk_text(client):
+    nb = _create_nb(client)
+    files = {"file": ("hello.md", io.BytesIO(b"# Hello\n\nbody."), "text/markdown")}
+    r = client.post(f"/api/notebooks/{nb}/sources", files=files)
+    sid = r.json()["id"]
+    # the no-op pipeline created 0 chunks; manually insert a chunk
+    ctx = client.app.state.ctx
+    from core.storage.chunks_repo import ChunkRecord, insert_chunks
+    chunk = ChunkRecord(
+        id="0" * 26, source_id=sid, notebook_id=nb,
+        ord=0, page=1, heading_path="h", text="hello chunk", token_count=2,
+    )
+    insert_chunks(ctx.conn, [chunk])
+    r = client.get(f"/api/notebooks/{nb}/sources/{sid}/chunks/{chunk.id}")
+    assert r.status_code == 200
+    assert r.json()["text"] == "hello chunk"

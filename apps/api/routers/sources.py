@@ -149,6 +149,26 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
     return Response(status_code=204)
 
 
+@router.get("/{notebook_id}/sources/{source_id}/chunks/{chunk_id}")
+async def get_chunk(
+    request: Request, notebook_id: str, source_id: str, chunk_id: str
+) -> dict:
+    ctx = request.app.state.ctx
+    rec = ctx.conn.execute(
+        "SELECT * FROM chunks WHERE id = ? AND source_id = ?",
+        (chunk_id, source_id),
+    ).fetchone()
+    if rec is None:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, f"chunk {chunk_id} not found")
+    return {
+        "id": rec["id"],
+        "source_id": rec["source_id"],
+        "page": rec["page"],
+        "heading_path": rec["heading_path"],
+        "text": rec["text"],
+    }
+
+
 @router.post("/{notebook_id}/sources/{source_id}/retry", response_model=Source)
 async def retry_source(
     request: Request,
