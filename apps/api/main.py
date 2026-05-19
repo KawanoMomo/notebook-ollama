@@ -112,6 +112,13 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(settings_router.router)
     app.include_router(events.router)
     app.mount("/mcp", _McpAsgiProxy())
+
+    from pathlib import Path
+    from starlette.staticfiles import StaticFiles
+    web_dist = Path(__file__).parents[1] / "web" / "dist"
+    if web_dist.is_dir():
+        app.mount("/", StaticFiles(directory=web_dist, html=True), name="web")
+
     return app
 
 

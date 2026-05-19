@@ -1,6 +1,7 @@
 node_modules/
 .svelte-kit/
-dist/
+dist/*
+!dist/.gitkeep
 .env
 .env.*
 !.env.example
