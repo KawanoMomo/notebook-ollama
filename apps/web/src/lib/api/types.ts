@@ -1,0 +1,148 @@
+export interface ErrorBody {
+  code: string;
+  message: string;
+  detail: string | null;
+  remediation: string | null;
+}
+
+export interface ErrorResponse {
+  error: ErrorBody;
+}
+
+export interface Notebook {
+  id: string;
+  name: string;
+  description: string | null;
+  default_model: string | null;
+  created_at: string;
+  updated_at: string;
+  source_count: number;
+}
+
+export interface NotebookCreate {
+  name: string;
+  description?: string;
+  default_model?: string;
+}
+
+export interface NotebookUpdate {
+  name?: string;
+  description?: string;
+  default_model?: string;
+}
+
+export type SourceStatus =
+  | 'pending'
+  | 'parsing'
+  | 'chunking'
+  | 'embedding'
+  | 'ready'
+  | 'error';
+
+export type SourceKind =
+  | 'pdf'
+  | 'markdown'
+  | 'web'
+  | 'docx'
+  | 'pptx'
+  | 'xlsx'
+  | 'txt';
+
+export interface Source {
+  id: string;
+  notebook_id: string;
+  kind: SourceKind;
+  title: string | null;
+  origin: string | null;
+  status: SourceStatus;
+  error_msg: string | null;
+  bytes: number | null;
+  page_count: number | null;
+  chunk_count: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Citation {
+  n: number;
+  chunk_id: string;
+  source_id: string;
+  source_title: string;
+  location: string;
+  url_or_path: string | null;
+  snippet: string;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  citations: Citation[];
+  model: string | null;
+  created_at: string;
+}
+
+export interface Conversation {
+  id: string;
+  notebook_id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelInfo {
+  name: string;
+  size_bytes: number | null;
+  context_window: number | null;
+  modified_at: string;
+  recommended_for: string[];
+}
+
+export interface NotebookDefault {
+  notebook_id: string;
+  name: string;
+  default_model: string | null;
+}
+
+export interface ModelsResponse {
+  models: ModelInfo[];
+  defaults_by_notebook: NotebookDefault[];
+}
+
+export interface OllamaSettings {
+  endpoint: string;
+  default_model: string;
+  embedding_model: string;
+}
+
+export interface GenerationSettings {
+  context_budget_ratio: number;
+  response_budget_tokens: number;
+}
+
+export interface RetrievalSettings {
+  top_k: number;
+  top_k_max: number;
+  min_history_turns: number;
+}
+
+export interface AppSettings {
+  ollama: OllamaSettings;
+  generation: GenerationSettings;
+  retrieval: RetrievalSettings;
+}
+
+export interface Stats {
+  notebook_count: number;
+  source_count: number;
+  chunk_count: number;
+  data_dir: string;
+}
+
+export interface RetrievalHit {
+  chunk_id: string;
+  source_title: string;
+  location: string;
+  score: number;
+}
