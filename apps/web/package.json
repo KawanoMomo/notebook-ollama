@@ -1,0 +1,37 @@
+{
+  "name": "notebook-ollama-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port 5173",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49",
+    "@sveltejs/adapter-static": "^3.0",
+    "@sveltejs/kit": "^2.8",
+    "@sveltejs/vite-plugin-svelte": "^4.0",
+    "@types/markdown-it": "^14.1",
+    "eslint": "^9.15",
+    "eslint-plugin-svelte": "^2.46",
+    "prettier": "^3.4",
+    "prettier-plugin-svelte": "^3.3",
+    "svelte": "^5.2",
+    "svelte-check": "^4.1",
+    "typescript": "^5.6",
+    "vite": "^5.4",
+    "vitest": "^2.1"
+  },
+  "dependencies": {
+    "highlight.js": "^11.10",
+    "lucide-svelte": "^0.460",
+    "markdown-it": "^14.1"
+  }
+}
