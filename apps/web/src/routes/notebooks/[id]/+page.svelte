@@ -7,11 +7,20 @@
   import { eventsStore } from '$lib/stores/events.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
+  import ChatPanel from '$lib/components/ChatPanel.svelte';
 
   let { data } = $props<{ data: { notebookId: string } }>();
 
   let viewerOpen = $state(true);
   let selectedSourceId = $state<string | null>(null);
+  let selectedChunkId = $state<string | null>(null);
+
+  // when notebook changes, reset conversation (clear messages, drop current conv ref)
+  $effect(() => {
+    void data.notebookId;
+    // ConversationStore singleton retains across pages; clear it for new notebook
+    conversationStore.cancel();
+  });
 
   onMount(async () => {
     await currentNotebookStore.load(data.notebookId);
@@ -45,8 +54,7 @@
         />
       </aside>
       <section class="chat">
-        <!-- ChatPanel filled in Task 7.x -->
-        <p style="padding: 16px; color: var(--color-fg-muted);">Chat (TBD)</p>
+        <ChatPanel notebookId={data.notebookId} onCitationClick={(cid) => (selectedChunkId = cid)} />
       </section>
       {#if viewerOpen}
         <aside class="viewer">
