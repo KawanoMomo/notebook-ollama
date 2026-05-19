@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
+from starlette.responses import JSONResponse as StarletteJSONResponse
+from starlette.types import Receive, Scope, Send
 
 from apps.api.dependencies import build_context
 from apps.api.routers import (
@@ -13,9 +16,6 @@ from apps.api.routers import (
     health,
     notebooks,
     sources,
-)
-from apps.api.routers import (
-    mcp as mcp_router,
 )
 from apps.api.routers import (
     models as models_router,
@@ -28,11 +28,59 @@ from core.exceptions import AppError
 from core.logging import configure_logging
 
 
+class _McpAsgiProxy:
+    """Lazy proxy that builds the mcp sse_app from _mcp_state.ctx on first call.
+
+    Performs bearer-token auth before forwarding to the inner SSE app.
+    Mounted ASGI apps see their own scope and cannot reliably access the parent
+    FastAPI app's state, so we use a module-level reference populated during
+    lifespan instead.
+    """
+
+    def __init__(self) -> None:
+        self._app = None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            return
+
+        # Retrieve auth header
+        headers = dict(scope.get("headers") or [])
+        auth = headers.get(b"authorization", b"").decode("latin-1")
+
+        # Obtain ctx from module-level state (set in lifespan)
+        from apps.api import _mcp_state  # type: ignore
+        ctx = _mcp_state.ctx
+
+        try:
+            from core.mcp.auth import verify_token
+            verify_token(ctx.config.mcp_token_path, header_value=auth or None)
+        except AppError as exc:
+            resp = StarletteJSONResponse(status_code=401, content=exc.to_dict())
+            await resp(scope, receive, send)
+            return
+        except Exception:
+            resp = StarletteJSONResponse(
+                status_code=401,
+                content={"error": {"code": "mcp.unauthorized", "message": "unauthorized"}},
+            )
+            await resp(scope, receive, send)
+            return
+
+        # Auth passed — build (or reuse) the inner SSE app and forward
+        if self._app is None:
+            from core.mcp.server import build_mcp_asgi_app
+            self._app = build_mcp_asgi_app(ctx)
+        await self._app(scope, receive, send)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
     config = AppConfig()
     app.state.ctx = build_context(config)
+    from apps.api import _mcp_state
+    _mcp_state.ctx = app.state.ctx
     yield
 
 
@@ -63,7 +111,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(models_router.router)
     app.include_router(settings_router.router)
     app.include_router(events.router)
-    app.include_router(mcp_router.router)
+    app.mount("/mcp", _McpAsgiProxy())
     return app
 
 

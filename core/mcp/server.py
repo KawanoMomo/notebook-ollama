@@ -66,3 +66,9 @@ def build_mcp_server(ctx: Any) -> FastMCP:
         return get_source_outline_tool(conn=ctx.conn, source_id=source_id)
 
     return server
+
+
+def build_mcp_asgi_app(ctx: Any):
+    """Return the FastMCP SSE ASGI app for mounting."""
+    server = build_mcp_server(ctx)
+    return server.sse_app()
