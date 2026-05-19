@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from core.config import AppConfig
+from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
 from core.ollama.client import OllamaClient
 from core.ollama.gateway import OllamaGateway
 from core.storage.database import connect, migrate
@@ -23,6 +24,7 @@ class AppContext:
     vector_store: VectorStore
     ollama: OllamaGateway
     sse: SseBroker
+    pipeline: IngestionPipeline
 
 
 def build_context(config: AppConfig) -> AppContext:
@@ -36,10 +38,17 @@ def build_context(config: AppConfig) -> AppContext:
         timeout=config.ollama.request_timeout_seconds,
     )
     gateway = OllamaGateway(client=raw_client)
+    pipeline = IngestionPipeline(deps=PipelineDeps(
+        conn=conn,
+        vector_store=vs,
+        ollama=gateway,
+        embedding_model=config.ollama.embedding_model,
+    ))
     return AppContext(
         config=config,
         conn=conn,
         vector_store=vs,
         ollama=gateway,
         sse=SseBroker(),
+        pipeline=pipeline,
     )

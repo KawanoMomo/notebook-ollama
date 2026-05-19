@@ -11,7 +11,7 @@ from core.exceptions import AppError
 from core.logging import configure_logging
 
 from apps.api.dependencies import build_context
-from apps.api.routers import health, notebooks
+from apps.api.routers import health, notebooks, sources
 
 
 @asynccontextmanager
@@ -44,6 +44,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(notebooks.router)
+    app.include_router(sources.router)
     return app
 
 
