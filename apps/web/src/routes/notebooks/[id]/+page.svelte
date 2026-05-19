@@ -8,6 +8,7 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
   import ChatPanel from '$lib/components/ChatPanel.svelte';
+  import SourceViewer from '$lib/components/SourceViewer.svelte';
 
   let { data } = $props<{ data: { notebookId: string } }>();
 
@@ -58,8 +59,11 @@
       </section>
       {#if viewerOpen}
         <aside class="viewer">
-          <!-- SourceViewer filled in Task 8.x -->
-          <p style="padding: 16px; color: var(--color-fg-muted);">Source Viewer (TBD)</p>
+          <SourceViewer
+            notebookId={data.notebookId}
+            selectedChunkId={selectedChunkId}
+            selectedSourceId={selectedSourceId}
+          />
         </aside>
       {/if}
     </div>
