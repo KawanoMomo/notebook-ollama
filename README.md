@@ -4,12 +4,34 @@ Local NotebookLM-like personal knowledge base. Ollama-backed RAG with MCP server
 
 See `../docs/superpowers/specs/2026-05-19-notebook-ollama-design.md` for the full design.
 
+## License
+
+Notebook Ollama itself is released under the [MIT License](./LICENSE).
+Third-party dependency licenses are summarised in
+[LICENSE-THIRDPARTY.md](./LICENSE-THIRDPARTY.md).
+
+> **PDF ingestion is an opt-in extra**: it requires PyMuPDF (AGPL-3.0). Run
+> `scripts/install-pdf-support.sh` (Linux / macOS) or
+> `scripts/install-pdf-support.ps1` (Windows) and accept the AGPL terms before
+> uploading PDF sources. Markdown / text / DOCX / PPTX / XLSX / web ingestion
+> works without this extra.
+
 ## Quickstart
 
 ```bash
 uv sync
 uv run pytest
 uv run uvicorn apps.api.main:app --reload --port 8765
+```
+
+To enable PDF ingestion:
+
+```bash
+# Linux / macOS
+bash scripts/install-pdf-support.sh
+
+# Windows PowerShell
+pwsh scripts/install-pdf-support.ps1
 ```
 
 ## Frontend

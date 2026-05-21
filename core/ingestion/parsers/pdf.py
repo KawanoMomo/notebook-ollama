@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pymupdf
-
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.parsers import register
 from core.ingestion.types import ParsedDocument, ParsedSection
@@ -11,6 +9,20 @@ class PdfParser:
     kind = "pdf"
 
     def parse_bytes(self, data: bytes, *, source_hint: str | None = None) -> ParsedDocument:
+        try:
+            import pymupdf  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise AppError(
+                ErrorCode.INGESTION_DEP_MISSING,
+                "PDF パーサ (PyMuPDF) が未インストールです",
+                detail=str(exc),
+                remediation=(
+                    "scripts/install-pdf-support.sh または "
+                    "scripts/install-pdf-support.ps1 を実行してください "
+                    "(PyMuPDF は AGPL-3.0 ライセンスのため同意が必要)"
+                ),
+            ) from exc
+
         try:
             doc = pymupdf.open(stream=data, filetype="pdf")
         except Exception as exc:

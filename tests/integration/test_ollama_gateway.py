@@ -7,12 +7,12 @@ from core.ollama.gateway import OllamaGateway
 
 class FakeClient:
     def __init__(self):
-        self.embed_calls: list[tuple[str, str]] = []
+        self.embed_calls: list[tuple[str, str, dict | None]] = []
         self.chat_calls: list[tuple[str, list[dict]]] = []
 
-    async def embed(self, *, model: str, text: str) -> list[float]:
+    async def embed(self, *, model: str, text: str, options: dict | None = None) -> list[float]:
         await asyncio.sleep(0.01)
-        self.embed_calls.append((model, text))
+        self.embed_calls.append((model, text, options))
         return [0.0, 1.0]
 
     async def chat_stream(self, *, model, messages, options=None):
