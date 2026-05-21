@@ -25,7 +25,15 @@
     conversationStore.cancel();
   });
 
+  // Prevent browser default (opening PDFs/text in a new tab) when files are
+  // dropped outside the SourcesPanel dropzone.
+  function blockFileDrop(e: DragEvent) {
+    if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+  }
+
   onMount(async () => {
+    window.addEventListener('dragover', blockFileDrop);
+    window.addEventListener('drop', blockFileDrop);
     await currentNotebookStore.load(data.notebookId);
     eventsStore.start(data.notebookId);
     unbindShortcuts = bindShortcuts([
@@ -45,6 +53,8 @@
   });
 
   onDestroy(() => {
+    window.removeEventListener('dragover', blockFileDrop);
+    window.removeEventListener('drop', blockFileDrop);
     eventsStore.stop();
     currentNotebookStore.clear();
     unbindShortcuts?.();

@@ -11,6 +11,10 @@ class OllamaSettings(BaseModel):
     default_model: str = "qwen2.5:14b"
     embedding_model: str = "bge-m3"
     request_timeout_seconds: float = 120.0
+    # Workaround for llama.cpp GPU bug that emits NaN embeddings for some
+    # multilingual inputs (esp. Japanese) under bge-m3. num_gpu=0 forces CPU
+    # inference for embeddings. Set to None or {} to use Ollama defaults.
+    embedding_options: dict[str, int] = Field(default_factory=lambda: {"num_gpu": 0})
 
 
 class GenerationSettings(BaseModel):

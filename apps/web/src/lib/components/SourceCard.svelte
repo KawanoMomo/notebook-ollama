@@ -47,6 +47,8 @@
           <CheckCircle size="12" color="var(--color-success)" /> ready
         {:else if source.status === 'error'}
           <AlertCircle size="12" color="var(--color-error)" /> {source.error_msg ?? 'error'}
+        {:else if source.status === 'embedding' && source.chunk_count}
+          <Spinner size={12} /> embedding ({source.embedded ?? 0}/{source.chunk_count})
         {:else}
           <Spinner size={12} /> {source.status}
         {/if}

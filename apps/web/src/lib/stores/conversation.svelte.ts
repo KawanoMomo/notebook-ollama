@@ -1,5 +1,11 @@
-import type { Citation, Conversation, Message, RetrievalHit } from '$lib/api/types';
-import { chatApi, type ChatEvent } from '$lib/api/chat';
+import type {
+  Citation,
+  Conversation,
+  Message,
+  RetrievalHit,
+} from "$lib/api/types";
+import { chatApi, type ChatEvent } from "$lib/api/chat";
+import { notify, requestPermissionOnce } from "$lib/utils/notifications";
 
 export interface ConversationStore {
   readonly conversation: Conversation | null;
@@ -18,7 +24,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
   let conversation = $state<Conversation | null>(null);
   let messages = $state<Message[]>([]);
   let streaming = $state(false);
-  let streamingText = $state('');
+  let streamingText = $state("");
   let streamingHits = $state<RetrievalHit[]>([]);
   let error = $state<string | null>(null);
   let abortController: AbortController | null = null;
@@ -54,12 +60,13 @@ export function createConversationStore(api = chatApi): ConversationStore {
       return conversation;
     },
     async send(notebookId, content) {
+      void requestPermissionOnce();
       const conv = await this.ensureConversation(notebookId);
       // optimistically add user message
       const userMsg: Message = {
         id: `tmp-${Date.now()}`,
         conversation_id: conv.id,
-        role: 'user',
+        role: "user",
         content,
         citations: [],
         model: null,
@@ -67,10 +74,11 @@ export function createConversationStore(api = chatApi): ConversationStore {
       };
       messages = [...messages, userMsg];
       streaming = true;
-      streamingText = '';
+      streamingText = "";
       streamingHits = [];
       error = null;
       abortController = new AbortController();
+      const questionPreview = content.slice(0, 40);
       try {
         let citations: Citation[] = [];
         let modelUsed: string | null = null;
@@ -80,33 +88,39 @@ export function createConversationStore(api = chatApi): ConversationStore {
           content,
           abortController.signal,
         ) as AsyncGenerator<ChatEvent>) {
-          if (ev.kind === 'retrieval') {
+          if (ev.kind === "retrieval") {
             streamingHits = ev.hits;
-          } else if (ev.kind === 'token') {
+          } else if (ev.kind === "token") {
             streamingText += ev.text;
-          } else if (ev.kind === 'done') {
+          } else if (ev.kind === "done") {
             citations = ev.citations;
             modelUsed = ev.model_used;
             streamingText = ev.answer;
-          } else if (ev.kind === 'error') {
+          } else if (ev.kind === "error") {
             error = ev.message;
           }
         }
         const assistantMsg: Message = {
           id: `tmp-asst-${Date.now()}`,
           conversation_id: conv.id,
-          role: 'assistant',
+          role: "assistant",
           content: streamingText,
           citations,
           model: modelUsed,
           created_at: new Date().toISOString(),
         };
         messages = [...messages, assistantMsg];
+        if (error) {
+          notify({ title: "回答エラー", body: error.slice(0, 80), tag: "chat-error" });
+        } else {
+          notify({ title: "回答完了", body: questionPreview, tag: "chat-done" });
+        }
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
+        notify({ title: "回答エラー", body: error.slice(0, 80), tag: "chat-error" });
       } finally {
         streaming = false;
-        streamingText = '';
+        streamingText = "";
         streamingHits = [];
         abortController = null;
       }

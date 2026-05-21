@@ -14,12 +14,21 @@ class OllamaClient:
         self._endpoint = endpoint.rstrip("/")
         self._timeout = timeout
 
-    async def embed(self, *, model: str, text: str) -> list[float]:
+    async def embed(
+        self,
+        *,
+        model: str,
+        text: str,
+        options: dict[str, Any] | None = None,
+    ) -> list[float]:
+        payload: dict[str, Any] = {"model": model, "prompt": text}
+        if options:
+            payload["options"] = options
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             try:
                 r = await client.post(
                     f"{self._endpoint}/api/embeddings",
-                    json={"model": model, "prompt": text},
+                    json=payload,
                 )
             except httpx.HTTPError as exc:
                 raise AppError(

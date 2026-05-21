@@ -38,7 +38,10 @@ def build_context(config: AppConfig) -> AppContext:
         endpoint=config.ollama.endpoint,
         timeout=config.ollama.request_timeout_seconds,
     )
-    gateway = OllamaGateway(client=raw_client)
+    gateway = OllamaGateway(
+        client=raw_client,
+        embedding_options=config.ollama.embedding_options or None,
+    )
     sse_broker = SseBroker()
     pipeline = IngestionPipeline(
         deps=PipelineDeps(
