@@ -32,21 +32,21 @@ export interface NotebookUpdate {
 }
 
 export type SourceStatus =
-  | 'pending'
-  | 'parsing'
-  | 'chunking'
-  | 'embedding'
-  | 'ready'
-  | 'error';
+  | "pending"
+  | "parsing"
+  | "chunking"
+  | "embedding"
+  | "ready"
+  | "error";
 
 export type SourceKind =
-  | 'pdf'
-  | 'markdown'
-  | 'web'
-  | 'docx'
-  | 'pptx'
-  | 'xlsx'
-  | 'txt';
+  | "pdf"
+  | "markdown"
+  | "web"
+  | "docx"
+  | "pptx"
+  | "xlsx"
+  | "txt";
 
 export interface Source {
   id: string;
@@ -59,6 +59,8 @@ export interface Source {
   bytes: number | null;
   page_count: number | null;
   chunk_count: number | null;
+  /** Transient field populated from SSE during the embedding phase. */
+  embedded?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -76,7 +78,7 @@ export interface Citation {
 export interface Message {
   id: string;
   conversation_id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   citations: Citation[];
   model: string | null;

@@ -23,9 +23,15 @@ export function createEventsStore(): EventsStore {
         if (!existing) return;
         const prev = lastStatus.get(ev.source_id) ?? existing.status;
         lastStatus.set(ev.source_id, ev.status);
+        const chunkCount =
+          typeof ev.chunk_count === "number" ? ev.chunk_count : existing.chunk_count;
+        const embedded =
+          typeof ev.embedded === "number" ? ev.embedded : undefined;
         currentNotebookStore.upsertSource({
           ...existing,
           status: ev.status as typeof existing.status,
+          chunk_count: chunkCount,
+          embedded,
         });
         if (prev !== ev.status) {
           const title = existing.title ?? existing.origin ?? "ソース";

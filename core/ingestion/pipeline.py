@@ -80,10 +80,16 @@ class IngestionPipeline:
             ]
             insert_chunks(conn, chunk_records)
 
-            update_source_status(conn, source_id, status=SourceStatus.EMBEDDING)
-            await _publish(SourceStatus.EMBEDDING)
+            total = len(chunk_records)
+            update_source_status(
+                conn,
+                source_id,
+                status=SourceStatus.EMBEDDING,
+                chunk_count=total,
+            )
+            await _publish(SourceStatus.EMBEDDING, chunk_count=total, embedded=0)
             vectors: list[ChunkVector] = []
-            for rec in chunk_records:
+            for i, rec in enumerate(chunk_records):
                 vec = await self._deps.ollama.embed(model=self._deps.embedding_model, text=rec.text)
                 vectors.append(
                     ChunkVector(
@@ -97,6 +103,11 @@ class IngestionPipeline:
                         ord=rec.ord,
                     )
                 )
+                done_n = i + 1
+                if done_n == total or done_n % 5 == 0:
+                    await _publish(
+                        SourceStatus.EMBEDDING, chunk_count=total, embedded=done_n
+                    )
             self._deps.vector_store.upsert(vectors)
 
             page_count = max((c.page or 0 for c in chunk_outs), default=0) or None
