@@ -24,6 +24,7 @@ dependencies = [
     "sse-starlette>=2.1",
     "mcp[cli]>=1.0",
     "pyyaml>=6.0",
+    "truststore>=0.10",
 ]
 
 # Optional dependency: AGPL-3.0 licensed. The core project ships under MIT

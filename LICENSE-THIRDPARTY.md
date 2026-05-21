@@ -27,6 +27,7 @@ dependency uses the AGPL-3.0 license and is **not** installed by default.
 | sse-starlette | BSD-3-Clause |
 | mcp (Anthropic) | MIT |
 | pyyaml | MIT |
+| truststore | MIT |
 
 ## Optional dependency (AGPL-3.0)
 
