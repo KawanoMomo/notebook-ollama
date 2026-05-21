@@ -1,30 +1,116 @@
 # Notebook Ollama
 
-Local NotebookLM-like personal knowledge base. Ollama-backed RAG with MCP server exposure.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
+![Svelte](https://img.shields.io/badge/svelte-5-orange.svg)
+![Ollama](https://img.shields.io/badge/llm-ollama-black.svg)
 
-See `../docs/superpowers/specs/2026-05-19-notebook-ollama-design.md` for the full design.
+**ローカル完結**で動く NotebookLM ライクなパーソナルナレッジベース。  
+Ollama を推論エンジン、Qdrant をベクトルストアとした **RAG** に加えて、**MCP サーバ**として他の LLM クライアントからも引用付き Q&A を呼べます。
 
-## License
+![hero](./docs/screenshots/04-citation-viewer.png)
 
-Notebook Ollama itself is released under the [MIT License](./LICENSE).
-Third-party dependency licenses are summarised in
-[LICENSE-THIRDPARTY.md](./LICENSE-THIRDPARTY.md).
+## 何ができるか
 
-> **PDF ingestion is an opt-in extra**: it requires PyMuPDF (AGPL-3.0). Run
-> `scripts/install-pdf-support.sh` (Linux / macOS) or
-> `scripts/install-pdf-support.ps1` (Windows) and accept the AGPL terms before
-> uploading PDF sources. Markdown / text / DOCX / PPTX / XLSX / web ingestion
-> works without this extra.
+- **ソース取り込み**: PDF / Markdown / TXT / DOCX / PPTX / XLSX / Web URL を投入
+- **引用付き Q&A**: 質問するとローカル LLM が回答 + 該当チャンクへのカード形式リンクを返す
+- **3ペイン UI**: ソース一覧・チャット・ソースビューワを同時表示。引用カードクリックで該当ページの本文に即ジャンプ
+- **OS 通知**: タブが非アクティブでも「回答完了」「取り込み完了」を OS 通知
+- **進捗可視化**: 大型 PDF も `embedding (230/3629)` の形でリアルタイム進捗
+- **MCP 公開**: Claude Desktop など他クライアントから `ask` / `find_quotes` / `list_models` などを呼べる
+- **完全ローカル**: ノートデータ・ベクトル・モデル推論すべて手元で完結。クラウド依存なし
 
-## Quickstart
+## スクリーンショット
 
-```bash
-uv sync
-uv run pytest
-uv run uvicorn apps.api.main:app --reload --port 8765
+### ノートブック一覧
+![home](./docs/screenshots/01-home.png)
+
+### 引用付きチャット（カード型 + クリックで該当チャンクへジャンプ）
+![chat](./docs/screenshots/03-chat-with-citations.png)
+
+### 出典カードから本文に飛ぶ
+![viewer](./docs/screenshots/04-citation-viewer.png)
+
+### ソース追加（モーダル）
+![upload modal](./docs/screenshots/05-upload-modal.png)
+
+### ドラッグ&ドロップ
+パネルに直接ドロップで取り込み開始。  
+![drag](./docs/screenshots/06-drag-overlay.png)
+
+## アーキテクチャ
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Browser (SvelteKit + Svelte 5)   :5173 (dev) / :8765 (prod) │
+└──────────────────────────────────┬───────────────────────────┘
+                                   │ HTTP / SSE
+┌──────────────────────────────────▼───────────────────────────┐
+│  FastAPI  (apps/api)                                          │
+│  ├─ /api/notebooks, /sources, /conversations, /messages …    │
+│  ├─ /api/notebooks/{id}/events  (SSE: 進捗・状態遷移)        │
+│  └─ /mcp/*  (MCP SSE server, Bearer token 認証)              │
+└──────────────────────────────────┬───────────────────────────┘
+                                   │
+                ┌──────────────────┼──────────────────┐
+                ▼                  ▼                  ▼
+        ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+        │   SQLite     │  │   Qdrant     │  │   Ollama     │
+        │  (metadata)  │  │  (vectors)   │  │  (LLM/Embed) │
+        └──────────────┘  └──────────────┘  └──────────────┘
 ```
 
-To enable PDF ingestion:
+| レイヤ | 採用 |
+|---|---|
+| 推論 | Ollama (`qwen2.5:14b` など) |
+| 埋め込み | Ollama `bge-m3` (1024次元) |
+| ベクトル DB | Qdrant ローカルモード |
+| メタデータ | SQLite |
+| バックエンド | FastAPI (Python 3.12) |
+| フロント | SvelteKit + Svelte 5 |
+| MCP | Anthropic 公式 MCP SDK (`mcp[cli]`) |
+
+詳細設計は [`docs/specs/notebook-ollama-design.md`](./docs/specs/notebook-ollama-design.md)。
+
+## ライセンス
+
+Notebook Ollama 本体は **MIT** で公開しています ([`LICENSE`](./LICENSE))。  
+依存ライブラリのライセンスは [`LICENSE-THIRDPARTY.md`](./LICENSE-THIRDPARTY.md) を参照。
+
+> **PDF 取り込みだけは opt-in 拡張**です。PDF パーサに使用する PyMuPDF は AGPL-3.0 のため、本体には同梱せず、利用者が同意付きスクリプトを実行したときのみ有効化します。  
+> Markdown / TXT / DOCX / PPTX / XLSX / Web は本体だけで動きます。
+
+## クイックスタート
+
+### 1. 前提条件
+
+| 必要なもの | Windows 11 | Linux | macOS |
+|---|---|---|---|
+| Ollama | [ollama.com/download](https://ollama.com/download) | 同左 | 同左 |
+| Python 3.12 + `uv` | [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/) | 同左 | 同左 |
+| Node.js 20+ | [nodejs.org](https://nodejs.org/) | 同左 | 同左 |
+
+### 2. モデル取得 (初回のみ)
+
+```bash
+ollama pull qwen2.5:14b   # 約 9 GB
+ollama pull bge-m3        # 約 1.2 GB
+```
+
+### 3. 起動
+
+```bash
+# 依存インストール
+uv sync
+cd apps/web && npm install && cd ../..
+
+# API サーバ
+uv run uvicorn apps.api.main:app --port 8765
+# 別ターミナルで dev UI
+cd apps/web && npm run dev   # http://localhost:5173
+```
+
+### 4. PDF サポート (任意)
 
 ```bash
 # Linux / macOS
@@ -34,185 +120,50 @@ bash scripts/install-pdf-support.sh
 pwsh scripts/install-pdf-support.ps1
 ```
 
-## Frontend
+AGPL-3.0 の同意プロンプトに `y` で答えると PyMuPDF が `uv sync --extra pdf` でインストールされます。
 
-See `apps/web/README.md`.
+## 本番ビルド
 
-Production serves UI + API on one port:
-```
-cd apps/web && npm run build
+```bash
+cd apps/web && npm run build   # → apps/web/dist/
 cd ../..
 uv run uvicorn apps.api.main:app --port 8765
-```
-Open http://localhost:8765.
-
-## Smoke Test
-
-1. Start Ollama: `ollama serve`
-2. Pull required models:
-   ```
-   ollama pull bge-m3
-   ollama pull qwen2.5:14b
-   ```
-3. Start the backend:
-   ```
-   uv run uvicorn apps.api.main:app --port 8765
-   ```
-4. Create a notebook and upload a markdown file:
-   ```
-   curl -s -X POST http://localhost:8765/api/notebooks \
-        -H "Content-Type: application/json" \
-        -d '{"name":"smoke","default_model":"qwen2.5:14b"}'
-
-   NB=$(curl -s http://localhost:8765/api/notebooks | python -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')
-
-   echo "# Test\n\nHello world." > /tmp/a.md
-   curl -s -F "file=@/tmp/a.md" http://localhost:8765/api/notebooks/$NB/sources
-   ```
-5. Ask via REST:
-   ```
-   CV=$(curl -s -X POST http://localhost:8765/api/notebooks/$NB/conversations | python -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-   curl -N -s -X POST http://localhost:8765/api/notebooks/$NB/conversations/$CV/messages \
-        -H "Content-Type: application/json" \
-        -d '{"content":"何が書かれていますか"}'
-   ```
-6. Ask via MCP:
-   ```
-   TOKEN=$(cat ~/.notebook-ollama/mcp.token)
-   curl -s -X POST http://localhost:8765/mcp/messages \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-   ```
-   Expected: tools list includes `ask`, `find_quotes`, `list_notebooks`, `list_models`, `get_source_outline`.
-
-## Deployment
-
-### Prerequisites
-
-| Requirement | Windows 11 | Linux | macOS |
-|---|---|---|---|
-| Ollama | [ollama.com/download](https://ollama.com/download) | same | same |
-| Python 3.12 + `uv` | [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/) | same | same |
-| Node.js 20+ + npm | [nodejs.org](https://nodejs.org/) | same | same |
-
-Verify: `ollama --version`, `uv --version`, `node --version`
-
-**Required Ollama models** (pull once before first run):
-
-```
-ollama pull bge-m3           # embedding — ~600 MB, no GPU required
-ollama pull qwen2.5:14b      # LLM default — ~9 GB, needs ~10 GB VRAM
+# UI + API を同じ :8765 で提供
 ```
 
-Alternative LLMs (less VRAM):
+## MCP サーバとして使う
 
-| Model | VRAM | Notes |
-|---|---|---|
-| `qwen2.5:7b` | ~6 GB | Faster, slightly less accurate |
-| `qwen2.5:3b` | ~3 GB | CPU-friendly |
-| `phi4:14b` | ~10 GB | English-strong alternative |
+起動時に `~/.notebook-ollama/mcp.token` が生成されます。Claude Desktop 等から:
 
-To use a different LLM, set `NOTEBOOK_OLLAMA_OLLAMA__DEFAULT_MODEL=qwen2.5:7b` or edit
-`~/.notebook-ollama/config.json`.
-
-### One-time setup
-
-```powershell
-uv sync
-cd apps/web
-npm install
-npm run build
-cd ../..
+```json
+{
+  "mcpServers": {
+    "notebook-ollama": {
+      "url": "http://localhost:8765/mcp/sse",
+      "headers": { "Authorization": "Bearer <内容を貼り付け>" }
+    }
+  }
+}
 ```
 
-### Manual start (development or one-off)
+公開ツール: `ask` / `find_quotes` / `list_notebooks` / `list_models` / `get_source_outline`
 
-```powershell
-.\scripts\start.ps1
-```
-
-Add `-OpenBrowser` to open `http://localhost:8765/` automatically:
-
-```powershell
-.\scripts\start.ps1 -OpenBrowser
-```
-
-Use a custom port with `-Port`:
-
-```powershell
-.\scripts\start.ps1 -Port 9000
-```
-
-### Auto-start at logon (Windows)
-
-Register the server as a Windows Scheduled Task that starts automatically when you log in:
-
-```powershell
-.\scripts\install-startup.ps1 -Run
-```
-
-- The server starts in the background at each logon
-- View logs: `$env:USERPROFILE\.notebook-ollama\logs\server.log`
-- To remove the auto-launch: `.\scripts\uninstall-startup.ps1`
-
-### Stopping the server
-
-**Foreground run:** Ctrl+C in the terminal.
-
-**Background / scheduled task** — use the stop script (reads PID file):
-
-```powershell
-.\scripts\stop.ps1
-```
-
-Or via Task Scheduler GUI: open Task Scheduler, find `NotebookOllama`, click Stop.
-
-The server records its PID to `$env:USERPROFILE\.notebook-ollama\server.pid` at startup
-and deletes it on clean exit. `stop.ps1` uses this file to send the signal.
-
-### Linux / macOS
+## 開発
 
 ```bash
-chmod +x scripts/start.sh
-./scripts/start.sh
-./scripts/start.sh --background
-./scripts/start.sh --port 9000 --open-browser
+uv run pytest                 # ユニット + 統合 (Ollama 不要)
+uv run pytest -m ollama       # Ollama 必要なテスト
+cd apps/web && npm run check  # 型チェック
+cd apps/web && npm run test:unit
 ```
 
-To run at startup on Linux, create a systemd user service pointing to `start.sh --background`
-(template not included in this MVP):
+レイアウト:
 
-```ini
-# ~/.config/systemd/user/notebook-ollama.service
-[Unit]
-Description=Notebook Ollama server
-After=network.target
+- `core/` — ドメインロジック (FastAPI 非依存)
+- `apps/api/` — FastAPI ルータ / スキーマ
+- `apps/web/` — SvelteKit フロント
+- `tests/unit` `tests/integration` `tests/mcp` — テスト分離
 
-[Service]
-ExecStart=/bin/bash /path/to/scripts/start.sh --background
-Restart=on-failure
+## ライセンス
 
-[Install]
-WantedBy=default.target
-```
-
-```bash
-systemctl --user enable --now notebook-ollama
-```
-
-### Troubleshooting
-
-- **`ollama: command not found`** — install Ollama from <https://ollama.com/download> and ensure
-  it is on `PATH`. Restart your terminal after installation.
-- **Port 8765 already in use** — pass `-Port <n>` to `start.ps1` (or `--port <n>` to `start.sh`).
-- **Slow first response** — Ollama loads the model into VRAM on first inference; subsequent
-  queries are fast.
-- **MCP token location** — `$env:USERPROFILE\.notebook-ollama\mcp.token`. Copy this value for
-  Claude Code or other MCP clients that require Bearer authentication.
-- **Model warning at startup** — the start script warns if `bge-m3` or the default LLM is not
-  found, but does **not** auto-pull (downloads can be several GB). Pull manually:
-  ```
-  ollama pull bge-m3
-  ollama pull qwen2.5:14b
-  ```
+[MIT](./LICENSE) — Copyright (c) 2026 Kawano Momo
