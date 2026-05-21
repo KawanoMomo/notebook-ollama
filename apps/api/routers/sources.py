@@ -90,6 +90,34 @@ async def upload_file(
     return _to_schema(rec)
 
 
+_CONTENT_TYPE_KIND: dict[str, str] = {
+    "application/pdf": "pdf",
+    "application/x-pdf": "pdf",
+    "text/markdown": "markdown",
+    "text/x-markdown": "markdown",
+    "text/plain": "txt",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+}
+
+
+def _detect_url_kind(*, url: str, content_type: str | None, data: bytes) -> str:
+    """Pick the parser kind for a fetched URL by content-type, magic bytes, then path."""
+    ct = (content_type or "").split(";", 1)[0].strip().lower()
+    if ct in _CONTENT_TYPE_KIND:
+        return _CONTENT_TYPE_KIND[ct]
+    if data.startswith(b"%PDF-"):
+        return "pdf"
+    if ct.startswith("text/html") or ct.startswith("application/xhtml"):
+        return "web"
+    url_lower = url.lower().split("?", 1)[0]
+    for ext, k in _KIND_BY_EXT.items():
+        if url_lower.endswith(ext):
+            return k
+    return "web"
+
+
 @router.post("/{notebook_id}/sources/url", status_code=202, response_model=Source)
 async def upload_url(
     request: Request,
@@ -109,20 +137,23 @@ async def upload_url(
             ErrorCode.INGESTION_FETCH_FAILED, "failed to fetch URL", detail=str(exc)
         ) from exc
     data = r.content
+    kind = _detect_url_kind(
+        url=url, content_type=r.headers.get("content-type"), data=data
+    )
     digest = sha256_bytes(data)
     rec, was_new = sources_repo.upsert_dedupe(
         ctx.conn,
         notebook_id=notebook_id,
-        kind="web",
+        kind=kind,
         content_hash=digest,
         origin=url,
         bytes_=len(data),
     )
     if was_new:
-        ext = _EXT_BY_KIND.get("web", ".bin")
+        ext = _EXT_BY_KIND.get(kind, ".bin")
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
-        background.add_task(ctx.pipeline.run, source_id=rec.id, kind="web", data=data)
+        background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
     return _to_schema(rec)
 
 

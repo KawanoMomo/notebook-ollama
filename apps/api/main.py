@@ -1,7 +1,15 @@
 from __future__ import annotations
 
-import json
-from contextlib import asynccontextmanager
+# Use the OS-native trust store (Windows cert store, macOS Keychain,
+# Linux openssl path) instead of the certifi bundle. Required for sites
+# whose certificate chain is rooted at CAs not present in certifi
+# (e.g. autosar.org). Must run before any SSLContext is created.
+import truststore
+
+truststore.inject_into_ssl()
+
+import json  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
 
 from fastapi import FastAPI
 from fastapi.requests import Request
