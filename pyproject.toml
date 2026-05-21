@@ -14,7 +14,6 @@ dependencies = [
     "tenacity>=9.0",
     "python-ulid>=3.0",
     "tiktoken>=0.8",
-    "pymupdf>=1.24",
     "python-docx>=1.1",
     "python-pptx>=1.0",
     "openpyxl>=3.1",
@@ -27,6 +26,12 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+# Optional dependency: AGPL-3.0 licensed. The core project ships under MIT
+# (see LICENSE). Installing this extra opts the user into the AGPL terms for
+# PyMuPDF itself.
+[project.optional-dependencies]
+pdf = ["pymupdf>=1.24"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",
@@ -35,6 +40,9 @@ dev = [
     "ruff>=0.7",
     "mypy>=1.13",
     "respx>=0.21",
+    # PyMuPDF kept in dev so the fixture generators and parser tests can run.
+    # Production install must opt-in via `pip install '.[pdf]'`.
+    "pymupdf>=1.24",
 ]
 
 [tool.uv]

@@ -11,6 +11,7 @@ class ErrorCode(StrEnum):
     INGESTION_FETCH_FAILED = "ingestion.fetch_failed"
     INGESTION_UNSUPPORTED_KIND = "ingestion.unsupported_kind"
     INGESTION_DUPLICATE = "ingestion.duplicate"
+    INGESTION_DEP_MISSING = "ingestion.dependency_missing"
     OLLAMA_UNREACHABLE = "ollama.unreachable"
     OLLAMA_MODEL_NOT_FOUND = "ollama.model_not_found"
     OLLAMA_GENERATION_FAILED = "ollama.generation_failed"
