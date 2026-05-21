@@ -12,19 +12,9 @@
   function onSend(text: string) {
     conversationStore.send(notebookId, text);
   }
-
-  function onCitation(n: number) {
-    // find chunk_id from the latest assistant message's citations
-    const latest = [...conversationStore.messages]
-      .reverse()
-      .find((m) => m.role === 'assistant');
-    if (!latest) return;
-    const c = latest.citations.find((x) => x.n === n);
-    if (c) onCitationClick(c.chunk_id);
-  }
 </script>
 
-<MessageList onCitationClick={onCitation} />
+<MessageList {onCitationClick} />
 <ChatInput
   disabled={conversationStore.streaming}
   hint={conversationStore.messages.length > 0

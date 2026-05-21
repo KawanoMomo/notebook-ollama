@@ -6,7 +6,7 @@
   import { conversationStore } from '$lib/stores/conversation.svelte';
 
   interface Props {
-    onCitationClick: (n: number) => void;
+    onCitationClick: (chunkId: string) => void;
   }
   let { onCitationClick }: Props = $props();
 
