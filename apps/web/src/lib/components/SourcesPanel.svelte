@@ -16,6 +16,10 @@
 
   let showUpload = $state(false);
   let filter = $state('');
+  let dragDepth = $state(0);
+  let uploading = $state(false);
+
+  const SUPPORTED_EXTS = ['.pdf', '.md', '.markdown', '.txt', '.docx', '.pptx', '.xlsx'];
 
   let filteredSources = $derived(
     currentNotebookStore.sources.filter((s) =>
@@ -24,6 +28,61 @@
         : true,
     ),
   );
+
+  function isSupported(name: string): boolean {
+    const n = name.toLowerCase();
+    return SUPPORTED_EXTS.some((ext) => n.endsWith(ext));
+  }
+
+  async function uploadFiles(list: File[]) {
+    if (list.length === 0) return;
+    uploading = true;
+    let ok = 0;
+    try {
+      for (const f of list) {
+        if (!isSupported(f.name)) {
+          pushToast(`未対応のファイル形式: ${f.name}`, 'error');
+          continue;
+        }
+        try {
+          const s = await sourcesApi.uploadFile(notebookId, f);
+          currentNotebookStore.upsertSource(s);
+          ok++;
+        } catch (e) {
+          pushToast(
+            `${f.name}: ${e instanceof Error ? e.message : String(e)}`,
+            'error',
+          );
+        }
+      }
+      if (ok > 0) pushToast(`${ok} 件アップロード完了`, 'success');
+    } finally {
+      uploading = false;
+    }
+  }
+
+  function onDragEnter(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepth++;
+  }
+  function onDragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }
+  function onDragLeave(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+  }
+  async function onDrop(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepth = 0;
+    const list = Array.from(e.dataTransfer?.files ?? []);
+    await uploadFiles(list);
+  }
 
   async function onRetry(s: Source) {
     try {
@@ -47,7 +106,15 @@
   }
 </script>
 
-<div class="panel">
+<div
+  class="panel"
+  class:dragover={dragDepth > 0}
+  ondragenter={onDragEnter}
+  ondragover={onDragOver}
+  ondragleave={onDragLeave}
+  ondrop={onDrop}
+  role="presentation"
+>
   <div class="header">
     <input
       class="search"
@@ -71,9 +138,17 @@
       />
     {/each}
     {#if filteredSources.length === 0}
-      <p class="empty">ソースがありません。「追加」から取り込んでください。</p>
+      <p class="empty">ソースがありません。「追加」から取り込むか、ファイルをここにドラッグ&ドロップしてください。</p>
     {/if}
   </div>
+  {#if dragDepth > 0}
+    <div class="drop-overlay">
+      <div class="drop-msg">
+        {uploading ? 'アップロード中…' : 'ドロップで追加'}
+        <p class="drop-hint">PDF / MD / TXT / DOCX / PPTX / XLSX</p>
+      </div>
+    </div>
+  {/if}
 </div>
 
 {#if showUpload}
@@ -89,6 +164,36 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    position: relative;
+  }
+  .panel.dragover {
+    outline: 2px dashed var(--color-accent);
+    outline-offset: -4px;
+  }
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .drop-msg {
+    background: var(--color-bg);
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-md);
+    padding: var(--space-4) var(--space-5);
+    text-align: center;
+    color: var(--color-fg);
+    font-weight: 500;
+  }
+  .drop-hint {
+    margin: var(--space-2) 0 0;
+    font-size: 12px;
+    color: var(--color-fg-muted);
+    font-weight: 400;
   }
   .header {
     display: flex;
