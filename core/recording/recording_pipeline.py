@@ -1,0 +1,312 @@
+"""録音オフライン取り込みパイプライン (純粋オーケストレーション)。
+
+完了した録音の 2 つの wav (mic / system) から、タイムコード + 話者付きの RAG
+チャンクを生成して埋め込み、SSE 進捗ステップを発行する。
+
+処理順:
+  STT → diarization(system) → LLM 名前推定 → セグメント整列校正 → チャンク化 →
+  埋め込み → status READY
+
+依存 (transcriber / diarizer / ollama / broker / vector_store) は全て注入されるため、
+実モデル・実音声なしで fake を渡して完全にユニットテストできる。アプリ層への配線と
+声紋ベースの命名は別タスク。ここでは行わない。
+
+IngestionPipeline (core/ingestion/pipeline.py) の埋め込みループ・broker.publish・
+try/except エラーハンドリングのパターンをミラーしている。
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Protocol
+
+from core.ids import new_id
+from core.logging import get_logger
+from core.recording.chunking import chunk_segments
+from core.recording.merger import merge
+from core.recording.name_inference import infer_names
+from core.recording.segment_correct import Segment, correct_segments_aligned
+from core.storage.chunks_repo import ChunkRecord, insert_chunks
+from core.storage.sources_repo import SourceStatus, update_source_status
+from core.storage.vector_store import ChunkVector
+
+log = get_logger("recording.pipeline")
+
+_MIC_SPEAKER = "あなた"
+_SYSTEM_SPEAKER = "相手"
+_MIC_CHANNEL = "mic"
+_SYSTEM_CHANNEL = "system"
+
+
+class _GatewayLike(Protocol):
+    async def embed(self, *, model: str, text: str) -> list[float]: ...
+    async def generate(self, *, model: str, prompt: str, options: Any = ...) -> str: ...
+
+
+class _BrokerLike(Protocol):
+    async def publish(self, topic: str, payload: dict[str, Any]) -> None: ...
+
+
+class _VectorStoreLike(Protocol):
+    def upsert(self, vectors: Any) -> None: ...
+
+
+class _TranscriberLike(Protocol):
+    def transcribe(
+        self, wav_path: Path, *, channel: str, speaker_id: str,
+        language: str = ..., session_id: str = ...,
+    ) -> list[Any]: ...
+
+
+class _DiarizerLike(Protocol):
+    def diarize(self, wav_path: Path) -> list[Any]: ...
+
+
+@dataclass
+class RecordingPipelineDeps:
+    conn: sqlite3.Connection
+    vector_store: _VectorStoreLike
+    ollama: _GatewayLike
+    embedding_model: str
+    broker: _BrokerLike | None = None
+
+
+def _token_counter(text: str) -> int:
+    """チャンク化用トークン数。core.tokens があれば使い、無ければ空白語数。"""
+    try:
+        from core.tokens import count_tokens
+        return count_tokens(text)
+    except Exception:
+        return len(text.split())
+
+
+class RecordingPipeline:
+    def __init__(self, *, deps: RecordingPipelineDeps) -> None:
+        self._deps = deps
+
+    async def _publish(
+        self, *, notebook_id: str, source_id: str, step: str, label: str,
+        progress: float, status: str,
+    ) -> None:
+        if self._deps.broker is None:
+            return
+        await self._deps.broker.publish(
+            f"notebook:{notebook_id}",
+            {
+                "source_id": source_id,
+                "step": step,
+                "step_label": label,
+                "progress": progress,
+                "status": status,
+            },
+        )
+
+    async def run(
+        self,
+        *,
+        source_id: str,
+        notebook_id: str,
+        mic_wav: Path | None,
+        system_wav: Path | None,
+        transcriber: _TranscriberLike,
+        diarizer: _DiarizerLike,
+        model: str,
+        diarization_enabled: bool,
+        name_inference_enabled: bool,
+        name_threshold: float,
+        max_tokens: int = 400,
+    ) -> None:
+        conn = self._deps.conn
+        # 話者ラベル (rename 後も含む) → channel のマップ。チャンクの channel 決定に使う。
+        speaker_channel: dict[str, str] = {}
+
+        try:
+            update_source_status(conn, source_id, status=SourceStatus.PARSING)
+
+            # --- 1. transcribe -------------------------------------------------
+            await self._publish(
+                notebook_id=notebook_id, source_id=source_id, step="transcribe",
+                label="文字起こし中", progress=0.1, status=SourceStatus.PARSING.value,
+            )
+            mic_segments: list[Segment] = []
+            system_transcripts: list[Any] = []
+
+            if mic_wav is not None:
+                mic_raw = transcriber.transcribe(
+                    mic_wav, channel=_MIC_CHANNEL, speaker_id=_MIC_SPEAKER,
+                    session_id=source_id,
+                )
+                for ts in mic_raw:
+                    mic_segments.append(Segment(
+                        start_ms=ts.start_ms, end_ms=ts.end_ms,
+                        speaker=_MIC_SPEAKER, text=ts.text,
+                        language=ts.language or "ja",
+                    ))
+                speaker_channel[_MIC_SPEAKER] = _MIC_CHANNEL
+
+            if system_wav is not None:
+                system_transcripts = transcriber.transcribe(
+                    system_wav, channel=_SYSTEM_CHANNEL, speaker_id=_SYSTEM_SPEAKER,
+                    session_id=source_id,
+                )
+
+            await self._publish(
+                notebook_id=notebook_id, source_id=source_id, step="transcribe",
+                label="文字起こし完了", progress=0.25, status=SourceStatus.PARSING.value,
+            )
+
+            # --- 2. diarize (system のみ) -------------------------------------
+            system_segments: list[Segment] = []
+            if system_transcripts:
+                if diarization_enabled:
+                    await self._publish(
+                        notebook_id=notebook_id, source_id=source_id, step="diarize",
+                        label="話者分離中", progress=0.35,
+                        status=SourceStatus.PARSING.value,
+                    )
+                    diar = diarizer.diarize(system_wav)
+                    merged = merge(system_transcripts, diar)
+                    # merge() は spk_NNN / spk_unknown を speaker_id に割り当てる。
+                    # 出現順で 相手1, 相手2, ... に決定論的にマップする。
+                    label_map: dict[str, str] = {}
+                    for ts in merged:
+                        spk = ts.speaker_id
+                        if spk not in label_map:
+                            label_map[spk] = f"{_SYSTEM_SPEAKER}{len(label_map) + 1}"
+                        name = label_map[spk]
+                        speaker_channel[name] = _SYSTEM_CHANNEL
+                        system_segments.append(Segment(
+                            start_ms=ts.start_ms, end_ms=ts.end_ms,
+                            speaker=name, text=ts.text, language=ts.language or "ja",
+                        ))
+                    await self._publish(
+                        notebook_id=notebook_id, source_id=source_id, step="diarize",
+                        label="話者分離完了", progress=0.45,
+                        status=SourceStatus.PARSING.value,
+                    )
+                else:
+                    # diarization 無効: 全て単一話者 '相手'。
+                    speaker_channel[_SYSTEM_SPEAKER] = _SYSTEM_CHANNEL
+                    for ts in system_transcripts:
+                        system_segments.append(Segment(
+                            start_ms=ts.start_ms, end_ms=ts.end_ms,
+                            speaker=_SYSTEM_SPEAKER, text=ts.text,
+                            language=ts.language or "ja",
+                        ))
+
+            all_segments: list[Segment] = sorted(
+                mic_segments + system_segments, key=lambda s: s.start_ms
+            )
+
+            # --- 3. name inference --------------------------------------------
+            if name_inference_enabled and all_segments:
+                await self._publish(
+                    notebook_id=notebook_id, source_id=source_id, step="name_infer",
+                    label="話者名推定中", progress=0.5,
+                    status=SourceStatus.PARSING.value,
+                )
+                names = await infer_names(
+                    [{"speaker": s.speaker, "text": s.text} for s in all_segments],
+                    self._deps.ollama, model, threshold=name_threshold,
+                )
+                if names:
+                    renamed: list[Segment] = []
+                    for s in all_segments:
+                        new_name = names.get(s.speaker)
+                        if new_name and new_name != s.speaker:
+                            # rename しても channel は元話者のものを引き継ぐ。
+                            speaker_channel[new_name] = speaker_channel.get(
+                                s.speaker, _SYSTEM_CHANNEL
+                            )
+                            renamed.append(Segment(
+                                start_ms=s.start_ms, end_ms=s.end_ms,
+                                speaker=new_name, text=s.text, language=s.language,
+                            ))
+                        else:
+                            renamed.append(s)
+                    all_segments = renamed
+
+            # --- 4. correct ----------------------------------------------------
+            await self._publish(
+                notebook_id=notebook_id, source_id=source_id, step="correct",
+                label="校正中", progress=0.6, status=SourceStatus.PARSING.value,
+            )
+            corrected = await correct_segments_aligned(
+                all_segments, self._deps.ollama, model
+            )
+
+            # --- 5. chunk ------------------------------------------------------
+            update_source_status(conn, source_id, status=SourceStatus.CHUNKING)
+            await self._publish(
+                notebook_id=notebook_id, source_id=source_id, step="chunk",
+                label="チャンク化中", progress=0.7, status=SourceStatus.CHUNKING.value,
+            )
+            chunks = chunk_segments(
+                corrected, max_tokens=max_tokens, token_counter=_token_counter
+            )
+
+            # --- 6. embed + store ---------------------------------------------
+            total = len(chunks)
+            update_source_status(
+                conn, source_id, status=SourceStatus.EMBEDDING, chunk_count=total
+            )
+            await self._publish(
+                notebook_id=notebook_id, source_id=source_id, step="embed",
+                label="埋め込み中", progress=0.8, status=SourceStatus.EMBEDDING.value,
+            )
+
+            records: list[ChunkRecord] = []
+            vectors: list[ChunkVector] = []
+            for chunk in chunks:
+                vec = await self._deps.ollama.embed(
+                    model=self._deps.embedding_model, text=chunk.text
+                )
+                # チャンク内のセグメントは同一話者 (chunking が話者で分割) なので
+                # channel も一意。rename 後の話者ラベルから channel を引く。
+                channel = speaker_channel.get(chunk.speaker, _SYSTEM_CHANNEL)
+                chunk_id = new_id()
+                records.append(ChunkRecord(
+                    id=chunk_id, source_id=source_id, notebook_id=notebook_id,
+                    ord=chunk.ord, page=None, heading_path=None, text=chunk.text,
+                    token_count=chunk.token_count, start_ms=chunk.start_ms,
+                    end_ms=chunk.end_ms, speaker=chunk.speaker,
+                ))
+                vectors.append(ChunkVector(
+                    id=chunk_id, vector=vec, notebook_id=notebook_id,
+                    source_id=source_id, source_kind="recording", page=None,
+                    heading_path=None, ord=chunk.ord, start_ms=chunk.start_ms,
+                    end_ms=chunk.end_ms, speaker=chunk.speaker, channel=channel,
+                ))
+
+            if records:
+                insert_chunks(conn, records)
+            if vectors:
+                self._deps.vector_store.upsert(vectors)
+
+            # --- 7. status READY ----------------------------------------------
+            update_source_status(
+                conn, source_id, status=SourceStatus.READY, chunk_count=total
+            )
+            await self._publish(
+                notebook_id=notebook_id, source_id=source_id, step="done",
+                label="完了", progress=1.0, status=SourceStatus.READY.value,
+            )
+            log.info(
+                "recording_ingestion_complete",
+                source_id=source_id, chunk_count=total,
+            )
+
+        except Exception as exc:  # background task: 例外は status に記録して握りつぶす
+            update_source_status(
+                conn, source_id, status=SourceStatus.ERROR, error_msg=str(exc)
+            )
+            try:
+                await self._publish(
+                    notebook_id=notebook_id, source_id=source_id, step="error",
+                    label="エラー", progress=1.0, status=SourceStatus.ERROR.value,
+                )
+            except Exception:
+                pass
+            log.exception("recording_ingestion_failed", source_id=source_id)
