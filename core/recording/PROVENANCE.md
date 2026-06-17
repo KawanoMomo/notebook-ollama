@@ -13,6 +13,9 @@ declared in `pyproject.toml` (`recording` extra) / `LICENSE-THIRDPARTY.md`.
 | live_caption.py | original_self_authored — safe | webrtcvad, numpy (+ core.recording.agc) |
 | agc.py | original_self_authored — safe | numpy (+ core.recording.levels) |
 | levels.py | original_self_authored — safe | numpy |
+| diarizer.py | original_self_authored — safe | numpy, soundfile, sherpa_onnx |
+| embeddings.py | original_self_authored — safe | numpy, soundfile, sherpa_onnx |
+| merger.py | original_self_authored — safe | stdlib (+ core.recording.transcriber.TranscriptSegment) |
 
 ## Local divergences from upstream (meeting-transcriber)
 
@@ -29,6 +32,23 @@ declared in `pyproject.toml` (`recording` extra) / `LICENSE-THIRDPARTY.md`.
   any channel thread is still `alive`, since leaking PyAudio is far safer than a
   SIGSEGV. Recommend backporting the same fix to the upstream
   `04_MeetingTranscriber/app/core/recorder.py`.
+
+- **diarizer/embeddings/merger — import rewrites + `SpeakerSegment` inlined (2026-06):**
+  the diarization stack imported `app.core.*` siblings and the `app.models.schema`
+  dataclasses (`SpeakerSegment`, `TranscriptSegment`), which have no equivalent in
+  10_NotebookOllama (no `app` package). Rewrites:
+  - `diarizer.py`: `from app.models.schema import SpeakerSegment` → the single
+    `SpeakerSegment` dataclass is inlined verbatim, keeping `diarizer.py` the canonical
+    `SpeakerSegment` home (mirroring upstream, where `embeddings.py` re-imported it from
+    `diarizer`). Comments preserve the original `app.models.schema` path for traceability.
+  - `embeddings.py`: `from app.core.diarizer import SpeakerSegment`
+    → `from core.recording.diarizer import SpeakerSegment`.
+  - `merger.py`: `from app.models.schema import SpeakerSegment, TranscriptSegment`
+    → `from core.recording.diarizer import SpeakerSegment` +
+    `from core.recording.transcriber import TranscriptSegment` (the latter already inlined
+    by the transcriber vendoring task).
+  After rewriting, the 3 files contain ZERO `app.` references in executable code (only
+  comments mention the upstream `app.*` paths).
 
 - **Internal import rewrites (2026-06):** the vendored live-caption stack imported
   sibling modules via the upstream package path `app.core.*`. Every such import was
