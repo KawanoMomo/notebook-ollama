@@ -27,6 +27,10 @@ class _FailingRecorder(_FakeRecorder):
         raise RuntimeError("device open failed")
 
 
+class _FakeTranscriber:
+    """Sentinel transcriber so stop() never loads a real whisper model."""
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
@@ -36,6 +40,10 @@ def client(tmp_path, monkeypatch):
         # by entering the TestClient context manager). The router reads this via
         # getattr, so no real Recorder / WASAPI is ever touched.
         c.app.state.ctx.recorder_factory = lambda session_dir: _FakeRecorder(session_dir)
+        # stop() now lazily builds a transcriber for the offline pipeline; inject a
+        # fake so no real whisper model is downloaded/loaded in these tests.
+        c.app.state.ctx.transcriber_factory = lambda: _FakeTranscriber()
+        c.app.state.ctx.diarizer_factory = lambda: None
         yield c
 
 
@@ -81,7 +89,8 @@ def test_stop_recording_returns_pending_with_paths(client):
     r_stop = client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
     assert r_stop.status_code == 200, r_stop.text
     body = r_stop.json()
-    assert body["status"] == "pending"
+    # stop now dispatches the offline ingestion pipeline -> "processing".
+    assert body["status"] == "processing"
     assert body["recording_id"] == rid
     assert "paths" in body
     assert set(body["paths"].keys()) == {"mic", "system"}
