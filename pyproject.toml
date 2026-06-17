@@ -38,12 +38,22 @@ pdf = ["pymupdf>=1.24"]
 # NOT shipped — they are fetched/reused separately and gitignored.
 recording = [
     "faster-whisper>=1.0.3",
+    # Pin ctranslate2 to 4.7.2: this is the version proven to work on GPU on the
+    # target machine (matches the meeting-transcriber venv). ctranslate2 4.8.0
+    # fails to load cublas64_12.dll on this CUDA stack and silently drops to CPU.
+    "ctranslate2==4.7.2",
     "pyaudiowpatch>=0.2.12",
     "sherpa-onnx>=1.10",
     "soundfile>=0.12",
     "scipy>=1.11",
     "webrtcvad-wheels>=2.0",
     "numpy>=1.26",
+    # CUDA runtime libraries for ctranslate2/faster-whisper GPU inference on
+    # Windows+NVIDIA. Without these, cublas64_12.dll/cudnn are not found and
+    # STT silently falls back to CPU (too slow for live captions). Resolved by
+    # the inlined _register_cuda_dll_dirs() in core/recording/transcriber.py.
+    "nvidia-cublas-cu12>=12.4",
+    "nvidia-cudnn-cu12>=9.0",
 ]
 
 [dependency-groups]
