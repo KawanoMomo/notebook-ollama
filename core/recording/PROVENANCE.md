@@ -51,3 +51,18 @@ declared in `pyproject.toml` (`recording` extra) / `LICENSE-THIRDPARTY.md`.
     / CPU-only / no-nvidia environments.
   When 10_NotebookOllama later defines its own transcript schema, these inlined copies
   should be reconciled with it.
+
+- **transcriber.py — `_register_cuda_dll_dirs()` now prepends nvidia bin dirs to PATH
+  (2026-06):** the inlined `_register_cuda_dll_dirs()` originally registered the pip
+  `nvidia-*` CUDA bin directories via `os.add_dll_directory(...)` only. On this
+  Windows + CUDA stack that is NOT sufficient: ctranslate2 fails with
+  "cublas64_12.dll is not found or cannot be loaded" and faster-whisper silently falls
+  back to CPU (~16s for a 15s clip vs ~1.8s on GPU). The upstream meeting-transcriber
+  worked only because its `start-gpu.bat` ALSO prepended those same nvidia bin dirs to
+  the `PATH` environment variable; the inlined function dropped that PATH step. The
+  function now also prepends the registered nvidia bin dirs to `os.environ["PATH"]`
+  (in addition to `os.add_dll_directory`), mirroring `start-gpu.bat` but in-process so
+  a plain `uvicorn` launch gets GPU too. Empirically verified: a 15s JA sample then
+  transcribes in ~1.8s with `fell_back_to_cpu=False` (CPU fallback otherwise). Recommend
+  backporting this PATH prepend into meeting-transcriber's `app/_cuda_dll.py` so the
+  upstream no longer depends on `start-gpu.bat` for GPU STT.

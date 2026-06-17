@@ -51,6 +51,12 @@ def _register_cuda_dll_dirs() -> list:
                 added.append(d)
             except OSError:
                 pass
+    if added:
+        # add_dll_directory alone is insufficient on this CUDA stack — ctranslate2
+        # cannot resolve cublas64_12.dll's dependencies without PATH. Mirror what
+        # meeting-transcriber's start-gpu.bat does, but in-process so a plain
+        # `uvicorn` launch gets GPU too.
+        os.environ["PATH"] = os.pathsep.join(added) + os.pathsep + os.environ.get("PATH", "")
     return added
 
 
