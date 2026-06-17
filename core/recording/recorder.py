@@ -115,6 +115,7 @@ class _ChannelRecorder:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._error: Optional[Exception] = None
+        self._exited = False  # _run の実行ループが最後まで抜けたか (teardown 安全判定用)
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -129,8 +130,13 @@ class _ChannelRecorder:
     def error(self) -> Optional[Exception]:
         return self._error
 
+    @property
+    def alive(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
     def _run(self) -> None:
         import sys
+        import time
         chunk_count = 0
         src_sr = self._src_sr
         src_ch = self._src_ch
@@ -161,6 +167,16 @@ class _ChannelRecorder:
             wf.setframerate(self._target_sr)
             try:
                 while not self._stop.is_set():
+                    try:
+                        avail = stream.get_read_available()
+                    except Exception:
+                        avail = 0
+                    if avail < 1024:
+                        # No (or not enough) audio yet — e.g. an idle loopback that
+                        # yields no frames. Do NOT block in stream.read(); sleep
+                        # briefly and re-check _stop so stop()/join() always succeeds.
+                        time.sleep(0.01)
+                        continue
                     try:
                         data = stream.read(1024, exception_on_overflow=False)
                     except Exception as e:
@@ -215,6 +231,10 @@ class _ChannelRecorder:
             self._error = e
             print(f"[recorder] FATAL idx={self._device_index}: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)
+        finally:
+            # 正常終了でもエラー終了でも、ここに到達した時点で run ループは抜けている。
+            # stop() 側の terminate ガードが alive と併せて参照する teardown フラグ。
+            self._exited = True
 
 
 class Recorder:
@@ -299,15 +319,26 @@ class Recorder:
                 result["system"] = self._system_path
         # 共有 PyAudio を最後に terminate (両スレッドが完全停止し close を終えた後)。
         # close と同じ lock を取り、native 層での terminate/close 競合を避ける。
+        # ただし、いずれかの capture スレッドがまだ stream.read 内で生きている場合に
+        # terminate を呼ぶと native segfault でサーバプロセスごと落ちる。その場合は
+        # terminate を呼ばず PyAudio をリーク (warn) させる方が、SIGSEGV より遥かに安全。
         if self._pa is not None:
-            lock = getattr(self, "_open_lock", None)
-            try:
-                if lock is not None:
-                    with lock:
+            still_alive = (self._mic is not None and self._mic.alive) or \
+                          (self._sys is not None and self._sys.alive)
+            if still_alive:
+                import sys
+                print("[recorder] WARNING: a capture thread did not stop; "
+                      "skipping PyAudio.terminate() to avoid a native crash",
+                      file=sys.stderr, flush=True)
+            else:
+                lock = getattr(self, "_open_lock", None)
+                try:
+                    if lock is not None:
+                        with lock:
+                            self._pa.terminate()
+                    else:
                         self._pa.terminate()
-                else:
-                    self._pa.terminate()
-            except Exception:
-                pass
+                except Exception:
+                    pass
             self._pa = None
         return result
