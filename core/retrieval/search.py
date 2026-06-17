@@ -25,6 +25,10 @@ class RetrievedChunk:
     text: str
     token_count: int
     score: float
+    start_ms: int | None = None
+    end_ms: int | None = None
+    speaker: str | None = None
+    channel: str | None = None
 
 
 class RetrievalService:
@@ -67,6 +71,7 @@ class RetrievalService:
             return title_cache[src_id]
 
         kind_by_chunk = {h.id: h.source_kind for h in hits}
+        hit_by_id = {h.id: h for h in hits}
 
         return [
             RetrievedChunk(
@@ -80,6 +85,10 @@ class RetrievalService:
                 text=rec.text,
                 token_count=rec.token_count,
                 score=score_by_id.get(rec.id, 0.0),
+                start_ms=hit_by_id[rec.id].start_ms,
+                end_ms=hit_by_id[rec.id].end_ms,
+                speaker=hit_by_id[rec.id].speaker,
+                channel=hit_by_id[rec.id].channel,
             )
             for rec in records
         ]
