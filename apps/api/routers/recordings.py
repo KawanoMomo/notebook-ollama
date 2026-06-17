@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+
 from fastapi import APIRouter, HTTPException, Request
 
 from apps.api.schemas.recording import RecordingStarted, StartRecording
@@ -43,9 +45,27 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         )
     except RecordingBusyError as e:
         ctx.conn.execute("DELETE FROM sources WHERE id=?", (src.id,))
+        shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(status_code=409, detail=str(e))
     sess.extras["source_id"] = src.id
-    sess.recorder.start(mic_index=body.mic_device_index, system_index=body.system_device_index)
+    try:
+        sess.recorder.start(
+            mic_index=body.mic_device_index, system_index=body.system_device_index
+        )
+    except Exception as exc:
+        # Recorder failed to open the device(s). Roll back the registered session
+        # so the registry is freed (otherwise active_id stays non-None forever and
+        # every future POST returns 409), mark the source failed, and clean up the
+        # empty session dir.
+        ctx.recordings.pop(sess.id)
+        sources_repo.update_source_status(
+            ctx.conn, src.id,
+            status=sources_repo.SourceStatus.ERROR, error_msg=str(exc),
+        )
+        shutil.rmtree(session_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=500, detail=f"failed to start recording: {exc}"
+        )
     return RecordingStarted(
         recording_id=sess.id, source_id=src.id, status="recording",
         live_caption=body.live_caption,
@@ -55,9 +75,12 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
 @router.post("/api/notebooks/{notebook_id}/recordings/{rid}/stop")
 async def stop_recording(request: Request, notebook_id: str, rid: str):
     ctx = request.app.state.ctx
-    sess = ctx.recordings.pop(rid)
+    sess = ctx.recordings.get(rid)
     if sess is None:
         raise HTTPException(status_code=400, detail="not recording")
+    if sess.notebook_id != notebook_id:
+        raise HTTPException(status_code=404, detail="recording not in notebook")
+    ctx.recordings.pop(rid)
     paths = sess.recorder.stop()
     sess.extras["paths"] = {k: (str(v) if v else None) for k, v in paths.items()}
     # Offline pipeline wiring comes in a later task; for now just return stopped state.
