@@ -24,6 +24,7 @@ from apps.api.routers import (
     events,
     health,
     notebooks,
+    recording_ws,
     recordings,
     sources,
 )
@@ -118,6 +119,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(notebooks.router)
     app.include_router(sources.router)
     app.include_router(recordings.router)
+    app.include_router(recording_ws.router)
     app.include_router(audio.router)
     app.include_router(chat.router)
     app.include_router(models_router.router)
