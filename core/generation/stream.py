@@ -72,7 +72,7 @@ class GenerationService:
                     {
                         "chunk_id": h.chunk_id,
                         "source_title": h.source_title,
-                        "location": format_location(page=h.page, heading_path=h.heading_path),
+                        "location": format_location(page=h.page, heading_path=h.heading_path, start_ms=h.start_ms, speaker=h.speaker),
                         "score": h.score,
                     }
                     for h in hits
@@ -83,7 +83,7 @@ class GenerationService:
         prompt_chunks: list[PromptChunk] = []
         spec_by_n: dict[int, CitationSpec] = {}
         for idx, hit in enumerate(hits, start=1):
-            location = format_location(page=hit.page, heading_path=hit.heading_path)
+            location = format_location(page=hit.page, heading_path=hit.heading_path, start_ms=hit.start_ms, speaker=hit.speaker)
             prompt_chunks.append(
                 PromptChunk(n=idx, title=hit.source_title, location=location, text=hit.text)
             )
@@ -94,6 +94,9 @@ class GenerationService:
                 location=location,
                 url_or_path=None,
                 snippet=hit.text[:200],
+                audio_source_id=hit.source_id if hit.start_ms is not None else None,
+                audio_start_ms=hit.start_ms,
+                audio_channel=hit.channel,
             )
 
         budget = allocate_budget(

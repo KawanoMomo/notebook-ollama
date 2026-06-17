@@ -42,6 +42,9 @@ def test_build_citations_resolves_mapping():
             "location": "p.42",
             "url_or_path": "arm.pdf",
             "snippet": "snip 1",
+            "audio_source_id": None,
+            "audio_start_ms": None,
+            "audio_channel": None,
         },
         {
             "n": 2,
@@ -51,5 +54,8 @@ def test_build_citations_resolves_mapping():
             "location": "§3",
             "url_or_path": None,
             "snippet": "snip 2",
+            "audio_source_id": None,
+            "audio_start_ms": None,
+            "audio_channel": None,
         },
     ]
