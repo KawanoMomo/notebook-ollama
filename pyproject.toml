@@ -43,7 +43,13 @@ recording = [
     # fails to load cublas64_12.dll on this CUDA stack and silently drops to CPU.
     "ctranslate2==4.7.2",
     "pyaudiowpatch>=0.2.12",
-    "sherpa-onnx>=1.10",
+    # sherpa-onnx 1.13.3 split the native runtime into the `sherpa-onnx-core`
+    # package whose bundled ONNX Runtime can read the pyannote segmentation-3.0
+    # model (format v24). The monolithic 1.13.2 cp312 wheel statically links an
+    # old ORT 1.17.1 (format API<=17) and fails to load that model. Pin both so
+    # the native core is always present.
+    "sherpa-onnx==1.13.3",
+    "sherpa-onnx-core==1.13.3",
     "soundfile>=0.12",
     "scipy>=1.11",
     "webrtcvad-wheels>=2.0",
