@@ -52,3 +52,17 @@ class OllamaGateway:
                 yield tok
         finally:
             self._chat_lock.release()
+
+    async def generate(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        options: dict[str, Any] | None = None,
+    ) -> str:
+        """Non-streaming text completion: accumulate the chat stream into a string."""
+        messages = [{"role": "user", "content": prompt}]
+        parts: list[str] = []
+        async for tok in self.chat_stream(model=model, messages=messages, options=options):
+            parts.append(tok)
+        return "".join(parts)
