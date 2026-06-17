@@ -9,6 +9,10 @@ declared in `pyproject.toml` (`recording` extra) / `LICENSE-THIRDPARTY.md`.
 | File | Audit verdict | Third-party imports (deps, not embedded) |
 |---|---|---|
 | recorder.py | original_self_authored — safe | pyaudiowpatch, numpy |
+| transcriber.py | original_self_authored — safe | faster_whisper, numpy |
+| live_caption.py | original_self_authored — safe | webrtcvad, numpy (+ core.recording.agc) |
+| agc.py | original_self_authored — safe | numpy (+ core.recording.levels) |
+| levels.py | original_self_authored — safe | numpy |
 
 ## Local divergences from upstream (meeting-transcriber)
 
@@ -25,3 +29,25 @@ declared in `pyproject.toml` (`recording` extra) / `LICENSE-THIRDPARTY.md`.
   any channel thread is still `alive`, since leaking PyAudio is far safer than a
   SIGSEGV. Recommend backporting the same fix to the upstream
   `04_MeetingTranscriber/app/core/recorder.py`.
+
+- **Internal import rewrites (2026-06):** the vendored live-caption stack imported
+  sibling modules via the upstream package path `app.core.*`. Every such import was
+  rewritten to `core.recording.*`:
+  - `live_caption.py`: `from app.core.agc import apply_gain, normalize_chunk`
+    → `from core.recording.agc import apply_gain, normalize_chunk` (plus a docstring
+    comment `app.core.transcriber.Transcriber` → `core.recording.transcriber.Transcriber`).
+  - `agc.py`: `from app.core.levels import rms_db` → `from core.recording.levels import rms_db`.
+  After rewriting, the 4 files contain ZERO `app.` references in executable code.
+
+- **transcriber.py — `app`-package deps inlined (2026-06):** upstream
+  `transcriber.py` depended on two non-`app.core.*` symbols that have no equivalent in
+  10_NotebookOllama (which has no `app` package), so they were inlined locally rather
+  than left as dangling imports:
+  - `from app.models.schema import TranscriptSegment` → the single `TranscriptSegment`
+    dataclass actually used is copied verbatim into `transcriber.py`.
+  - `from app import _cuda_dll` → the stdlib-only CUDA (cuBLAS/cuDNN) DLL search-path
+    registration is inlined as `_register_cuda_dll_dirs()` and run once at module import
+    (before `WhisperModel` import), preserving upstream GPU behaviour. No-op on non-Windows
+    / CPU-only / no-nvidia environments.
+  When 10_NotebookOllama later defines its own transcript schema, these inlined copies
+  should be reconciled with it.
