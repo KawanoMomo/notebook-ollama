@@ -1,0 +1,1 @@
+"""Recording subsystem (vendored from meeting-transcriber; see PROVENANCE.md)."""
