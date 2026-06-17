@@ -34,6 +34,10 @@ class ChunkVector:
     page: int | None
     heading_path: str | None
     ord: int
+    start_ms: int | None = None
+    end_ms: int | None = None
+    speaker: str | None = None
+    channel: str | None = None
 
 
 @dataclass
@@ -46,6 +50,10 @@ class SearchHit:
     page: int | None
     heading_path: str | None
     ord: int
+    start_ms: int | None = None
+    end_ms: int | None = None
+    speaker: str | None = None
+    channel: str | None = None
 
 
 class VectorStore:
@@ -76,6 +84,10 @@ class VectorStore:
                     "page": v.page,
                     "heading_path": v.heading_path,
                     "ord": v.ord,
+                    "start_ms": v.start_ms,
+                    "end_ms": v.end_ms,
+                    "speaker": v.speaker,
+                    "channel": v.channel,
                 },
             )
             for v in vectors
@@ -110,6 +122,10 @@ class VectorStore:
                     page=payload.get("page"),
                     heading_path=payload.get("heading_path"),
                     ord=payload.get("ord", 0),
+                    start_ms=payload.get("start_ms"),
+                    end_ms=payload.get("end_ms"),
+                    speaker=payload.get("speaker"),
+                    channel=payload.get("channel"),
                 )
             )
         return hits
