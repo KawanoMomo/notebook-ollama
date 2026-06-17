@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import shutil
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from apps.api.schemas.recording import RecordingStarted, StartRecording
 from core.recording.session import RecordingBusyError
@@ -22,18 +22,66 @@ def _make_recorder(ctx, session_dir):
 def _get_transcriber(request):
     """Lazily build (and cache on app state) the shared whisper transcriber.
 
-    Created on first live-caption recording so the model load cost is only paid
-    when live captions are actually requested.
+    Created on first live-caption recording (or offline stop) so the model load
+    cost is only paid when transcription is actually requested. The same cached
+    instance backs both live captions and the offline pipeline.
+
+    Honors a test hook: if ``ctx.transcriber_factory`` is set, it is used to
+    build the cached transcriber instead of constructing the real one (so tests
+    never load a whisper model).
     """
     tr = getattr(request.app.state, "transcriber", None)
     if tr is None:
-        from core.recording.transcriber import Transcriber
-        a = request.app.state.ctx.config.audio
-        tr = Transcriber(
-            model_size=a.whisper_model, device=a.device, compute_type=a.compute_type
-        )
+        ctx = request.app.state.ctx
+        fac = getattr(ctx, "transcriber_factory", None)
+        if fac is not None:
+            tr = fac()
+        else:
+            from core.recording.transcriber import Transcriber
+            a = ctx.config.audio
+            tr = Transcriber(
+                model_size=a.whisper_model, device=a.device, compute_type=a.compute_type
+            )
         request.app.state.transcriber = tr
     return tr
+
+
+def _get_diarizer(request):
+    """Lazily build the speaker diarizer for the offline pipeline.
+
+    Returns None when diarization is disabled or the ONNX models are not present
+    on disk, so the pipeline degrades gracefully to single-speaker mode. Honors a
+    test hook (``ctx.diarizer_factory``) so tests never load a real model.
+    """
+    ctx = request.app.state.ctx
+    fac = getattr(ctx, "diarizer_factory", None)
+    if fac is not None:
+        return fac()
+    cfg = ctx.config.audio
+    if not cfg.diarization_enabled:
+        return None
+    from pathlib import Path
+    seg = cfg.diarizer_segmentation_model or str(
+        ctx.config.data_dir / "models" / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
+    )
+    emb = cfg.diarizer_embedding_model or str(
+        ctx.config.data_dir / "models" / "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+    )
+    if not (Path(seg).exists() and Path(emb).exists()):
+        return None  # models not present -> pipeline degrades to no-diarization
+    try:
+        from core.recording.diarizer import SherpaDiarizer
+        # SherpaDiarizer.__init__(segmentation_model, embedding_model, threshold,
+        # num_clusters, ...). max_speakers None -> -1 (auto cluster count).
+        num_clusters = cfg.max_speakers if cfg.max_speakers is not None else -1
+        return SherpaDiarizer(
+            segmentation_model=seg,
+            embedding_model=emb,
+            threshold=cfg.diarizer_threshold,
+            num_clusters=num_clusters,
+        )
+    except Exception:
+        return None
 
 
 @router.get("/api/audio-devices")
@@ -161,8 +209,28 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     )
 
 
+def _resolve_wav(p) -> "Path | None":
+    """Return Path(p) only if the file exists and is non-trivial (>64 bytes).
+
+    A zero-byte (or header-only) wav means that channel never captured audio;
+    treat it as absent so the offline pipeline doesn't transcribe an empty file.
+    """
+    from pathlib import Path
+    if not p:
+        return None
+    path = Path(p)
+    try:
+        if path.exists() and path.stat().st_size > 64:
+            return path
+    except OSError:
+        return None
+    return None
+
+
 @router.post("/api/notebooks/{notebook_id}/recordings/{rid}/stop")
-async def stop_recording(request: Request, notebook_id: str, rid: str):
+async def stop_recording(
+    request: Request, notebook_id: str, rid: str, background: BackgroundTasks
+):
     ctx = request.app.state.ctx
     sess = ctx.recordings.get(rid)
     if sess is None:
@@ -179,11 +247,36 @@ async def stop_recording(request: Request, notebook_id: str, rid: str):
             pass
     paths = sess.recorder.stop()
     sess.extras["paths"] = {k: (str(v) if v else None) for k, v in paths.items()}
-    # Offline pipeline wiring comes in a later task; for now just return stopped state.
+
+    # --- Dispatch the offline RAG ingestion pipeline as a background task -----
+    mic_wav = _resolve_wav(paths.get("mic"))
+    system_wav = _resolve_wav(paths.get("system"))
+
+    src_id = sess.extras.get("source_id")
+    a = ctx.config.audio
+    model = ctx.config.ollama.default_model
+    transcriber = _get_transcriber(request)
+    diarizer = _get_diarizer(request)
+    sources_repo.update_source_status(
+        ctx.conn, src_id, status=sources_repo.SourceStatus.PARSING
+    )
+    background.add_task(
+        ctx.recording_pipeline.run,
+        source_id=src_id,
+        notebook_id=notebook_id,
+        mic_wav=mic_wav,
+        system_wav=system_wav,
+        transcriber=transcriber,
+        diarizer=diarizer,
+        model=model,
+        diarization_enabled=(a.diarization_enabled and diarizer is not None),
+        name_inference_enabled=a.name_inference_llm,
+        name_threshold=a.name_threshold,
+    )
     return {
         "recording_id": rid,
-        "source_id": sess.extras.get("source_id"),
-        "status": "pending",
+        "source_id": src_id,
+        "status": "processing",
         "paths": sess.extras["paths"],
     }
 

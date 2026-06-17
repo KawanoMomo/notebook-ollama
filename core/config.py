@@ -50,6 +50,9 @@ class AudioSettings(BaseModel):
     manual_boost_max_db: float = 18.0
     diarization_enabled: bool = True
     max_speakers: int | None = None     # None = auto
+    diarizer_segmentation_model: str | None = None  # None -> <data_dir>/models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx
+    diarizer_embedding_model: str | None = None      # None -> <data_dir>/models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx
+    diarizer_threshold: float = 0.5
     voiceprint_naming: bool = True
     name_inference_llm: bool = True
     name_threshold: float = 0.65
