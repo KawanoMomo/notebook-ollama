@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS chunks (
     page         INTEGER,
     heading_path TEXT,
     text         TEXT NOT NULL,
-    token_count  INTEGER NOT NULL
+    token_count  INTEGER NOT NULL,
+    start_ms     INTEGER,
+    end_ms       INTEGER,
+    speaker      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_notebook ON chunks(notebook_id);
