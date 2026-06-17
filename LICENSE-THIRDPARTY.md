@@ -56,6 +56,41 @@ If AGPL is incompatible with your deployment plans, you have two options:
    under BSD-3 or [pdfplumber](https://pypi.org/project/pdfplumber/) under MIT)
    and re-implement `core/ingestion/parsers/pdf.py` accordingly.
 
+## Optional dependency group (recording)
+
+The `recording` extra (server-side recording, live caption, STT, speaker
+diarization) is **not installed by default**. It pulls in the following
+third-party packages — all permissive. The packages are dependencies (not
+vendored/copied source), and the STT / diarization **models are not shipped**
+with this repository: they are fetched or reused locally and are gitignored.
+
+| Package | License | Notes |
+|---|---|---|
+| faster-whisper | MIT | |
+| ctranslate2 | MIT | CUDA inference engine (pulled by faster-whisper) |
+| av (PyAV) | BSD-3-Clause | wraps FFmpeg (LGPL/GPL) dynamically; not statically linked |
+| pyaudiowpatch | MIT | PyAudio fork with WASAPI loopback |
+| sherpa-onnx | Apache-2.0 | **NOTICE retention required** — keep the upstream NOTICE |
+| onnxruntime | MIT | runtime for sherpa-onnx |
+| soundfile | BSD-3-Clause | wraps libsndfile (**LGPL-2.1**), dynamically linked in the wheel |
+| scipy | BSD-3-Clause | |
+| numpy | BSD-3-Clause | |
+| webrtcvad-wheels | MIT | wraps Google WebRTC VAD (BSD-3-Clause) |
+| huggingface-hub, tokenizers, tqdm | Apache-2.0 / MIT | transitive |
+
+### Models (not shipped, gitignored)
+
+| Model | License | Notes |
+|---|---|---|
+| Whisper (OpenAI) via Systran faster-whisper-* | MIT | downloaded to the HuggingFace cache on first use |
+| sherpa-onnx-pyannote-segmentation-3.0 | MIT | speaker segmentation; keep the model's bundled LICENSE |
+| 3D-Speaker ERes2Net embedding | Apache-2.0 | speaker embedding (voiceprint) |
+
+Because these are dependencies/models rather than embedded source, MIT
+licensing of this repository's own code is unaffected. Each module vendored
+from the author's MIT meeting-transcriber project was audited for embedded
+third-party source before inclusion (see `core/recording/PROVENANCE.md`).
+
 ## Frontend (apps/web)
 
 The Svelte/Vite frontend uses only permissive (MIT / Apache-2.0) packages

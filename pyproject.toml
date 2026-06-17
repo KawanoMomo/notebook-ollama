@@ -32,6 +32,19 @@ dependencies = [
 # PyMuPDF itself.
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.24"]
+# Recording / live-caption / diarization stack (Sprint 2+ of the recording-source
+# feature). Heavy, GPU-capable (CUDA via ctranslate2 pulled in by faster-whisper).
+# All third-party; documented in LICENSE-THIRDPARTY.md. STT/diarization MODELS are
+# NOT shipped — they are fetched/reused separately and gitignored.
+recording = [
+    "faster-whisper>=1.0.3",
+    "pyaudiowpatch>=0.2.12",
+    "sherpa-onnx>=1.10",
+    "soundfile>=0.12",
+    "scipy>=1.11",
+    "webrtcvad-wheels>=2.0",
+    "numpy>=1.26",
+]
 
 [dependency-groups]
 dev = [

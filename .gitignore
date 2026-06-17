@@ -28,3 +28,11 @@ Thumbs.db
 
 # uv
 .venv/
+
+# Recording: STT/diarization models + recorded audio (fetched/reused, never committed)
+models/
+data/
+*.wav
+*.m4a
+*.opus
+*.mp3
