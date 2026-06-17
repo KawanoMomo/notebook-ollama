@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { Plus } from '@lucide/svelte';
+  import { Plus, Mic } from '@lucide/svelte';
   import SourceCard from './SourceCard.svelte';
   import SourceUploadModal from './SourceUploadModal.svelte';
+  import RecordingControls from './RecordingControls.svelte';
   import Button from './Button.svelte';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
+  import { recordingStore } from '$lib/stores/recording.svelte';
   import { sourcesApi } from '$lib/api/sources';
   import { pushToast } from './Toast.svelte';
   import type { Source } from '$lib/api/types';
@@ -94,6 +96,15 @@
     }
   }
 
+  async function startRecording() {
+    if (recordingStore.recording) return;
+    try {
+      await recordingStore.start(notebookId);
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function onDelete(s: Source) {
     if (!confirm(`「${s.title ?? s.origin}」を削除しますか？`)) return;
     try {
@@ -125,7 +136,18 @@
     <Button size="sm" onclick={() => (showUpload = true)}>
       <Plus size="14" /> 追加
     </Button>
+    <button
+      class="rec-icon"
+      class:active={recordingStore.recording}
+      title="録音"
+      aria-label="録音"
+      onclick={startRecording}
+      disabled={recordingStore.recording}
+    >
+      <Mic size="16" />
+    </button>
   </div>
+  <RecordingControls {notebookId} />
   <div class="list">
     {#each filteredSources as s (s.id)}
       <SourceCard
@@ -204,10 +226,34 @@
   }
   .search {
     flex: 1;
+    min-width: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     padding: var(--space-1) var(--space-2);
     font-size: 13px;
+  }
+  .rec-icon {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    color: var(--color-error);
+    display: grid;
+    place-items: center;
+    transition: background-color 0.12s, border-color 0.12s;
+  }
+  .rec-icon:hover:not(:disabled) {
+    background: #fff5f5;
+    border-color: #f0c4c4;
+  }
+  .rec-icon.active {
+    background: #fff5f5;
+    border-color: #f0c4c4;
+  }
+  .rec-icon:disabled {
+    cursor: default;
   }
   .list {
     flex: 1;

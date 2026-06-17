@@ -9,7 +9,9 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
   import ChatPanel from '$lib/components/ChatPanel.svelte';
+  import LiveCaptionView from '$lib/components/LiveCaptionView.svelte';
   import SourceViewer from '$lib/components/SourceViewer.svelte';
+  import { recordingStore } from '$lib/stores/recording.svelte';
 
   let { data } = $props<{ data: { notebookId: string } }>();
 
@@ -82,7 +84,11 @@
         />
       </aside>
       <section class="chat">
-        <ChatPanel notebookId={data.notebookId} onCitationClick={(cid) => (selectedChunkId = cid)} />
+        {#if recordingStore.recording}
+          <LiveCaptionView />
+        {:else}
+          <ChatPanel notebookId={data.notebookId} onCitationClick={(cid) => (selectedChunkId = cid)} />
+        {/if}
       </section>
       {#if viewerOpen}
         <aside class="viewer">
