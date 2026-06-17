@@ -46,7 +46,8 @@ export type SourceKind =
   | "docx"
   | "pptx"
   | "xlsx"
-  | "txt";
+  | "txt"
+  | "recording";
 
 export interface Source {
   id: string;
@@ -61,6 +62,7 @@ export interface Source {
   chunk_count: number | null;
   /** Transient field populated from SSE during the embedding phase. */
   embedded?: number | null;
+  duration_ms?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -73,6 +75,9 @@ export interface Citation {
   location: string;
   url_or_path: string | null;
   snippet: string;
+  audio_source_id: string | null;
+  audio_start_ms: number | null;
+  audio_channel: string | null;
 }
 
 export interface Message {

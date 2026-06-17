@@ -197,6 +197,9 @@ async def get_chunk(
         "page": rec["page"],
         "heading_path": rec["heading_path"],
         "text": rec["text"],
+        "start_ms": rec["start_ms"],
+        "end_ms": rec["end_ms"],
+        "speaker": rec["speaker"],
     }
 
 

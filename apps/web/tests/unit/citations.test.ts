@@ -10,6 +10,9 @@ const cite = (n: number): Citation => ({
   location: `p.${n}`,
   url_or_path: null,
   snippet: '',
+  audio_source_id: null,
+  audio_start_ms: null,
+  audio_channel: null,
 });
 
 describe('citations', () => {
