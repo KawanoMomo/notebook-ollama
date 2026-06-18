@@ -2,6 +2,7 @@
   import MessageList from './MessageList.svelte';
   import ChatInput from './ChatInput.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
+  import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
 
   interface Props {
     notebookId: string;
@@ -10,7 +11,11 @@
   let { notebookId, onCitationClick }: Props = $props();
 
   function onSend(text: string) {
-    conversationStore.send(notebookId, text);
+    conversationStore.send(
+      notebookId,
+      text,
+      Array.from(currentNotebookStore.selectedSourceIds),
+    );
   }
 </script>
 
