@@ -1,13 +1,14 @@
 <script lang="ts">
   import Button from './Button.svelte';
-  import { Send } from '@lucide/svelte';
+  import { Send, Square } from '@lucide/svelte';
 
   interface Props {
-    disabled: boolean;
+    streaming: boolean;
     hint?: string | null;
     onSend: (text: string) => void;
+    onCancel: () => void;
   }
-  let { disabled, hint = null, onSend }: Props = $props();
+  let { streaming, hint = null, onSend, onCancel }: Props = $props();
 
   let value = $state('');
 
@@ -19,6 +20,7 @@
   }
 
   function submit() {
+    if (streaming) return;
     const t = value.trim();
     if (!t) return;
     onSend(t);
@@ -32,13 +34,18 @@
     placeholder="質問を入力（Cmd/Ctrl+Enter で送信）"
     rows="3"
     onkeydown={onKey}
-    {disabled}
   ></textarea>
   <div class="row">
     <span class="hint">{hint ?? ''}</span>
-    <Button type="submit" disabled={disabled || !value.trim()}>
-      <Send size={14} /> 送信
-    </Button>
+    {#if streaming}
+      <Button type="button" variant="danger" onclick={onCancel}>
+        <Square size={14} /> 停止
+      </Button>
+    {:else}
+      <Button type="submit">
+        <Send size={14} /> 送信
+      </Button>
+    {/if}
   </div>
 </form>
 
