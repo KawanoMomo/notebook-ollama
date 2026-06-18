@@ -1,4 +1,7 @@
 import { recordingsApi } from '$lib/api/recordings';
+import { currentNotebookStore } from './currentNotebook.svelte';
+import type { CurrentNotebookStore } from './currentNotebook.svelte';
+import type { Source } from '$lib/api/types';
 
 export interface LiveCaption {
   id: string;
@@ -33,7 +36,10 @@ function dbToLevel(db: number): number {
   return (clamped + 80) / 80;
 }
 
-export function createRecordingStore(api = recordingsApi): RecordingStore {
+export function createRecordingStore(
+  api = recordingsApi,
+  nbStore: CurrentNotebookStore = currentNotebookStore,
+): RecordingStore {
   let recording = $state(false);
   let recordingId = $state<string | null>(null);
   let sourceId = $state<string | null>(null);
@@ -196,12 +202,34 @@ export function createRecordingStore(api = recordingsApi): RecordingStore {
     async stop() {
       const nbId = notebookId;
       const rid = recordingId;
+      const sid = sourceId; // resetTransient() が null 化する前に捕捉
       // タイマーと WS は即座に止める (UI を録音中表示のまま固めない)
       clearTimer();
       closeWs();
       try {
         if (nbId && rid) {
           await api.stop(nbId, rid);
+          // 停止成功後、サイドバーに録音ソースを楽観的に追加する。
+          // 以降の SSE(source_status) がこの source を既存として status/chunk_count/embedded を
+          // パッチし、最終的に ready へ遷移してパネルが消える。
+          if (sid) {
+            const now = new Date().toISOString();
+            const optimistic: Source = {
+              id: sid,
+              notebook_id: nbId,
+              kind: 'recording',
+              title: null,
+              origin: '録音',
+              status: 'parsing',
+              error_msg: null,
+              bytes: null,
+              page_count: null,
+              chunk_count: null,
+              created_at: now,
+              updated_at: now,
+            };
+            nbStore.upsertSource(optimistic);
+          }
         }
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
