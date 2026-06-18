@@ -41,6 +41,7 @@ def build_context(config: AppConfig) -> AppContext:
     raw_client = OllamaClient(
         endpoint=config.ollama.endpoint,
         timeout=config.ollama.request_timeout_seconds,
+        chat_read_timeout=config.ollama.chat_read_timeout_seconds,
     )
     gateway = OllamaGateway(
         client=raw_client,
