@@ -4,9 +4,11 @@ import shutil
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
+from apps.api.routers.audio import _resolve_audio_path
 from apps.api.schemas.recording import RecordingStarted, StartRecording
 from core.recording.session import RecordingBusyError
 from core.storage import notebooks_repo, sources_repo
+from core.storage.chunks_repo import delete_chunks_for_source
 
 router = APIRouter(tags=["recordings"])
 
@@ -227,6 +229,47 @@ def _resolve_wav(p) -> "Path | None":
     return None
 
 
+def _dispatch_recording_pipeline(
+    request: Request,
+    background: BackgroundTasks,
+    *,
+    notebook_id: str,
+    source_id: str,
+    mic_audio,
+    system_audio,
+) -> None:
+    """録音オフラインパイプラインを background task として投入する(stop / retry 共通)。
+
+    mic_audio / system_audio は解決済みの Path | None。少なくとも一方は非 None で
+    あること(呼び出し側で検証)。現行 AudioSettings と共有 transcriber/diarizer を
+    流用し、source を PARSING にしてから dispatch する。
+    """
+    ctx = request.app.state.ctx
+    a = ctx.config.audio
+    model = ctx.config.ollama.default_model
+    transcriber = _get_transcriber(request)
+    diarizer = _get_diarizer(request)
+    sources_repo.update_source_status(
+        ctx.conn, source_id, status=sources_repo.SourceStatus.PARSING
+    )
+    background.add_task(
+        ctx.recording_pipeline.run,
+        source_id=source_id,
+        notebook_id=notebook_id,
+        mic_wav=mic_audio,
+        system_wav=system_audio,
+        transcriber=transcriber,
+        diarizer=diarizer,
+        model=model,
+        diarization_enabled=(a.diarization_enabled and diarizer is not None),
+        name_inference_enabled=a.name_inference_llm,
+        name_threshold=a.name_threshold,
+        storage_format=a.storage_format,
+        storage_bitrate_kbps=a.storage_bitrate_kbps,
+        keep_audio=a.keep_audio,
+    )
+
+
 @router.post("/api/notebooks/{notebook_id}/recordings/{rid}/stop")
 async def stop_recording(
     request: Request, notebook_id: str, rid: str, background: BackgroundTasks
@@ -253,28 +296,13 @@ async def stop_recording(
     system_wav = _resolve_wav(paths.get("system"))
 
     src_id = sess.extras.get("source_id")
-    a = ctx.config.audio
-    model = ctx.config.ollama.default_model
-    transcriber = _get_transcriber(request)
-    diarizer = _get_diarizer(request)
-    sources_repo.update_source_status(
-        ctx.conn, src_id, status=sources_repo.SourceStatus.PARSING
-    )
-    background.add_task(
-        ctx.recording_pipeline.run,
-        source_id=src_id,
+    _dispatch_recording_pipeline(
+        request,
+        background,
         notebook_id=notebook_id,
-        mic_wav=mic_wav,
-        system_wav=system_wav,
-        transcriber=transcriber,
-        diarizer=diarizer,
-        model=model,
-        diarization_enabled=(a.diarization_enabled and diarizer is not None),
-        name_inference_enabled=a.name_inference_llm,
-        name_threshold=a.name_threshold,
-        storage_format=a.storage_format,
-        storage_bitrate_kbps=a.storage_bitrate_kbps,
-        keep_audio=a.keep_audio,
+        source_id=src_id,
+        mic_audio=mic_wav,
+        system_audio=system_wav,
     )
     return {
         "recording_id": rid,
@@ -282,6 +310,49 @@ async def stop_recording(
         "status": "processing",
         "paths": sess.extras["paths"],
     }
+
+
+@router.post("/api/notebooks/{notebook_id}/recordings/{source_id}/retry")
+async def retry_recording(
+    request: Request, notebook_id: str, source_id: str, background: BackgroundTasks
+):
+    """既に変換済みの圧縮音源(.m4a/.opus/.mp3/.wav)からオフライン RAG パイプラインを
+    再実行する。0チャンクや error で終わった録音の再埋め込み手段。
+
+    チャンネル別に音源を解決し、両方欠如なら 422。既存チャンク(sqlite + ベクタ)を
+    クリアして PARSING にし、stop と同じ dispatch を再利用する。
+    """
+    from core.exceptions import AppError
+
+    ctx = request.app.state.ctx
+    try:
+        src = sources_repo.get_source(ctx.conn, source_id)
+    except AppError:
+        raise HTTPException(status_code=404, detail="source not found")
+    if src.notebook_id != notebook_id:
+        raise HTTPException(status_code=404, detail="source not in notebook")
+    if src.kind != "recording":
+        raise HTTPException(status_code=422, detail="source is not a recording")
+
+    base = ctx.config.sources_dir / source_id
+    mic_audio = _resolve_audio_path(base, "mic") if base.is_dir() else None
+    system_audio = _resolve_audio_path(base, "system") if base.is_dir() else None
+    if mic_audio is None and system_audio is None:
+        raise HTTPException(status_code=422, detail="no audio to re-embed")
+
+    # 既存チャンクをクリア(sqlite + ベクタ)
+    delete_chunks_for_source(ctx.conn, source_id)
+    ctx.vector_store.delete_by_source(source_id)
+
+    _dispatch_recording_pipeline(
+        request,
+        background,
+        notebook_id=notebook_id,
+        source_id=source_id,
+        mic_audio=mic_audio,
+        system_audio=system_audio,
+    )
+    return {"source_id": source_id, "status": "processing"}
 
 
 @router.put("/api/notebooks/{notebook_id}/recordings/{rid}/live-gain")
