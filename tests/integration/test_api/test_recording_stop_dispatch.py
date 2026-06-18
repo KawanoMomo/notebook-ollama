@@ -114,6 +114,8 @@ def test_stop_dispatches_offline_pipeline_as_background_task(client):
     assert isinstance(call["diarization_enabled"], bool)
     assert call["diarization_enabled"] is False  # diarizer is None here
     assert isinstance(call["name_inference_enabled"], bool)
+    # auto_title flag is threaded from config (default True).
+    assert call["auto_title_enabled"] is True
 
     # 3. the source moved off "pending" (status set to parsing before dispatch).
     src = sources_repo.get_source(client.app.state.ctx.conn, src_id)
@@ -149,3 +151,30 @@ def test_stop_treats_zero_byte_wav_as_absent(client):
     call = fake_pipeline.calls[0]
     assert call["mic_wav"] is None  # <=64 byte wav -> absent
     assert call["system_wav"] is None
+
+
+def test_retry_threads_auto_title_flag(client):
+    nb = _create_nb(client)
+    fake_pipeline = _FakePipeline()
+    client.app.state.ctx.recording_pipeline = fake_pipeline
+    # auto_title を OFF にしておく(in-memory config を直接いじる)。
+    client.app.state.ctx.config.audio.auto_title = False
+
+    # 録音ソースを直接作成(start/stop は経由しない)+ 再処理用の圧縮音源を置く。
+    from core.storage import sources_repo
+
+    src = sources_repo.create_source(
+        client.app.state.ctx.conn,
+        notebook_id=nb,
+        kind="recording",
+        title=None,
+        origin="録音",
+    )
+    session_dir = client.app.state.ctx.config.sources_dir / src.id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "mic.m4a").write_bytes(b"\x00" * 256)
+
+    r_retry = client.post(f"/api/notebooks/{nb}/recordings/{src.id}/retry")
+    assert r_retry.status_code == 200, r_retry.text
+    assert len(fake_pipeline.calls) == 1
+    assert fake_pipeline.calls[0]["auto_title_enabled"] is False

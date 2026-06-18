@@ -267,6 +267,7 @@ def _dispatch_recording_pipeline(
         storage_format=a.storage_format,
         storage_bitrate_kbps=a.storage_bitrate_kbps,
         keep_audio=a.keep_audio,
+        auto_title_enabled=a.auto_title,
     )
 
 
