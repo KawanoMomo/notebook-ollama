@@ -15,6 +15,15 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
+def test_ping_factory_emits_named_ping_event():
+    from apps.api.routers.chat import _ping_event
+
+    sse = _ping_event()
+    rendered = sse.encode()
+    assert b"event: ping" in rendered
+    assert b"data: {}" in rendered
+
+
 def test_chat_streaming_returns_sse(client):
     nb_id = client.post(
         "/api/notebooks", json={"name": "N", "default_model": "qwen2.5:14b"}
