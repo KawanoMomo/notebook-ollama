@@ -60,6 +60,7 @@ export interface Source {
   bytes: number | null;
   page_count: number | null;
   chunk_count: number | null;
+  has_audio?: boolean;
   /** Transient field populated from SSE during the embedding phase. */
   embedded?: number | null;
   duration_ms?: number | null;

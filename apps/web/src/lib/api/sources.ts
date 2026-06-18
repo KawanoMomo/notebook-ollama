@@ -25,4 +25,9 @@ export const sourcesApi = {
     request<Source>(`/api/notebooks/${notebookId}/sources/${sourceId}/retry`, {
       method: 'POST',
     }),
+  recordingRetry: (notebookId: string, sourceId: string) =>
+    request<Source>(
+      `/api/notebooks/${notebookId}/recordings/${sourceId}/retry`,
+      { method: 'POST' },
+    ),
 };
