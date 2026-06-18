@@ -244,6 +244,19 @@
       </div>
     </div>
     <div class="row">
+      <div class="lab">録音タイトルの自動命名<small>停止後に会議内容から LLM がタイトルを予想して設定(後で編集可)</small></div>
+      <div class="ctl">
+        <button
+          class="switch"
+          class:off={!draft.auto_title}
+          role="switch"
+          aria-checked={draft.auto_title}
+          aria-label="録音タイトルの自動命名"
+          onclick={() => { if (draft) draft.auto_title = !draft.auto_title; }}
+        ><i></i></button>
+      </div>
+    </div>
+    <div class="row">
       <div class="lab">名前採用のしきい値</div>
       <div class="ctl">
         <input
