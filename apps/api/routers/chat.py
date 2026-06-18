@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request, status
 from sse_starlette.sse import EventSourceResponse
+from sse_starlette.event import ServerSentEvent
 
 from apps.api.schemas.chat import Conversation, Message, MessageInput
 from core.ollama.client import OllamaClient
@@ -18,6 +19,11 @@ from core.storage import (
 )
 
 router = APIRouter(prefix="/api/notebooks/{notebook_id}/conversations", tags=["chat"])
+
+
+def _ping_event() -> ServerSentEvent:
+    """名前付き ping イベント。フロントが lastBeatAt 更新に使う(未知イベントは無視されるため後方互換)。"""
+    return ServerSentEvent(data="{}", event="ping")
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Conversation)
@@ -135,4 +141,8 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
             model=model,
         )
 
-    return EventSourceResponse(event_gen())
+    return EventSourceResponse(
+        event_gen(),
+        ping=20,
+        ping_message_factory=_ping_event,
+    )
