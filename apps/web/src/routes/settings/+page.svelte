@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { ArrowLeft } from '@lucide/svelte';
+  import { navMemoryStore } from '$lib/stores/navMemory.svelte';
   import { settingsStore } from '$lib/stores/settings.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { formatBytes } from '$lib/utils/format';
@@ -12,10 +15,19 @@
     settingsStore.load();
     modelsStore.load();
   });
+
+  function goBack() {
+    goto(navMemoryStore.lastPath || '/');
+  }
 </script>
 
 <div class="container">
-  <h1>設定</h1>
+  <div class="topbar">
+    <button class="back" onclick={goBack} aria-label="戻る">
+      <ArrowLeft size="16" />
+    </button>
+    <h1>設定</h1>
+  </div>
 
   <div class="settings">
     <!-- left nav -->
@@ -172,6 +184,29 @@
   h1 {
     margin: 0 0 var(--space-4);
     font-size: 20px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-4);
+  }
+  .topbar h1 {
+    margin: 0;
+  }
+  .back {
+    background: none;
+    border: none;
+    color: var(--color-fg-muted);
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
+    display: inline-flex;
+    cursor: pointer;
+  }
+  .back:hover {
+    background: var(--color-bg-elevated);
+    color: var(--color-fg);
   }
 
   .settings {
