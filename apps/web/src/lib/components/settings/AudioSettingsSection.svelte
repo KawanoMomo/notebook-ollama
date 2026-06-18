@@ -255,7 +255,7 @@
           class="range-input"
         />
         <span class="mono">{draft.name_threshold.toFixed(2)}</span>
-        <span class="hint-text">未満は「相手N」のまま</span>
+        <span class="hint-text">この値 ({draft.name_threshold.toFixed(2)}) 未満は「相手N」のまま</span>
       </div>
     </div>
   </div>
