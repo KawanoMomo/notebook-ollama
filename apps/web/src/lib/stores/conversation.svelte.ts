@@ -16,7 +16,7 @@ export interface ConversationStore {
   readonly error: string | null;
   load(notebookId: string, conversationId: string): Promise<void>;
   ensureConversation(notebookId: string): Promise<Conversation>;
-  send(notebookId: string, content: string): Promise<void>;
+  send(notebookId: string, content: string, sourceIds?: string[]): Promise<void>;
   cancel(): void;
 }
 
@@ -59,7 +59,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
       messages = [];
       return conversation;
     },
-    async send(notebookId, content) {
+    async send(notebookId, content, sourceIds) {
       void requestPermissionOnce();
       const conv = await this.ensureConversation(notebookId);
       // optimistically add user message
@@ -86,6 +86,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
           notebookId,
           conv.id,
           content,
+          sourceIds,
           abortController.signal,
         ) as AsyncGenerator<ChatEvent>) {
           if (ev.kind === "retrieval") {
