@@ -29,8 +29,13 @@ from core.recording.chunking import chunk_segments
 from core.recording.merger import merge
 from core.recording.name_inference import infer_names
 from core.recording.segment_correct import Segment, correct_segments_aligned
+from core.recording.title_inference import infer_title
 from core.storage.chunks_repo import ChunkRecord, insert_chunks
-from core.storage.sources_repo import SourceStatus, update_source_status
+from core.storage.sources_repo import (
+    SourceStatus,
+    update_source_status,
+    update_source_title,
+)
 from core.storage.vector_store import ChunkVector
 
 log = get_logger("recording.pipeline")
@@ -121,6 +126,7 @@ class RecordingPipeline:
         storage_format: str = "aac",
         storage_bitrate_kbps: int = 64,
         keep_audio: bool = True,
+        auto_title_enabled: bool = True,
     ) -> None:
         conn = self._deps.conn
         # 話者ラベル (rename 後も含む) → channel のマップ。チャンクの channel 決定に使う。
@@ -240,6 +246,20 @@ class RecordingPipeline:
             corrected = await correct_segments_aligned(
                 all_segments, self._deps.ollama, model
             )
+
+            # --- 4.5 自動タイトル命名 (best-effort, READY を阻害しない) ----------
+            # 整文済みトランスクリプトから LLM で簡潔なタイトルを 1 つ予想し、
+            # source.title に設定する。失敗・空でもパイプラインは継続する。
+            if auto_title_enabled and corrected:
+                try:
+                    title = await infer_title(
+                        [{"speaker": s.speaker, "text": s.text} for s in corrected],
+                        self._deps.ollama, model,
+                    )
+                    if title:
+                        update_source_title(conn, source_id, title)
+                except Exception:
+                    log.warning("recording_auto_title_failed", source_id=source_id)
 
             # --- 5. chunk ------------------------------------------------------
             update_source_status(conn, source_id, status=SourceStatus.CHUNKING)
