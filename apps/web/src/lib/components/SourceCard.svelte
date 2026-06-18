@@ -10,9 +10,10 @@
     onToggle: () => void;
     onSelect: () => void;
     onRetry: () => void;
+    onReembed: () => void;
     onDelete: () => void;
   }
-  let { source, selected, onToggle, onSelect, onRetry, onDelete }: Props = $props();
+  let { source, selected, onToggle, onSelect, onRetry, onReembed, onDelete }: Props = $props();
 
   const KIND_ICON: Record<string, typeof FileText> = {
     pdf: FileText,
@@ -44,6 +45,17 @@
     source.kind === 'recording' &&
       source.status !== 'ready' &&
       source.status !== 'error',
+  );
+
+  // 録音の再生成(再埋め込み)可否: 録音 && 0チャンクで ready && 音源あり。
+  // error 録音は既存 retry ボタン(status==='error' で表示)が担い、Step 5 で
+  // 録音時のみ recordingRetry へルーティングする。二重ボタンを避けるため
+  // canReembed は error を含めず「0チャンク ready」だけを拾う。
+  const canReembed = $derived(
+    source.kind === 'recording' &&
+      (source.chunk_count ?? 0) === 0 &&
+      source.status === 'ready' &&
+      source.has_audio === true,
   );
 </script>
 
@@ -83,6 +95,11 @@
   <div class="actions">
     {#if source.status === 'error'}
       <button class="icon" onclick={onRetry} aria-label="再試行">
+        <RefreshCw size="14" />
+      </button>
+    {/if}
+    {#if canReembed}
+      <button class="icon" onclick={onReembed} aria-label="再生成" title="再生成">
         <RefreshCw size="14" />
       </button>
     {/if}

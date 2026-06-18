@@ -86,7 +86,24 @@
     await uploadFiles(list);
   }
 
+  async function onReembed(s: Source) {
+    try {
+      await sourcesApi.recordingRetry(notebookId, s.id);
+      // retry は {source_id,status} を返すため Source 全体を取り直して反映する。
+      const fresh = await sourcesApi.list(notebookId);
+      const updated = fresh.find((x) => x.id === s.id);
+      if (updated) currentNotebookStore.upsertSource(updated);
+      pushToast('再生成を開始しました', 'info');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function onRetry(s: Source) {
+    if (s.kind === 'recording') {
+      await onReembed(s);
+      return;
+    }
     try {
       const updated = await sourcesApi.retry(notebookId, s.id);
       currentNotebookStore.upsertSource(updated);
@@ -156,6 +173,7 @@
         onToggle={() => currentNotebookStore.toggleSelected(s.id)}
         onSelect={() => onSourceSelect(s.id)}
         onRetry={() => onRetry(s)}
+        onReembed={() => onReembed(s)}
         onDelete={() => onDelete(s)}
       />
     {/each}
