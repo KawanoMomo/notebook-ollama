@@ -137,3 +137,6 @@ class VectorStore:
                 must=[qm.FieldCondition(key="source_id", match=qm.MatchValue(value=source_id))]
             ),
         )
+
+    def close(self) -> None:
+        self._client.close()

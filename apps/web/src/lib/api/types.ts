@@ -134,10 +134,29 @@ export interface RetrievalSettings {
   min_history_turns: number;
 }
 
+export interface AudioSettings {
+  mic_device_index: number | null;
+  system_device_index: number | null;
+  whisper_model: string;
+  device: "cuda" | "cpu";
+  compute_type: "float16" | "int8_float16" | "int8";
+  live_caption_default: boolean;
+  agc_enabled: boolean;
+  diarization_enabled: boolean;
+  max_speakers: number | null;
+  voiceprint_naming: boolean;
+  name_inference_llm: boolean;
+  name_threshold: number;
+  storage_format: "aac" | "opus" | "mp3" | "wav";
+  storage_bitrate_kbps: number;
+  keep_audio: boolean;
+}
+
 export interface AppSettings {
   ollama: OllamaSettings;
   generation: GenerationSettings;
   retrieval: RetrievalSettings;
+  audio: AudioSettings;
 }
 
 export interface Stats {

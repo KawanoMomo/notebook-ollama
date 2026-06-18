@@ -89,10 +89,14 @@ class _McpAsgiProxy:
 async def lifespan(app: FastAPI):
     configure_logging()
     config = AppConfig()
+    from core.settings_store import apply_overrides
+    apply_overrides(config)
     app.state.ctx = build_context(config)
     from apps.api import _mcp_state
     _mcp_state.ctx = app.state.ctx
     yield
+    app.state.ctx.vector_store.close()
+    app.state.ctx.conn.close()
 
 
 def create_app(config: AppConfig | None = None) -> FastAPI:
