@@ -59,6 +59,50 @@ def test_search_filters_by_notebook(tmp_path):
 
 
 @pytest.mark.qdrant
+def test_search_filters_by_source_ids(tmp_path):
+    vs = VectorStore(path=tmp_path / "qdrant", dim=4)
+    vs.ensure_collection()
+    vs.upsert(
+        [
+            ChunkVector(
+                id="a" * 26,
+                vector=[1, 0, 0, 0],
+                notebook_id="NB",
+                source_id="SRC_A",
+                source_kind="md",
+                page=None,
+                heading_path=None,
+                ord=0,
+            ),
+            ChunkVector(
+                id="b" * 26,
+                vector=[1, 0, 0, 0],
+                notebook_id="NB",
+                source_id="SRC_B",
+                source_kind="md",
+                page=None,
+                heading_path=None,
+                ord=0,
+            ),
+        ]
+    )
+    # allowlist -> only SRC_A
+    only_a = vs.search(query=[1, 0, 0, 0], notebook_id="NB", limit=10, source_ids=["SRC_A"])
+    assert {h.source_id for h in only_a} == {"SRC_A"}
+    # multi-value allowlist -> both
+    both = vs.search(
+        query=[1, 0, 0, 0], notebook_id="NB", limit=10, source_ids=["SRC_A", "SRC_B"]
+    )
+    assert {h.source_id for h in both} == {"SRC_A", "SRC_B"}
+    # empty list -> unfiltered (both)
+    empty = vs.search(query=[1, 0, 0, 0], notebook_id="NB", limit=10, source_ids=[])
+    assert {h.source_id for h in empty} == {"SRC_A", "SRC_B"}
+    # None (default) -> unfiltered (both), backward-compat
+    default = vs.search(query=[1, 0, 0, 0], notebook_id="NB", limit=10)
+    assert {h.source_id for h in default} == {"SRC_A", "SRC_B"}
+
+
+@pytest.mark.qdrant
 def test_delete_by_source(tmp_path):
     vs = VectorStore(path=tmp_path / "qdrant", dim=4)
     vs.ensure_collection()
