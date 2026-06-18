@@ -51,11 +51,14 @@ class RetrievalService:
         notebook_id: str,
         query: str,
         limit: int,
+        source_ids: list[str] | None = None,
     ) -> list[RetrievedChunk]:
         if not query.strip():
             return []
         qvec = await self._ollama.embed(model=self._embedding_model, text=query)
-        hits = self._vs.search(query=qvec, notebook_id=notebook_id, limit=limit)
+        hits = self._vs.search(
+            query=qvec, notebook_id=notebook_id, limit=limit, source_ids=source_ids
+        )
         if not hits:
             return []
         records = get_chunks_by_ids(self._conn, [h.id for h in hits])
