@@ -132,6 +132,16 @@
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }
+
+  async function onRename(s: Source, title: string) {
+    try {
+      const updated = await sourcesApi.rename(notebookId, s.id, title);
+      currentNotebookStore.upsertSource(updated);
+      pushToast('名前を変更しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
 </script>
 
 <div
@@ -175,6 +185,7 @@
         onRetry={() => onRetry(s)}
         onReembed={() => onReembed(s)}
         onDelete={() => onDelete(s)}
+        onRename={(id, title) => onRename(s, title)}
       />
     {/each}
     {#if filteredSources.length === 0}
