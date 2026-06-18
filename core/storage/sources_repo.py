@@ -130,6 +130,19 @@ def update_source_status(
     return get_source(conn, source_id)
 
 
+def update_source_title(
+    conn: sqlite3.Connection,
+    source_id: str,
+    title: str,
+) -> SourceRecord:
+    get_source(conn, source_id)  # 存在チェック (無ければ STORAGE_NOT_FOUND)
+    conn.execute(
+        "UPDATE sources SET title=?, updated_at=? WHERE id=?",
+        (title, _now(), source_id),
+    )
+    return get_source(conn, source_id)
+
+
 def upsert_dedupe(
     conn: sqlite3.Connection,
     *,
