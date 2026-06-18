@@ -14,6 +14,8 @@ export interface ConversationStore {
   readonly streamingText: string;
   readonly streamingHits: RetrievalHit[];
   readonly error: string | null;
+  readonly warning: string | null;
+  readonly lastBeatAt: number | null;
   load(notebookId: string, conversationId: string): Promise<void>;
   ensureConversation(notebookId: string): Promise<Conversation>;
   send(notebookId: string, content: string, sourceIds?: string[]): Promise<void>;
@@ -27,6 +29,33 @@ export function createConversationStore(api = chatApi): ConversationStore {
   let streamingText = $state("");
   let streamingHits = $state<RetrievalHit[]>([]);
   let error = $state<string | null>(null);
+  let warning = $state<string | null>(null);
+  let lastBeatAt = $state<number | null>(null);
+  let beatTimer: ReturnType<typeof setInterval> | null = null;
+  const NO_BEAT_WARNING_MS = 60_000;
+
+  function beat() {
+    lastBeatAt = Date.now();
+    if (warning) warning = null;
+  }
+
+  function startBeatWatch() {
+    stopBeatWatch();
+    beat();
+    beatTimer = setInterval(() => {
+      if (lastBeatAt !== null && Date.now() - lastBeatAt >= NO_BEAT_WARNING_MS) {
+        warning = 'Ollamaが応答していない可能性があります';
+      }
+    }, 5_000);
+  }
+
+  function stopBeatWatch() {
+    if (beatTimer !== null) {
+      clearInterval(beatTimer);
+      beatTimer = null;
+    }
+  }
+
   let abortController: AbortController | null = null;
 
   return {
@@ -47,6 +76,12 @@ export function createConversationStore(api = chatApi): ConversationStore {
     },
     get error() {
       return error;
+    },
+    get warning() {
+      return warning;
+    },
+    get lastBeatAt() {
+      return lastBeatAt;
     },
     async load(notebookId, conversationId) {
       const items = await api.listMessages(notebookId, conversationId);
@@ -77,7 +112,9 @@ export function createConversationStore(api = chatApi): ConversationStore {
       streamingText = "";
       streamingHits = [];
       error = null;
+      warning = null;
       abortController = new AbortController();
+      startBeatWatch();
       const questionPreview = content.slice(0, 40);
       try {
         let citations: Citation[] = [];
@@ -89,7 +126,10 @@ export function createConversationStore(api = chatApi): ConversationStore {
           sourceIds,
           abortController.signal,
         ) as AsyncGenerator<ChatEvent>) {
-          if (ev.kind === "retrieval") {
+          beat();
+          if (ev.kind === "ping") {
+            // beat() 済み。接続生存のみ確認
+          } else if (ev.kind === "retrieval") {
             streamingHits = ev.hits;
           } else if (ev.kind === "token") {
             streamingText += ev.text;
@@ -124,10 +164,14 @@ export function createConversationStore(api = chatApi): ConversationStore {
         streamingText = "";
         streamingHits = [];
         abortController = null;
+        stopBeatWatch();
+        lastBeatAt = null;
+        warning = null;
       }
     },
     cancel() {
       abortController?.abort();
+      stopBeatWatch();
     },
   };
 }
