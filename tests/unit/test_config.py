@@ -1,4 +1,14 @@
-from core.config import AppConfig
+from core.config import AppConfig, OllamaSettings
+
+
+def test_ollama_chat_read_timeout_default():
+    assert OllamaSettings().chat_read_timeout_seconds == 120.0
+
+
+def test_ollama_chat_read_timeout_env_override(monkeypatch):
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_OLLAMA__CHAT_READ_TIMEOUT_SECONDS", "30")
+    cfg = AppConfig()
+    assert cfg.ollama.chat_read_timeout_seconds == 30.0
 
 
 def test_app_config_defaults(tmp_path, monkeypatch):
