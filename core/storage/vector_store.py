@@ -100,13 +100,19 @@ class VectorStore:
         query: list[float],
         notebook_id: str,
         limit: int,
+        source_ids: list[str] | None = None,
     ) -> list[SearchHit]:
+        must: list[qm.Condition] = [
+            qm.FieldCondition(key="notebook_id", match=qm.MatchValue(value=notebook_id))
+        ]
+        if source_ids:
+            must.append(
+                qm.FieldCondition(key="source_id", match=qm.MatchAny(any=source_ids))
+            )
         result = self._client.query_points(
             collection_name=COLLECTION,
             query=query,
-            query_filter=qm.Filter(
-                must=[qm.FieldCondition(key="notebook_id", match=qm.MatchValue(value=notebook_id))]
-            ),
+            query_filter=qm.Filter(must=must),
             limit=limit,
         )
         hits: list[SearchHit] = []
