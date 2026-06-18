@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2 } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -12,8 +12,11 @@
     onRetry: () => void;
     onReembed: () => void;
     onDelete: () => void;
+    // optional にして CR.4 単独でも SourcesPanel の callsite が型エラーにならないようにする
+    // (CR.5 で実ハンドラを配線する)。
+    onRename?: (id: string, title: string) => void;
   }
-  let { source, selected, onToggle, onSelect, onRetry, onReembed, onDelete }: Props = $props();
+  let { source, selected, onToggle, onSelect, onRetry, onReembed, onDelete, onRename }: Props = $props();
 
   const KIND_ICON: Record<string, typeof FileText> = {
     pdf: FileText,
@@ -57,6 +60,41 @@
       source.status === 'ready' &&
       source.has_audio === true,
   );
+
+  // インライン題名編集。鉛筆クリックで editing=true、Enter/blur で確定、Esc で取消。
+  // 確定値が空 or 変更なしなら API を呼ばない (no-op)。
+  let editing = $state(false);
+  let editValue = $state('');
+
+  const currentTitle = $derived(source.title ?? source.origin ?? '無題');
+
+  function startEdit(e: MouseEvent) {
+    e.stopPropagation();
+    editValue = source.title ?? '';
+    editing = true;
+  }
+
+  function commitEdit() {
+    if (!editing) return;
+    editing = false;
+    const next = editValue.trim();
+    if (!next || next === (source.title ?? '')) return;
+    onRename?.(source.id, next);
+  }
+
+  function cancelEdit() {
+    editing = false;
+  }
+
+  function onEditKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    }
+  }
 </script>
 
 <div class="card-wrap" class:converting={showConvStatus}>
@@ -67,31 +105,57 @@
     onchange={onToggle}
     aria-label="このソースをクエリ対象に含める"
   />
-  <button class="body" onclick={onSelect}>
+  <div class="body-wrap">
     <div class="row">
       {#if (KIND_ICON[source.kind] ?? FileText)}
         {@const Icon = KIND_ICON[source.kind] ?? FileText}
         <Icon size="14" />
       {/if}
-      <span class="title">{source.title ?? source.origin ?? '無題'}</span>
+      {#if editing}
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          class="title-edit"
+          type="text"
+          bind:value={editValue}
+          onkeydown={onEditKeydown}
+          onblur={commitEdit}
+          onclick={(e) => e.stopPropagation()}
+          autofocus
+          aria-label="ソース名を編集"
+        />
+      {:else}
+        <button class="title-btn" onclick={onSelect}>
+          <span class="title">{currentTitle}</span>
+        </button>
+        <button
+          class="icon edit"
+          onclick={startEdit}
+          aria-label="名前を編集"
+          title="名前を編集"
+        >
+          <Pencil size="12" />
+        </button>
+      {/if}
     </div>
-    <div class="meta">
-      <span class="kind">{source.kind}</span>
-      {#if source.page_count}<span>{source.page_count}p</span>{/if}
-      {#if durationLabel}<span>{durationLabel}</span>{/if}
-      <span class="status">
-        {#if source.status === 'ready'}
-          <CheckCircle size="12" color="var(--color-success)" /> ready
-        {:else if source.status === 'error'}
-          <AlertCircle size="12" color="var(--color-error)" /> {source.error_msg ?? 'error'}
-        {:else if source.status === 'embedding' && source.chunk_count}
-          <Spinner size={12} /> embedding ({source.embedded ?? 0}/{source.chunk_count})
-        {:else}
-          <Spinner size={12} /> {source.status}
-        {/if}
-      </span>
-    </div>
-  </button>
+    <button class="meta-btn" onclick={onSelect}>
+      <div class="meta">
+        <span class="kind">{source.kind}</span>
+        {#if source.page_count}<span>{source.page_count}p</span>{/if}
+        {#if durationLabel}<span>{durationLabel}</span>{/if}
+        <span class="status">
+          {#if source.status === 'ready'}
+            <CheckCircle size="12" color="var(--color-success)" /> ready
+          {:else if source.status === 'error'}
+            <AlertCircle size="12" color="var(--color-error)" /> {source.error_msg ?? 'error'}
+          {:else if source.status === 'embedding' && source.chunk_count}
+            <Spinner size={12} /> embedding ({source.embedded ?? 0}/{source.chunk_count})
+          {:else}
+            <Spinner size={12} /> {source.status}
+          {/if}
+        </span>
+      </div>
+    </button>
+  </div>
   <div class="actions">
     {#if source.status === 'error'}
       <button class="icon" onclick={onRetry} aria-label="再試行">
@@ -128,12 +192,40 @@
   .card.err {
     background: rgba(211, 47, 47, 0.04);
   }
-  .body {
+  .body-wrap {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .title-btn,
+  .meta-btn {
     background: none;
     border: none;
     text-align: left;
     padding: 0;
     overflow: hidden;
+    display: block;
+    width: 100%;
+    cursor: pointer;
+  }
+  .title-btn {
+    min-width: 0;
+    flex: 1;
+  }
+  .title-edit {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-sm);
+    padding: 1px var(--space-1);
+  }
+  .icon.edit {
+    opacity: 0;
+    flex: none;
+  }
+  .card:hover .icon.edit {
+    opacity: 1;
   }
   .row {
     display: flex;
