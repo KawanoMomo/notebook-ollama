@@ -7,7 +7,7 @@ from core.storage.vector_store import SearchHit
 
 
 class _FakeVS:
-    def search(self, *, query, notebook_id, limit):
+    def search(self, *, query, notebook_id, limit, source_ids=None):
         return [SearchHit(id="c1", score=0.9, notebook_id="nb", source_id="src",
                           source_kind="recording", page=None, heading_path=None, ord=0,
                           start_ms=12340, end_ms=12980, speaker="相手1", channel="system")]
