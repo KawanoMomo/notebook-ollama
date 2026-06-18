@@ -8,10 +8,17 @@ from fastapi.responses import Response
 
 from apps.api.routers.audio import _AUDIO_EXT_PRIORITY, _resolve_audio_path
 from apps.api.schemas.source import Source, SourceUrlCreate
+from apps.api.schemas.source_content import (
+    DocumentContent,
+    DocumentSection,
+    RecordingContent,
+    RecordingSegment,
+)
 from core.exceptions import AppError, ErrorCode
+from core.ingestion.parsers import get_parser
 from core.ingestion.hashing import sha256_bytes
 from core.storage import notebooks_repo, sources_repo
-from core.storage.chunks_repo import delete_chunks_for_source
+from core.storage.chunks_repo import delete_chunks_for_source, list_chunks_for_source
 
 router = APIRouter(prefix="/api/notebooks", tags=["sources"])
 
@@ -35,6 +42,10 @@ _EXT_BY_KIND = {
     "xlsx": ".xlsx",
     "web": ".html",
 }
+
+# Document-kind sources store a flat original file (sources_dir/<id><ext>) and
+# are re-parsed on demand. "recording" stores per-channel audio + chunks instead.
+_DOCUMENT_KINDS = frozenset(_EXT_BY_KIND.keys())
 
 
 def _kind_from_filename(name: str) -> str:
@@ -222,6 +233,65 @@ async def get_chunk(
         "end_ms": rec["end_ms"],
         "speaker": rec["speaker"],
     }
+
+
+@router.get(
+    "/{notebook_id}/sources/{source_id}/content",
+    response_model=DocumentContent | RecordingContent,
+)
+async def get_source_content(
+    request: Request, notebook_id: str, source_id: str
+) -> DocumentContent | RecordingContent:
+    """Return faithful full content for a source.
+
+    Documents are re-parsed from their stored original bytes (cost is paid on
+    each view; cache later if measured). Recordings return their generated
+    transcript chunks ordered by ``ord``.
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+
+    if src.kind == "recording":
+        segments = [
+            RecordingSegment(
+                ord=c.ord,
+                text=c.text,
+                start_ms=c.start_ms,
+                end_ms=c.end_ms,
+                speaker=c.speaker,
+            )
+            for c in list_chunks_for_source(ctx.conn, source_id)
+        ]
+        return RecordingContent(segments=segments)
+
+    if src.kind not in _DOCUMENT_KINDS:
+        raise AppError(
+            ErrorCode.INGESTION_UNSUPPORTED_KIND,
+            f"no full-content view for kind={src.kind}",
+        )
+
+    ext = _EXT_BY_KIND.get(src.kind, ".bin")
+    source_path = ctx.config.sources_dir / f"{src.id}{ext}"
+    if not source_path.exists():
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "original source data not found on disk",
+            remediation="re-upload the file",
+        )
+    data = source_path.read_bytes()
+    parser = get_parser(src.kind)
+    doc = parser.parse_bytes(data, source_hint=src.origin)
+    sections = [
+        DocumentSection(
+            heading_path=" > ".join(s.heading_path) if s.heading_path else None,
+            page=s.page,
+            text=s.text,
+        )
+        for s in doc.sections
+    ]
+    return DocumentContent(sections=sections)
 
 
 @router.post("/{notebook_id}/sources/{source_id}/retry", response_model=Source)
