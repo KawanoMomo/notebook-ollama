@@ -157,8 +157,12 @@ export function createConversationStore(api = chatApi): ConversationStore {
           notify({ title: "回答完了", body: questionPreview, tag: "chat-done" });
         }
       } catch (e) {
-        error = e instanceof Error ? e.message : String(e);
-        notify({ title: "回答エラー", body: error.slice(0, 80), tag: "chat-error" });
+        // ユーザーが「停止」した場合(signal.aborted)は中断であってエラーではないので
+        // エラーバナー/通知を出さない。それ以外の例外のみ error として表面化する。
+        if (!abortController?.signal.aborted) {
+          error = e instanceof Error ? e.message : String(e);
+          notify({ title: "回答エラー", body: error.slice(0, 80), tag: "chat-error" });
+        }
       } finally {
         streaming = false;
         streamingText = "";
