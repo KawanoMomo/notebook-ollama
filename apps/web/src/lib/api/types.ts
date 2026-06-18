@@ -151,6 +151,7 @@ export interface AudioSettings {
   storage_format: "aac" | "opus" | "mp3" | "wav";
   storage_bitrate_kbps: number;
   keep_audio: boolean;
+  auto_title: boolean;
 }
 
 export interface AppSettings {

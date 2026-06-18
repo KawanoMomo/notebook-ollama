@@ -62,6 +62,7 @@ class AudioSettings(BaseModel):
     storage_format: str = "aac"         # aac | opus | mp3 | wav
     storage_bitrate_kbps: int = 64
     keep_audio: bool = True
+    auto_title: bool = True             # 停止後パイプラインで LLM がタイトル自動命名
 
 
 def _default_data_dir() -> Path:

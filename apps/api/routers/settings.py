@@ -49,6 +49,7 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             storage_format=cfg.audio.storage_format,
             storage_bitrate_kbps=cfg.audio.storage_bitrate_kbps,
             keep_audio=cfg.audio.keep_audio,
+            auto_title=cfg.audio.auto_title,
         ),
     )
 
