@@ -11,6 +11,9 @@ class OllamaSettings(BaseModel):
     default_model: str = "qwen2.5:14b"
     embedding_model: str = "bge-m3"
     request_timeout_seconds: float = 120.0
+    # chat_stream の read タイムアウト(秒)。connect は httpx 既定のまま。
+    # 詰まった Ollama が無限ハングせず例外→error イベントで表面化させる。
+    chat_read_timeout_seconds: float = 120.0
     # Workaround for llama.cpp GPU bug that emits NaN embeddings for some
     # multilingual inputs (esp. Japanese) under bge-m3. num_gpu=0 forces CPU
     # inference for embeddings. Set to None or {} to use Ollama defaults.
