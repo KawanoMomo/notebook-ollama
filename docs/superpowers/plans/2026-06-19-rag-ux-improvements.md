@@ -748,26 +748,33 @@ git commit -m "feat(api): MessageInput に source_ids を追加 (#6)"
 
 **Steps**
 
-1. Inspect an existing API test to match the app/client fixture conventions:
+1. 既存 API テストの fixture 規約を確認する。このリポジトリは `app_ctx` のような `(client, ctx)` タプル fixture を**持たない**。実際の規約(`tests/integration/test_api/test_sources_api.py` / `test_recording_stop_dispatch.py`)は: ローカルに `client` fixture を定義(`NOTEBOOK_OLLAMA_DATA_DIR` を tmp に設定して `TestClient(create_app())`)、context は **`client.app.state.ctx`** で取得し、Ollama 不要なら**構築後に** `ctx.generation.run` を差し替える。開いて確認:
 
 ```
-uv run python -c "import os; print('\n'.join(os.listdir('tests/integration/test_api')))"
+uv run python -c "print(open('tests/integration/test_api/test_recording_stop_dispatch.py').read()[:1200])"
 ```
 
-Expected: lists existing `test_*.py` under `test_api/` (use one, e.g. the chat/SSE test, as the fixture template in the next step). Open it to copy its TestClient/app-context setup verbatim.
+Expected: `client` fixture + `client.app.state.ctx` 経由で `ctx.<service>` を post-build で差し替えるパターンが見える(`app_ctx` は存在しない)。
 
-2. Write the failing test. Create `tests/integration/test_api/test_chat_source_ids.py`. This test monkeypatches `ctx.generation.run` with a recorder so it does not require Ollama, asserts the router forwards `source_ids`. Match the app-bootstrap fixture from the existing `test_api` test you opened in Step 1; the body below assumes a `client` + `ctx` style fixture named `app_ctx` exposing `(client, ctx)` — adapt names to the real fixture:
+2. 失敗するテストを書く。`tests/integration/test_api/test_chat_source_ids.py` を新規作成。`client` fixture(`client.app.state.ctx` で ctx 取得)で `ctx.generation.run` を fake に差し替え、ルータが `source_ids` を透過することを検証する(`NOTEBOOK_OLLAMA_OLLAMA__ENDPOINT=http://fake` で実 Ollama を遮断するが、`generation.run` 差し替えにより実呼び出しは起きない)。`asyncio_mode=auto`(pyproject)なので marker 不要:
 
 ```python
-import json
-
 import pytest
+from fastapi.testclient import TestClient
+
+from apps.api.main import create_app
 
 
-@pytest.mark.asyncio
-async def test_send_message_forwards_source_ids(app_ctx):
-    client, ctx = app_ctx
-    # create notebook + conversation via API
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_OLLAMA__ENDPOINT", "http://fake")
+    with TestClient(create_app()) as c:
+        yield c
+
+
+async def test_send_message_forwards_source_ids(client):
+    ctx = client.app.state.ctx
     nb = client.post("/api/notebooks", json={"name": "N"}).json()
     conv = client.post(f"/api/notebooks/{nb['id']}/conversations").json()
 
@@ -775,7 +782,6 @@ async def test_send_message_forwards_source_ids(app_ctx):
 
     async def fake_run(**kwargs):
         captured.update(kwargs)
-        # minimal valid event stream: done with empty citations
         from core.generation.stream import GenerationEvent
 
         yield GenerationEvent(kind="retrieval", data={"hits": []})
@@ -1388,7 +1394,9 @@ git commit -m "feat(web): ChatEvent に ping イベントを追加"
 
 **Steps**
 
-1. インターフェースに `warning` / `lastBeatAt` を追加する（`conversation.svelte.ts` の `ConversationStore` インターフェース）。
+> ⚠️ 依存注意: このタスクは実行順で **#6 Task F.7 の後**に来る。F.7 は既に `conversation.svelte.ts` の `send` を `send(notebookId, content, sourceIds?)` に変更し、`for await` の呼び出しを `api.sendMessage(notebookId, conv.id, content, sourceIds, abortController.signal)`(5引数)にしている。本タスクは**その上に**ビート/ping を**足す**だけで、`send` の `sourceIds` 引数や 5引数呼び出しを**戻してはならない**(戻すと #6 のスコープ配線が壊れ `npm run check` も AbortSignal→string[] で失敗する)。下記コードは F.7 適用後の現物を前提に書いてある。
+
+1. インターフェースに `warning` / `lastBeatAt` を追加する（`conversation.svelte.ts` の `ConversationStore` インターフェース）。`send` の `sourceIds?` 引数(F.7 で追加済み)は保持する。
 
 ```typescript
 export interface ConversationStore {
@@ -1402,7 +1410,7 @@ export interface ConversationStore {
   readonly lastBeatAt: number | null;
   load(notebookId: string, conversationId: string): Promise<void>;
   ensureConversation(notebookId: string): Promise<Conversation>;
-  send(notebookId: string, content: string): Promise<void>;
+  send(notebookId: string, content: string, sourceIds?: string[]): Promise<void>;
   cancel(): void;
 }
 ```
@@ -1467,13 +1475,14 @@ export interface ConversationStore {
       startBeatWatch();
 ```
 
-5. SSE ループの各イベントでビートを刻み、`ping` を処理する。`for await` 内の `if/else` チェーンを差し替える。
+5. SSE ループの各イベントでビートを刻み、`ping` を処理する。`for await` 内の `if/else` チェーンを差し替える。**`api.sendMessage` の呼び出しは F.7 の 5引数形(`sourceIds` を `signal` の前に渡す)を維持する** — 引数を落とさないこと。
 
 ```typescript
         for await (const ev of api.sendMessage(
           notebookId,
           conv.id,
           content,
+          sourceIds,
           abortController.signal,
         ) as AsyncGenerator<ChatEvent>) {
           beat();
@@ -2382,12 +2391,14 @@ git commit -m "feat(web): ChatPanel から streaming/cancel を ChatInput に配
 
 2. (SourceCard: derived 追加)`showConvStatus` の `$derived(...)` ブロックの直後へ追加:
    ```ts
-     // 録音の再生成(再埋め込み)可否: 録音 && (error または 0チャンクで ready) && 音源あり。
-     // 既存 retry は status==='error' のみ表示する別系統。こちらは 0チャンク ready も拾う。
+     // 録音の再生成(再埋め込み)可否: 録音 && 0チャンクで ready && 音源あり。
+     // error 録音は既存 retry ボタン(status==='error' で表示)が担い、Step 5 で
+     // 録音時のみ recordingRetry へルーティングする。二重ボタンを避けるため
+     // canReembed は error を含めず「0チャンク ready」だけを拾う。
      const canReembed = $derived(
        source.kind === 'recording' &&
-         (source.status === 'error' ||
-           ((source.chunk_count ?? 0) === 0 && source.status === 'ready')) &&
+         (source.chunk_count ?? 0) === 0 &&
+         source.status === 'ready' &&
          source.has_audio === true,
      );
    ```
@@ -2400,7 +2411,7 @@ git commit -m "feat(web): ChatPanel から streaming/cancel を ChatInput に配
          </button>
        {/if}
    ```
-   注: `RefreshCw` は既に import 済み(L3)。error 録音では既存 retry と本ボタンが両方候補になるが、録音の error は `recordingRetry` 経由で再生成すべきなので、SourcesPanel 側の `onRetry` を録音時は `recordingRetry` にルーティングする(Step 6)。視覚上は error 時に retry アイコンが出るが、押下時の振る舞いは録音なら再生成になる。
+   注: `RefreshCw` は既に import 済み(L3)。`canReembed` は error を含めない(上記)ので、error 録音では**既存 retry ボタンのみ**が出る(二重表示しない)。その既存 retry を録音時は `recordingRetry` にルーティングする(Step 5)。よって「0チャンク ready」=本ボタン、「error」=既存 retry ボタン、と役割が一意になり、Playwright ゲートでどちらの導線も曖昧さなく検証できる。
 
 4. (SourcesPanel: ハンドラ追加)`apps/web/src/lib/components/SourcesPanel.svelte` の `onRetry` 関数の直後へ追加:
    ```ts
