@@ -11,7 +11,8 @@ export type ChatEvent =
       model_used: string;
       dropped_history: number;
     }
-  | { kind: 'error'; code: string; message: string };
+  | { kind: 'error'; code: string; message: string }
+  | { kind: 'ping' };
 
 export const chatApi = {
   createConversation: (notebookId: string) =>
