@@ -38,6 +38,7 @@ class AudioSettingsSchema(BaseModel):
     storage_format: Literal["aac", "opus", "mp3", "wav"]
     storage_bitrate_kbps: int
     keep_audio: bool
+    auto_title: bool
 
 
 class AppSettingsSchema(BaseModel):
