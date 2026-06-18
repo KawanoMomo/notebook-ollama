@@ -5,7 +5,7 @@ from core.retrieval.search import RetrievedChunk
 
 
 class FakeRetrieval:
-    async def search(self, *, notebook_id, query, limit):
+    async def search(self, *, notebook_id, query, limit, source_ids=None):
         return [
             RetrievedChunk(
                 chunk_id="c1",
@@ -57,3 +57,45 @@ async def test_generation_emits_retrieval_then_tokens_then_done():
     assert "回答" in final.data["answer"]
     assert final.data["citations"]
     assert final.data["model_used"] == "qwen2.5:14b"
+
+
+class RecordingRetrieval:
+    def __init__(self):
+        self.received_source_ids = "UNSET"
+
+    async def search(self, *, notebook_id, query, limit, source_ids=None):
+        self.received_source_ids = source_ids
+        return [
+            RetrievedChunk(
+                chunk_id="c1",
+                source_id="s1",
+                source_title="ARM",
+                source_kind="pdf",
+                page=42,
+                heading_path="§3",
+                ord=0,
+                text="Cortex content [...]",
+                token_count=10,
+                score=0.9,
+            ),
+        ]
+
+
+@pytest.mark.asyncio
+async def test_generation_forwards_source_ids_to_retrieval():
+    retrieval = RecordingRetrieval()
+    svc = GenerationService(deps=GenerationDeps(retrieval=retrieval, ollama=FakeGateway()))
+    async for _ in svc.run(
+        notebook_id="nb",
+        model="qwen2.5:14b",
+        question="質問",
+        history=[],
+        num_ctx=8192,
+        context_budget_ratio=0.8,
+        response_budget_tokens=1024,
+        retrieval_top_k=8,
+        min_history_turns=1,
+        source_ids=["SRC_X"],
+    ):
+        pass
+    assert retrieval.received_source_ids == ["SRC_X"]
