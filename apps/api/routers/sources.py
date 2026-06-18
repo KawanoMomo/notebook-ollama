@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, File, Path, Request, UploadFile
 from fastapi.responses import Response
 
 from apps.api.routers.audio import _AUDIO_EXT_PRIORITY, _resolve_audio_path
-from apps.api.schemas.source import Source, SourceUrlCreate
+from apps.api.schemas.source import Source, SourceRename, SourceUrlCreate
 from apps.api.schemas.source_content import (
     DocumentContent,
     DocumentSection,
@@ -210,6 +210,24 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
     if rec_dir.is_dir():
         shutil.rmtree(rec_dir, ignore_errors=True)
     return Response(status_code=204)
+
+
+@router.patch("/{notebook_id}/sources/{source_id}", response_model=Source)
+async def rename_source(
+    request: Request,
+    notebook_id: str,
+    source_id: str,
+    body: SourceRename,
+) -> Source:
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    title = body.title.strip()
+    if not title:
+        raise AppError(ErrorCode.INPUT_INVALID, "title must not be empty")
+    updated = sources_repo.update_source_title(ctx.conn, source_id, title)
+    return _to_schema(updated, ctx.config.sources_dir)
 
 
 @router.get("/{notebook_id}/sources/{source_id}/chunks/{chunk_id}")
