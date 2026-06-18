@@ -14,6 +14,7 @@ class Source(BaseModel):
     bytes: int | None
     page_count: int | None
     chunk_count: int | None
+    has_audio: bool = False
     created_at: str
     updated_at: str
 

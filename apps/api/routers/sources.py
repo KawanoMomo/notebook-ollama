@@ -6,6 +6,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, File, Path, Request, UploadFile
 from fastapi.responses import Response
 
+from apps.api.routers.audio import _AUDIO_EXT_PRIORITY, _resolve_audio_path
 from apps.api.schemas.source import Source, SourceUrlCreate
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.hashing import sha256_bytes
@@ -47,7 +48,18 @@ def _kind_from_filename(name: str) -> str:
     )
 
 
-def _to_schema(rec) -> Source:
+def _has_recording_audio(rec, sources_dir) -> bool:
+    if rec.kind != "recording":
+        return False
+    base = sources_dir / rec.id
+    if not base.is_dir():
+        return False
+    return any(
+        _resolve_audio_path(base, ch) is not None for ch in ("mic", "system")
+    )
+
+
+def _to_schema(rec, sources_dir) -> Source:
     return Source(
         id=rec.id,
         notebook_id=rec.notebook_id,
@@ -59,6 +71,7 @@ def _to_schema(rec) -> Source:
         bytes=rec.bytes,
         page_count=rec.page_count,
         chunk_count=rec.chunk_count,
+        has_audio=_has_recording_audio(rec, sources_dir),
         created_at=rec.created_at,
         updated_at=rec.updated_at,
     )
@@ -89,7 +102,7 @@ async def upload_file(
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
-    return _to_schema(rec)
+    return _to_schema(rec, ctx.config.sources_dir)
 
 
 _CONTENT_TYPE_KIND: dict[str, str] = {
@@ -156,14 +169,14 @@ async def upload_url(
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
-    return _to_schema(rec)
+    return _to_schema(rec, ctx.config.sources_dir)
 
 
 @router.get("/{notebook_id}/sources", response_model=list[Source])
 async def list_sources(request: Request, notebook_id: str) -> list[Source]:
     ctx = request.app.state.ctx
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
-    return [_to_schema(r) for r in sources_repo.list_sources(ctx.conn, notebook_id=notebook_id)]
+    return [_to_schema(r, ctx.config.sources_dir) for r in sources_repo.list_sources(ctx.conn, notebook_id=notebook_id)]
 
 
 @router.delete("/{notebook_id}/sources/{source_id}", status_code=204)
@@ -241,4 +254,4 @@ async def retry_source(
         error_msg=None,
     )
     background.add_task(ctx.pipeline.run, source_id=src.id, kind=src.kind, data=data)
-    return _to_schema(sources_repo.get_source(ctx.conn, source_id))
+    return _to_schema(sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir)
