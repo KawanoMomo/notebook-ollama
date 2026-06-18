@@ -26,8 +26,9 @@
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
-  // Publish the seek handler to the parent. Seeking does not auto-play; if
-  // already playing, the head moves and playback continues from there.
+  // Publish the seek handler to the parent. Seeking moves the head to the
+  // target; if the player was paused it starts playback from there, and if it
+  // was already playing it continues from the new position.
   seek = (ms: number) => {
     if (!audioEl) return;
     if (!metadataLoaded) {
