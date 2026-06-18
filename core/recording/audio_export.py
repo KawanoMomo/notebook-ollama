@@ -33,3 +33,11 @@ async def convert_audio(src: Path, dst: Path, *, fmt: str, bitrate_kbps: int) ->
 def delete_if_exists(path: Path) -> None:
     if path.exists():
         path.unlink()
+
+
+_EXT = {"aac": ".m4a", "opus": ".opus", "mp3": ".mp3", "wav": ".wav"}
+
+
+def ext_for_format(fmt: str) -> str:
+    """保存形式 → ファイル拡張子。未知は .m4a。"""
+    return _EXT.get(fmt, ".m4a")

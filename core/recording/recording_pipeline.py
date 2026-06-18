@@ -24,6 +24,7 @@ from typing import Any, Protocol
 
 from core.ids import new_id
 from core.logging import get_logger
+from core.recording.audio_export import convert_audio, delete_if_exists, ext_for_format
 from core.recording.chunking import chunk_segments
 from core.recording.merger import merge
 from core.recording.name_inference import infer_names
@@ -117,6 +118,9 @@ class RecordingPipeline:
         name_inference_enabled: bool,
         name_threshold: float,
         max_tokens: int = 400,
+        storage_format: str = "aac",
+        storage_bitrate_kbps: int = 64,
+        keep_audio: bool = True,
     ) -> None:
         conn = self._deps.conn
         # 話者ラベル (rename 後も含む) → channel のマップ。チャンクの channel 決定に使う。
@@ -284,6 +288,35 @@ class RecordingPipeline:
                 insert_chunks(conn, records)
             if vectors:
                 self._deps.vector_store.upsert(vectors)
+
+            # --- 6.5 音声圧縮 (best-effort, READY 前) ---------------------------
+            # 圧縮失敗は致命的でない: チャンクは埋め込み済みで RAG は成立している。
+            # 失敗したチャンネルは WAV を残し、再生はその WAV で継続できる。
+            await self._publish(
+                notebook_id=notebook_id, source_id=source_id, step="compress",
+                label="音声圧縮中", progress=0.9, status=SourceStatus.EMBEDDING.value,
+            )
+            ext = ext_for_format(storage_format)
+            for wav in (mic_wav, system_wav):
+                if wav is None or not wav.exists():
+                    continue
+                if not keep_audio:
+                    delete_if_exists(wav)
+                    continue
+                if storage_format == "wav":
+                    continue  # 生 WAV をそのまま保存形式とする
+                try:
+                    dst = wav.with_suffix(ext)
+                    await convert_audio(
+                        wav, dst, fmt=storage_format,
+                        bitrate_kbps=storage_bitrate_kbps,
+                    )
+                    delete_if_exists(wav)  # 変換成功後にのみ WAV 削除
+                except Exception:
+                    log.warning(
+                        "recording_compress_failed",
+                        source_id=source_id, channel=wav.stem,
+                    )
 
             # --- 7. status READY ----------------------------------------------
             update_source_status(

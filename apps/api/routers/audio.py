@@ -16,18 +16,20 @@ _RANGE_RE = re.compile(r"bytes=(\d+)-(\d*)")
 
 _MEDIA_TYPE_BY_EXT = {
     ".m4a": "audio/mp4",
+    ".opus": "audio/ogg",
+    ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
 }
 
+_AUDIO_EXT_PRIORITY = (".m4a", ".opus", ".mp3", ".wav")
+
 
 def _resolve_audio_path(base: Path, channel: str) -> Path | None:
-    """Prefer the compressed .m4a if present, else the raw .wav. None if neither."""
-    m4a = base / f"{channel}.m4a"
-    if m4a.exists():
-        return m4a
-    wav = base / f"{channel}.wav"
-    if wav.exists():
-        return wav
+    """圧縮音声(.m4a/.opus/.mp3)があれば優先、無ければ生 .wav。どれも無ければ None。"""
+    for ext in _AUDIO_EXT_PRIORITY:
+        p = base / f"{channel}{ext}"
+        if p.exists():
+            return p
     return None
 
 

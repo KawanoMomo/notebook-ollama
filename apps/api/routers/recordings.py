@@ -272,6 +272,9 @@ async def stop_recording(
         diarization_enabled=(a.diarization_enabled and diarizer is not None),
         name_inference_enabled=a.name_inference_llm,
         name_threshold=a.name_threshold,
+        storage_format=a.storage_format,
+        storage_bitrate_kbps=a.storage_bitrate_kbps,
+        keep_audio=a.keep_audio,
     )
     return {
         "recording_id": rid,

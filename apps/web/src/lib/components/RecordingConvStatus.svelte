@@ -20,6 +20,7 @@
     correct: 3,
     chunk: 4,
     embed: 4,
+    compress: 4,
     done: 5,
   };
 
