@@ -3,6 +3,7 @@ import pytest
 import respx
 
 from core.ollama.client import OllamaClient
+from core.exceptions import AppError, ErrorCode
 
 
 @pytest.mark.asyncio
@@ -71,3 +72,17 @@ async def test_show_returns_parameters():
         client = OllamaClient(endpoint="http://fake")
         info = await client.show("qwen2.5:14b")
         assert info["details"]["family"] == "qwen"
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_read_timeout_raises_app_error():
+    with respx.mock() as router:
+        router.post("http://fake/api/chat").mock(side_effect=httpx.ReadTimeout("read timed out"))
+        client = OllamaClient(endpoint="http://fake", chat_read_timeout=1.0)
+        with pytest.raises(AppError) as ei:
+            async for _ in client.chat_stream(
+                model="qwen2.5:14b",
+                messages=[{"role": "user", "content": "hi"}],
+            ):
+                pass
+        assert ei.value.code == ErrorCode.OLLAMA_UNREACHABLE

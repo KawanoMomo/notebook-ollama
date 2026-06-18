@@ -10,9 +10,16 @@ from core.exceptions import AppError, ErrorCode
 
 
 class OllamaClient:
-    def __init__(self, *, endpoint: str, timeout: float = 120.0) -> None:
+    def __init__(
+        self,
+        *,
+        endpoint: str,
+        timeout: float = 120.0,
+        chat_read_timeout: float | None = None,
+    ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._timeout = timeout
+        self._chat_read_timeout = chat_read_timeout
 
     async def embed(
         self,
@@ -57,7 +64,10 @@ class OllamaClient:
         payload = {"model": model, "messages": messages, "stream": True}
         if options:
             payload["options"] = options
-        async with httpx.AsyncClient(timeout=None) as client:
+        # connect/write/pool は httpx 既定(5s)を維持し、read のみ有限化する。
+        # ストリーミング中の各トークン受信間隔に read タイムアウトが適用される。
+        timeout = httpx.Timeout(5.0, read=self._chat_read_timeout)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 async with client.stream(
                     "POST", f"{self._endpoint}/api/chat", json=payload
