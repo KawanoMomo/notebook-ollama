@@ -31,8 +31,17 @@
   }
 
   onMount(() => {
-    draft = snapshot();
     loadDevices();
+  });
+
+  // settings は非同期ロードのため、onMount 時点では未到着のことがある
+  // (section='audio' が即描画されるため通常そうなる)。到着し次第 draft を
+  // 初回だけ初期化する。draft が一度入れば編集値を上書きしない。
+  $effect(() => {
+    if (draft === null) {
+      const snap = snapshot();
+      if (snap) draft = snap;
+    }
   });
 
   function reset() {
@@ -67,7 +76,11 @@
 </script>
 
 {#if draft === null}
-  <div class="loading">読み込み中…</div>
+  {#if settingsStore.error}
+    <div class="loading err">設定の読み込みに失敗しました: {settingsStore.error}</div>
+  {:else}
+    <div class="loading">読み込み中…</div>
+  {/if}
 {:else}
   <h3>音声・録音</h3>
   <p class="sub">録音(マイク + システム音)と、停止後の高精度 RAG 変換に関する設定。デバイス選択はここで一括設定し、録音画面には出しません。</p>
@@ -302,6 +315,9 @@
     padding: var(--space-5);
     color: var(--color-fg-muted);
     text-align: center;
+  }
+  .loading.err {
+    color: var(--color-error);
   }
 
   h3 {
