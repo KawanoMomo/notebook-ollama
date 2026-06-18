@@ -21,3 +21,7 @@ class Source(BaseModel):
 
 class SourceUrlCreate(BaseModel):
     url: HttpUrl
+
+
+class SourceRename(BaseModel):
+    title: str
