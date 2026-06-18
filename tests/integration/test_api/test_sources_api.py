@@ -109,3 +109,23 @@ def test_get_chunk_returns_chunk_text(client):
     r = client.get(f"/api/notebooks/{nb}/sources/{sid}/chunks/{chunk.id}")
     assert r.status_code == 200
     assert r.json()["text"] == "hello chunk"
+
+
+def test_delete_recording_source_removes_audio_dir(client):
+    """録音ソース削除時、音声ディレクトリ (sources_dir/<id>/) ごと消す。"""
+    nb = _create_nb(client)
+    ctx = client.app.state.ctx
+    from core.storage import sources_repo
+
+    src = sources_repo.create_source(
+        ctx.conn, notebook_id=nb, kind="recording", title=None, origin="録音"
+    )
+    rec_dir = ctx.config.sources_dir / src.id
+    rec_dir.mkdir(parents=True, exist_ok=True)
+    (rec_dir / "mic.m4a").write_bytes(b"audio-bytes")
+    (rec_dir / "system.wav").write_bytes(b"x" * 44)
+    assert rec_dir.is_dir()
+
+    r = client.delete(f"/api/notebooks/{nb}/sources/{src.id}")
+    assert r.status_code == 204
+    assert not rec_dir.exists()

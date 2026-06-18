@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+
 import httpx
 from fastapi import APIRouter, BackgroundTasks, File, Path, Request, UploadFile
 from fastapi.responses import Response
@@ -177,6 +179,12 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
     source_path = ctx.config.sources_dir / f"{src.id}{ext}"
     if source_path.exists():
         source_path.unlink()
+    # Recording sources keep their audio under a per-source directory
+    # (sources_dir/<id>/mic.m4a, system.wav, …), not a flat file, so the unlink
+    # above never reaches them. Remove the whole directory if present.
+    rec_dir = ctx.config.sources_dir / src.id
+    if rec_dir.is_dir():
+        shutil.rmtree(rec_dir, ignore_errors=True)
     return Response(status_code=204)
 
 
