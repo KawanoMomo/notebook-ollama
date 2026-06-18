@@ -22,7 +22,14 @@ log = get_logger("generation")
 
 
 class _RetrievalLike(Protocol):
-    async def search(self, *, notebook_id: str, query: str, limit: int) -> list[RetrievedChunk]: ...
+    async def search(
+        self,
+        *,
+        notebook_id: str,
+        query: str,
+        limit: int,
+        source_ids: list[str] | None = None,
+    ) -> list[RetrievedChunk]: ...
 
 
 class _GatewayLike(Protocol):
@@ -59,11 +66,13 @@ class GenerationService:
         response_budget_tokens: int,
         retrieval_top_k: int,
         min_history_turns: int,
+        source_ids: list[str] | None = None,
     ) -> AsyncIterator[GenerationEvent]:
         hits = await self._deps.retrieval.search(
             notebook_id=notebook_id,
             query=question,
             limit=retrieval_top_k,
+            source_ids=source_ids,
         )
         yield GenerationEvent(
             kind="retrieval",
