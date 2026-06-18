@@ -110,6 +110,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
         citations: list[dict[str, Any]] = []
         async for ev in ctx.generation.run(
             notebook_id=notebook_id,
+            source_ids=body.source_ids,
             model=model,
             question=body.content,
             history=history,
