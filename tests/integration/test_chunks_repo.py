@@ -52,3 +52,31 @@ def test_delete_chunks_for_source(tmp_path):
     insert_chunks(conn, [_chunk(nb.id, src.id, 0, "x")])
     delete_chunks_for_source(conn, src.id)
     assert get_chunks_by_ids(conn, [_chunk(nb.id, src.id, 0, "x").id]) == []
+
+
+def test_list_chunks_for_source_orders_by_ord_asc(tmp_path):
+    from core.storage.chunks_repo import list_chunks_for_source
+
+    conn, nb, src = _ctx(tmp_path)
+    # insert out of ord order
+    insert_chunks(conn, [_chunk(nb.id, src.id, 2, "third")])
+    insert_chunks(conn, [_chunk(nb.id, src.id, 0, "first")])
+    insert_chunks(conn, [_chunk(nb.id, src.id, 1, "second")])
+
+    fetched = list_chunks_for_source(conn, src.id)
+    assert [c.ord for c in fetched] == [0, 1, 2]
+    assert [c.text for c in fetched] == ["first", "second", "third"]
+
+
+def test_list_chunks_for_source_scopes_to_source(tmp_path):
+    from core.storage.chunks_repo import list_chunks_for_source
+    from core.storage.sources_repo import create_source
+
+    conn, nb, src = _ctx(tmp_path)
+    other = create_source(conn, notebook_id=nb.id, kind="md", content_hash="h2")
+    # Use different ord values to avoid UNIQUE constraint collision on id
+    insert_chunks(conn, [_chunk(nb.id, src.id, 10, "mine")])
+    insert_chunks(conn, [_chunk(nb.id, other.id, 20, "theirs")])
+
+    fetched = list_chunks_for_source(conn, src.id)
+    assert [c.text for c in fetched] == ["mine"]
