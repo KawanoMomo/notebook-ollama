@@ -21,6 +21,11 @@ export const sourcesApi = {
     request<void>(`/api/notebooks/${notebookId}/sources/${sourceId}`, {
       method: 'DELETE',
     }),
+  rename: (notebookId: string, sourceId: string, title: string) =>
+    request<Source>(`/api/notebooks/${notebookId}/sources/${sourceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
   retry: (notebookId: string, sourceId: string) =>
     request<Source>(`/api/notebooks/${notebookId}/sources/${sourceId}/retry`, {
       method: 'POST',
