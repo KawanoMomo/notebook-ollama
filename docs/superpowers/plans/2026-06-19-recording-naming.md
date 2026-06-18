@@ -716,26 +716,27 @@ Pass `auto_title_enabled=a.auto_title` from the shared dispatch helper so both `
        # auto_title を OFF にしておく(in-memory config を直接いじる)。
        client.app.state.ctx.config.audio.auto_title = False
 
-       # source(録音)と圧縮済み音源を 1 つ用意する。
-       r = client.post(f"/api/notebooks/{nb}/recordings", json={"live_caption": False})
-       src_id = r.json()["source_id"]
-       rid = r.json()["recording_id"]
-       # stop して 1 回目の dispatch を消費。
-       client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
-       fake_pipeline.calls.clear()
+       # 録音ソースを直接作成(start/stop は経由しない)+ 再処理用の圧縮音源を置く。
+       from core.storage import sources_repo
 
-       # 再処理に必要な圧縮音源を session dir に置く。
-       session_dir = client.app.state.ctx.config.sources_dir / src_id
+       src = sources_repo.create_source(
+           client.app.state.ctx.conn,
+           notebook_id=nb,
+           kind="recording",
+           title=None,
+           origin="録音",
+       )
+       session_dir = client.app.state.ctx.config.sources_dir / src.id
        session_dir.mkdir(parents=True, exist_ok=True)
        (session_dir / "mic.m4a").write_bytes(b"\x00" * 256)
 
-       r_retry = client.post(f"/api/notebooks/{nb}/recordings/{src_id}/retry")
+       r_retry = client.post(f"/api/notebooks/{nb}/recordings/{src.id}/retry")
        assert r_retry.status_code == 200, r_retry.text
        assert len(fake_pipeline.calls) == 1
        assert fake_pipeline.calls[0]["auto_title_enabled"] is False
    ```
 
-   > `_resolve_audio_path(base, "mic")` resolves the per-channel compressed file. `mic.m4a` is the AAC default extension; if `_resolve_audio_path` expects a different stem/extension, place the file matching it (read `apps/api/routers/audio.py::_resolve_audio_path` if the retry call returns 422 "no audio to re-embed").
+   > `_FakePipeline`/`_create_nb`/fake recorder・transcriber・diarizer は本ファイルの既存 client fixture に定義済み(`_FakePipeline.run` は kwargs を `calls` に記録するだけ)。retry は `_get_transcriber`/`_get_diarizer`(fixture が fake/None を注入)+ `_resolve_audio_path(base, "mic")` で `mic.m4a` を解決する。422 "no audio" が返る場合は `apps/api/routers/audio.py::_resolve_audio_path` の探索拡張子に合わせて配置する。start/stop は経由しないので fake recorder のセッション状態に依存しない。
 
 2. **(run-fail)** Run:
    ```
@@ -1147,7 +1148,9 @@ async def rename_source(
 
 ```svelte
     onDelete: () => void;
-    onRename: (id: string, title: string) => void;
+    // optional にして CR.4 単独でも SourcesPanel の callsite が型エラーにならないようにする
+    // (CR.5 で実ハンドラを配線する)。
+    onRename?: (id: string, title: string) => void;
 ```
 
    c. Add `onRename` to the destructure on line 16:
@@ -1178,7 +1181,7 @@ async def rename_source(
     editing = false;
     const next = editValue.trim();
     if (!next || next === (source.title ?? '')) return;
-    onRename(source.id, next);
+    onRename?.(source.id, next);
   }
 
   function cancelEdit() {
@@ -1322,8 +1325,8 @@ async def rename_source(
 
    (The `.icon` base rule on lines 174-181 already styles padding/color/hover; `.icon.edit` only adds the hover-reveal. `.title` / `.row` / `.meta` rules are unchanged.)
 
-4. **Type-check gate.** `cd E:\00_Git\10_NotebookOllama\apps\web && npm run check`
-   Expected: **0 errors, 0 warnings**. (If `npm run check` flags `onRename` as a missing prop on the `<SourceCard>` callsite in `SourcesPanel.svelte`, that is fixed in Task CR.5 — run CR.5 before re-asserting a clean tree; CR.4's own component compiles standalone, but the panel callsite will report the missing required prop. To keep CR.4 green in isolation, make `onRename` required here and wire the callsite in CR.5; commit CR.4 and CR.5 together if the check must be clean at commit time — see CR.5 step 3.)
+4. **Type-check gate.** `cd E:\00_Git\10_NotebookOllama\apps\web && npm run check` then `npm run build`
+   Expected: **0 errors**(既存6 warnings のみ)、build 成功。`onRename` は **optional**(`onRename?:`)にしてあるので、SourcesPanel の `<SourceCard>` callsite が未配線でも CR.4 単独で型エラーにならない。実ハンドラの配線は CR.5 で行う。
 
 5. **Commit.**
    `git add apps/web/src/lib/components/SourceCard.svelte`
