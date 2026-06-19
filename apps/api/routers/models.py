@@ -6,34 +6,14 @@ from fastapi import APIRouter, Request
 
 from core.ollama.client import OllamaClient
 from core.ollama.gateway import probe_embedding_dim
-from core.ollama.models_info import classify_recommendation, parse_context_window
+from core.ollama.models_info import (
+    classify_kind,
+    classify_recommendation,
+    parse_context_window,
+)
 from core.storage import notebooks_repo
 
 router = APIRouter(prefix="/api", tags=["models"])
-
-_EMBED_NAME_HINTS = ("embed", "bge", "nomic-embed", "mxbai", "snowflake-arctic-embed", "all-minilm")
-
-
-def _classify_kind(*, capabilities: list[str], name: str) -> str:
-    """Task 1 の classify_kind があればそれを使い、無ければローカル判定。"""
-    try:
-        from core.ollama.models_info import classify_kind  # type: ignore[attr-defined]
-
-        return classify_kind(capabilities=capabilities, name=name)
-    except (ImportError, AttributeError):
-        caps = {c.lower() for c in capabilities}
-        has_embed = "embedding" in caps
-        has_chat = "completion" in caps or "chat" in caps
-        if has_embed and has_chat:
-            return "both"
-        if has_embed:
-            return "embedding"
-        if has_chat:
-            return "chat"
-        lower = name.lower()
-        if any(h in lower for h in _EMBED_NAME_HINTS):
-            return "embedding"
-        return "chat"
 
 
 @router.get("/models")
@@ -52,7 +32,7 @@ async def list_models(request: Request) -> dict[str, Any]:
         params_str = show.get("parameters", "")
         ctx_window = parse_context_window(params_str)
         capabilities = show.get("capabilities", []) or []
-        kind = _classify_kind(capabilities=capabilities, name=name)
+        kind = classify_kind(capabilities=capabilities, name=name)
         embedding_dim: int | None = None
         if kind in ("embedding", "both"):
             try:

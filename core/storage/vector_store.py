@@ -59,6 +59,7 @@ class SearchHit:
 class VectorStore:
     def __init__(self, *, path: Path, dim: int) -> None:
         path.mkdir(parents=True, exist_ok=True)
+        self._path = path
         self._client = QdrantClient(path=str(path))
         self._dim = dim
 
@@ -92,13 +93,12 @@ class VectorStore:
         """
         import shutil
 
-        path = self._client._client.location  # type: ignore[attr-defined]
         # close して Windows のファイルロックを解放してから削除する
         self._client.close()
-        col_dir = Path(path) / "collection" / COLLECTION
+        col_dir = self._path / "collection" / COLLECTION
         if col_dir.exists():
             shutil.rmtree(col_dir)
-        self._client = QdrantClient(path=path)
+        self._client = QdrantClient(path=str(self._path))
         # meta.json から collection エントリを削除する
         existing = {c.name for c in self._client.get_collections().collections}
         if COLLECTION in existing:

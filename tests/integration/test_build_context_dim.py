@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 from apps.api.dependencies import build_context
 from core.config import AppConfig
 from core.settings_store import settings_path
