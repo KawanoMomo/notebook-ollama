@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
 from fastapi.testclient import TestClient
 
 from apps.api.main import create_app
+from apps.api.routers.settings import settings_events
+from core.ollama.gateway import reset_embedding_dim_cache
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import ChunkRecord, insert_chunks
+
+
+@pytest.fixture(autouse=True)
+def _clear_dim_cache():
+    """probe_embedding_dim のプロセス全体キャッシュをテスト間でリークさせない。"""
+    reset_embedding_dim_cache()
+    yield
+    reset_embedding_dim_cache()
 
 
 class _FakeGateway:
@@ -150,16 +161,12 @@ def test_switch_publishes_progress_events(client):
     assert complete["dim"] == 8
 
 
-def test_settings_events_sse_contract(client):
-    """GET /api/settings/events が reindex_complete を event 名に写像し type を data から除くこと。
-
-    broker 直購読でトピック一致・type 写像・data の type 抜きを検証する。
-    """
+def test_switch_publishes_complete_payload_shape(client):
+    """switch の publish が reindex_complete に model/dim を内包すること(broker 直購読)。"""
     ctx = client.app.state.ctx
     _seed_chunks(ctx, n=1)
     ctx.ollama = _FakeGateway(dim=8)
 
-    # broker を直接購読して SSE 出力をバイパス検証する
     portal = getattr(client, "portal", None) or getattr(client, "_portal", None)
     queue = portal.call(ctx.sse.subscribe, "embedding_reindex")
 
@@ -171,16 +178,71 @@ def test_settings_events_sse_contract(client):
     while not queue.empty():
         events.append(queue.get_nowait())
 
-    # payload['type'] が reindex_progress / reindex_complete であること(topic 名一致)
-    types = {e["type"] for e in events}
-    assert "reindex_progress" in types
-    assert "reindex_complete" in types
-
-    # complete ペイロードには model/dim があり type がある(SSE generator が除く契約)
     complete = next(e for e in events if e["type"] == "reindex_complete")
     assert complete["model"] == "bge-m3"
     assert complete["dim"] == 8
-    # SSE generator 側で {"k:v for k,v in payload if k!='type'} するため
-    # data = {"model":"bge-m3","dim":8} になる(type 抜き確認はここでは broker 側)
-    data_without_type = {k: v for k, v in complete.items() if k != "type"}
-    assert data_without_type == {"model": "bge-m3", "dim": 8}
+
+
+class _FakeBroker:
+    """publish を即時 dispatch し、subscribe/unsubscribe を記録する最小 broker。"""
+
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue = asyncio.Queue()
+        self.subscribed: list[str] = []
+        self.unsubscribed: list[tuple[str, object]] = []
+
+    def subscribe(self, topic: str):
+        self.subscribed.append(topic)
+        return self.queue
+
+    def unsubscribe(self, topic: str, q) -> None:
+        self.unsubscribed.append((topic, q))
+
+
+class _FakeRequest:
+    """settings_events に渡す最小 Request。is_disconnected は常に False。"""
+
+    def __init__(self, ctx) -> None:
+        self.app = type("_App", (), {"state": type("_S", (), {"ctx": ctx})()})()
+
+    async def is_disconnected(self) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_settings_events_generator_maps_type_to_event(client):
+    """ジェネレータ本体を実行し、type→event 名写像・data の type 除去・unsubscribe を検証する(方式 a)。
+
+    ルート settings_events を直接呼び、返る EventSourceResponse.body_iterator
+    (= gen())を drive することで写像コードを実コードとして1回実行する。
+    """
+    ctx = client.app.state.ctx
+    fake_broker = _FakeBroker()
+    ctx.sse = fake_broker
+
+    resp = await settings_events(_FakeRequest(ctx))  # type: ignore[arg-type]
+    gen = resp.body_iterator
+
+    # subscribe が呼ばれ、トピックが embedding_reindex であること
+    assert fake_broker.subscribed == ["embedding_reindex"]
+
+    # 各 type を publish 済みにして、ジェネレータが写像した dict を読み出す
+    await fake_broker.queue.put({"type": "reindex_progress", "done": 0, "total": 2})
+    out = await gen.__anext__()
+    assert out == {"event": "reindex_progress", "data": json.dumps({"done": 0, "total": 2})}
+
+    await fake_broker.queue.put({"type": "reindex_complete", "model": "bge-m3", "dim": 8})
+    out = await gen.__anext__()
+    assert out["event"] == "reindex_complete"
+    data = json.loads(out["data"])
+    assert data == {"model": "bge-m3", "dim": 8}
+    assert "type" not in data  # data から type が落ちていること
+
+    await fake_broker.queue.put({"type": "reindex_error", "message": "boom"})
+    out = await gen.__anext__()
+    assert out["event"] == "reindex_error"
+    assert json.loads(out["data"]) == {"message": "boom"}
+
+    # ジェネレータを閉じると finally で unsubscribe が呼ばれること
+    await gen.aclose()
+    assert fake_broker.unsubscribed == [("embedding_reindex", fake_broker.queue)]
