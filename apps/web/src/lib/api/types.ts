@@ -107,6 +107,7 @@ export interface ModelInfo {
   modified_at: string;
   kind: "chat" | "embedding" | "both" | "unknown";
   recommended_for: string[];
+  embedding_dim?: number | null;
 }
 
 export interface NotebookDefault {
@@ -124,6 +125,7 @@ export interface OllamaSettings {
   endpoint: string;
   default_model: string;
   embedding_model: string;
+  embedding_dim: number | null;
 }
 
 export interface OllamaSettingsUpdate {
