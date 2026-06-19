@@ -7,6 +7,7 @@ export interface SettingsStore {
   readonly loading: boolean;
   readonly error: string | null;
   load(): Promise<void>;
+  putOllama(default_model: string): Promise<void>;
 }
 
 export function createSettingsStore(api = settingsApi): SettingsStore {
@@ -39,6 +40,14 @@ export function createSettingsStore(api = settingsApi): SettingsStore {
         error = e instanceof Error ? e.message : String(e);
       } finally {
         loading = false;
+      }
+    },
+    async putOllama(default_model: string) {
+      const updated = await api.putOllama({ default_model });
+      if (settings) {
+        settings = { ...settings, ollama: updated };
+      } else {
+        await this.load();
       }
     },
   };

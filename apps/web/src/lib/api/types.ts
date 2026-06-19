@@ -125,6 +125,10 @@ export interface OllamaSettings {
   embedding_model: string;
 }
 
+export interface OllamaSettingsUpdate {
+  default_model: string;
+}
+
 export interface GenerationSettings {
   context_budget_ratio: number;
   response_budget_tokens: number;

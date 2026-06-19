@@ -1,5 +1,11 @@
 import { request } from './client';
-import type { AppSettings, AudioSettings, Stats } from './types';
+import type {
+  AppSettings,
+  AudioSettings,
+  OllamaSettings,
+  OllamaSettingsUpdate,
+  Stats,
+} from './types';
 
 export const settingsApi = {
   get: () => request<AppSettings>('/api/settings'),
@@ -8,5 +14,10 @@ export const settingsApi = {
     request<AudioSettings>('/api/settings/audio', {
       method: 'PUT',
       body: JSON.stringify(audio),
+    }),
+  putOllama: (body: OllamaSettingsUpdate) =>
+    request<OllamaSettings>('/api/settings/ollama', {
+      method: 'PUT',
+      body: JSON.stringify(body),
     }),
 };

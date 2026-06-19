@@ -8,6 +8,7 @@
   import { formatBytes } from '$lib/utils/format';
   import Spinner from '$lib/components/Spinner.svelte';
   import AudioSettingsSection from '$lib/components/settings/AudioSettingsSection.svelte';
+  import { pushToast } from '$lib/components/Toast.svelte';
 
   let section = $state<'models' | 'gen' | 'audio' | 'storage' | 'modelsList'>('audio');
 
@@ -18,6 +19,27 @@
 
   function goBack() {
     goto(navMemoryStore.lastPath || '/');
+  }
+
+  function chatModelNames(): string[] {
+    return modelsStore.models
+      .filter((m) => m.kind === 'chat' || m.kind === 'both')
+      .map((m) => m.name);
+  }
+
+  async function onDefaultModelChange(e: Event) {
+    const select = e.currentTarget as HTMLSelectElement;
+    const next = select.value;
+    const prev = settingsStore.settings?.ollama.default_model ?? '';
+    if (next === prev) return;
+    try {
+      await settingsStore.putOllama(next);
+      pushToast(`既定モデルを ${next} に変更しました`, 'success');
+    } catch (err) {
+      select.value = prev; // 失敗時は選択を元に戻す
+      const msg = err instanceof Error ? err.message : String(err);
+      pushToast(`既定モデルの変更に失敗しました: ${msg}`, 'error');
+    }
   }
 </script>
 
@@ -109,7 +131,22 @@
             <dt>エンドポイント</dt>
             <dd><code>{settingsStore.settings.ollama.endpoint}</code></dd>
             <dt>既定モデル</dt>
-            <dd><code>{settingsStore.settings.ollama.default_model}</code></dd>
+            <dd>
+              <select
+                class="model-select"
+                value={settingsStore.settings.ollama.default_model}
+                onchange={onDefaultModelChange}
+              >
+                {#each chatModelNames() as name (name)}
+                  <option value={name}>{name}</option>
+                {/each}
+                {#if !chatModelNames().includes(settingsStore.settings.ollama.default_model)}
+                  <option value={settingsStore.settings.ollama.default_model}>
+                    {settingsStore.settings.ollama.default_model}(未検出)
+                  </option>
+                {/if}
+              </select>
+            </dd>
             <dt>埋め込みモデル</dt>
             <dd><code>{settingsStore.settings.ollama.embedding_model}</code></dd>
           </dl>
@@ -300,6 +337,17 @@
   dd {
     margin: 0;
     font-size: 13px;
+  }
+
+  .model-select {
+    font-size: 13px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    min-width: 240px;
+    font-family: var(--font-mono);
   }
 
   code {
