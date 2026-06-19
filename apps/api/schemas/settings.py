@@ -22,6 +22,10 @@ class OllamaSettingsSchema(BaseModel):
     embedding_model: str
 
 
+class OllamaSettingsUpdate(BaseModel):
+    default_model: str
+
+
 class AudioSettingsSchema(BaseModel):
     mic_device_index: int | None = None
     system_device_index: int | None = None
