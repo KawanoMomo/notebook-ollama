@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 from core.storage.chunks_repo import get_chunks_by_ids
 from core.storage.sources_repo import get_source
@@ -39,11 +39,18 @@ class RetrievalService:
         vector_store: VectorStore,
         ollama: _GatewayLike,
         embedding_model: str,
+        embedding_model_getter: Callable[[], str] | None = None,
     ) -> None:
         self._conn = conn
         self._vs = vector_store
         self._ollama = ollama
         self._embedding_model = embedding_model
+        self._embedding_model_getter = embedding_model_getter
+
+    def _resolve_embedding_model(self) -> str:
+        if self._embedding_model_getter is not None:
+            return self._embedding_model_getter()
+        return self._embedding_model
 
     async def search(
         self,
@@ -55,7 +62,7 @@ class RetrievalService:
     ) -> list[RetrievedChunk]:
         if not query.strip():
             return []
-        qvec = await self._ollama.embed(model=self._embedding_model, text=query)
+        qvec = await self._ollama.embed(model=self._resolve_embedding_model(), text=query)
         hits = self._vs.search(
             query=qvec, notebook_id=notebook_id, limit=limit, source_ids=source_ids
         )

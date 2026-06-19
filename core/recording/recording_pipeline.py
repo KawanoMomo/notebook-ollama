@@ -20,7 +20,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from core.ids import new_id
 from core.logging import get_logger
@@ -77,6 +77,7 @@ class RecordingPipelineDeps:
     ollama: _GatewayLike
     embedding_model: str
     broker: _BrokerLike | None = None
+    embedding_model_getter: Callable[[], str] | None = None
 
 
 def _token_counter(text: str) -> int:
@@ -91,6 +92,10 @@ def _token_counter(text: str) -> int:
 class RecordingPipeline:
     def __init__(self, *, deps: RecordingPipelineDeps) -> None:
         self._deps = deps
+
+    def _embedding_model(self) -> str:
+        getter = self._deps.embedding_model_getter
+        return getter() if getter is not None else self._deps.embedding_model
 
     async def _publish(
         self, *, notebook_id: str, source_id: str, step: str, label: str,
@@ -285,7 +290,7 @@ class RecordingPipeline:
             vectors: list[ChunkVector] = []
             for chunk in chunks:
                 vec = await self._deps.ollama.embed(
-                    model=self._deps.embedding_model, text=chunk.text
+                    model=self._embedding_model(), text=chunk.text
                 )
                 # チャンク内のセグメントは同一話者 (chunking が話者で分割) なので
                 # channel も一意。rename 後の話者ラベルから channel を引く。

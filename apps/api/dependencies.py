@@ -79,6 +79,7 @@ def build_context(config: AppConfig) -> AppContext:
             vector_store=vs,
             ollama=gateway,
             embedding_model=config.ollama.embedding_model,
+            embedding_model_getter=lambda: config.ollama.embedding_model,
             broker=sse_broker,
         )
     )
@@ -87,6 +88,7 @@ def build_context(config: AppConfig) -> AppContext:
         vector_store=vs,
         ollama=gateway,
         embedding_model=config.ollama.embedding_model,
+        embedding_model_getter=lambda: config.ollama.embedding_model,
     )
     generation = GenerationService(deps=GenerationDeps(retrieval=retrieval, ollama=gateway))
     recordings = RecordingRegistry()
@@ -96,6 +98,7 @@ def build_context(config: AppConfig) -> AppContext:
             vector_store=vs,
             ollama=gateway,
             embedding_model=config.ollama.embedding_model,
+            embedding_model_getter=lambda: config.ollama.embedding_model,
             broker=sse_broker,
         )
     )

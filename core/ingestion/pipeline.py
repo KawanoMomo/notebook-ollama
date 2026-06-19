@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from core.exceptions import AppError, ErrorCode
 from core.ids import new_id
@@ -31,11 +31,16 @@ class PipelineDeps:
     ollama: _GatewayLike
     embedding_model: str
     broker: _BrokerLike | None = None
+    embedding_model_getter: Callable[[], str] | None = None
 
 
 class IngestionPipeline:
     def __init__(self, *, deps: PipelineDeps) -> None:
         self._deps = deps
+
+    def _embedding_model(self) -> str:
+        getter = self._deps.embedding_model_getter
+        return getter() if getter is not None else self._deps.embedding_model
 
     async def run(self, *, source_id: str, kind: str, data: bytes) -> None:
         conn = self._deps.conn
@@ -90,7 +95,7 @@ class IngestionPipeline:
             await _publish(SourceStatus.EMBEDDING, chunk_count=total, embedded=0)
             vectors: list[ChunkVector] = []
             for i, rec in enumerate(chunk_records):
-                vec = await self._deps.ollama.embed(model=self._deps.embedding_model, text=rec.text)
+                vec = await self._deps.ollama.embed(model=self._embedding_model(), text=rec.text)
                 vectors.append(
                     ChunkVector(
                         id=rec.id,
