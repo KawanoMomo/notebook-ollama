@@ -53,7 +53,7 @@
   const dimWarning = $derived(
     switchTarget !== null && newDim !== null && curDim !== null && newDim !== curDim,
   );
-  const sameDimNotice = $derived(switchTarget !== null && !dimWarning);
+  const sameDimNotice = $derived(switchTarget !== null && newDim !== null && !dimWarning);
 
   onMount(() => {
     settingsStore.load();
