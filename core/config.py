@@ -10,6 +10,7 @@ class OllamaSettings(BaseModel):
     endpoint: str = "http://localhost:11434"
     default_model: str = "qwen2.5:14b"
     embedding_model: str = "bge-m3"
+    embedding_dim: int = 1024
     request_timeout_seconds: float = 120.0
     # chat_stream の read タイムアウト(秒)。connect は httpx 既定のまま。
     # 詰まった Ollama が無限ハングせず例外→error イベントで表面化させる。
