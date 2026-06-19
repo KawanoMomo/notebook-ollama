@@ -81,6 +81,21 @@ def test_put_ollama_rejects_unknown_model(client):
     assert r.json()["error"]["code"] == "input.invalid"
 
 
+def test_put_ollama_persists_across_restart(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_OLLAMA__ENDPOINT", "http://fake")
+    with TestClient(create_app()) as c1:
+        with respx.mock(assert_all_called=False) as router:
+            _mock_tags_and_show(router, name="qwen2.5:14b", capabilities=["completion"])
+            r = c1.put("/api/settings/ollama", json={"default_model": "qwen2.5:14b"})
+        assert r.status_code == 200
+
+    # 新 app(同 data_dir)起動 → apply_overrides で反映
+    with TestClient(create_app()) as c2:
+        ollama = c2.get("/api/settings").json()["ollama"]
+        assert ollama["default_model"] == "qwen2.5:14b"
+
+
 def test_put_ollama_preserves_existing_embedding_dim(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("NOTEBOOK_OLLAMA_OLLAMA__ENDPOINT", "http://fake")

@@ -48,3 +48,19 @@ def apply_overrides(config) -> None:
         except Exception:
             # 不正な settings.json で起動をクラッシュさせない (既定値で続行)。
             log.warning("settings_override_invalid", section="audio")
+
+    ollama = ov.get("ollama")
+    if isinstance(ollama, dict) and ollama:
+        # 本タスクでは default_model のみ適用する。embedding_model/embedding_dim の
+        # 起動時適用は dim 動的化(後続タスク)と整合させるため、ここでは保持/無視する。
+        default_model = ollama.get("default_model")
+        if default_model is not None:
+            merged = {
+                **config.ollama.model_dump(),
+                "default_model": default_model,
+            }
+            try:
+                config.ollama = config.ollama.__class__(**merged)
+            except Exception:
+                # 不正な settings.json で起動をクラッシュさせない (既定値で続行)。
+                log.warning("settings_override_invalid", section="ollama")
