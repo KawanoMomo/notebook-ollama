@@ -104,6 +104,7 @@ export interface ModelInfo {
   size_bytes: number | null;
   context_window: number | null;
   modified_at: string;
+  kind: "chat" | "embedding" | "both" | "unknown";
   recommended_for: string[];
 }
 

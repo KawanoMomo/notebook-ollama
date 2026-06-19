@@ -5,7 +5,11 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from core.ollama.client import OllamaClient
-from core.ollama.models_info import classify_recommendation, parse_context_window
+from core.ollama.models_info import (
+    classify_kind,
+    classify_recommendation,
+    parse_context_window,
+)
 from core.storage import notebooks_repo
 
 router = APIRouter(prefix="/api", tags=["models"])
@@ -26,12 +30,14 @@ async def list_models(request: Request) -> dict[str, Any]:
         show = await client.show(name)
         params_str = show.get("parameters", "")
         ctx_window = parse_context_window(params_str)
+        capabilities = show.get("capabilities", []) or []
         models.append(
             {
                 "name": name,
                 "size_bytes": tag.get("size"),
                 "context_window": ctx_window,
                 "modified_at": tag.get("modified_at"),
+                "kind": classify_kind(capabilities=capabilities, name=name),
                 "recommended_for": classify_recommendation(
                     name=name,
                     family=details.get("family", ""),
