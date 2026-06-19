@@ -176,6 +176,10 @@ async def switch_embedding(
     try:
         # 2. 新次元を検出
         new_dim = await probe_embedding_dim(ctx.ollama, model)
+        # channel は payload 専用フィールド(SQLite に無い)で recreate 後は失われる。
+        # recreate の前に現行 collection から {orig_id: channel} を退避し、
+        # 再 upsert 時に carry-forward して録音引用の audio channel を保持する。
+        channel_map = ctx.vector_store.export_channels()
         # 3. collection を新次元で再作成(内部 _dim も更新される)
         ctx.vector_store.recreate_collection(new_dim)
 
@@ -209,7 +213,7 @@ async def switch_embedding(
                         start_ms=ch.start_ms,
                         end_ms=ch.end_ms,
                         speaker=ch.speaker,
-                        channel=None,
+                        channel=channel_map.get(ch.id),
                     )
                 ]
             )
@@ -220,7 +224,11 @@ async def switch_embedding(
             )
 
         # 5. in-memory 反映 + settings.json 永続化(default_model は現在値を保持)
-        cfg.ollama = cfg.ollama.model_copy(update={"embedding_model": model})
+        # embedding_dim も併せて更新し、in-memory cfg を coherent に保つ
+        # (Critical 修正で embedding_dim が起動時復元に参加するため重要)。
+        cfg.ollama = cfg.ollama.model_copy(
+            update={"embedding_model": model, "embedding_dim": new_dim}
+        )
         save_section(
             cfg.data_dir,
             "ollama",

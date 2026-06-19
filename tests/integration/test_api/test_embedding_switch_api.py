@@ -131,6 +131,65 @@ def test_switch_recreates_collection_and_reindexes_all_chunks(client, tmp_path):
     assert "default_model" in sj["ollama"]
 
 
+def test_switch_preserves_channel_payload(client):
+    """再インデックスで録音 chunk の channel(mic/system)が carry-forward されること。
+
+    回帰バグ: switch ループは channel=None でハードコードしていたため、switch 後に
+    system チャンネルの引用が mic 音声(audio.py 既定 channel=mic)を再生していた。
+    channel は SQLite に無い payload 専用フィールドなので、recreate 前に現行
+    collection から退避して再 upsert 時に復元する必要がある。
+    """
+    ctx = client.app.state.ctx
+    nb = notebooks_repo.create_notebook(ctx.conn, name="rec-nb")
+    src = sources_repo.create_source(ctx.conn, notebook_id=nb.id, kind="recording")
+    chunks = [
+        ChunkRecord(
+            id="mic-chunk", source_id=src.id, notebook_id=nb.id, ord=0,
+            page=None, heading_path=None, text="hello mic", token_count=2,
+            start_ms=0, end_ms=1000, speaker="you",
+        ),
+        ChunkRecord(
+            id="sys-chunk", source_id=src.id, notebook_id=nb.id, ord=1,
+            page=None, heading_path=None, text="hello system", token_count=2,
+            start_ms=1000, end_ms=2000, speaker="other",
+        ),
+    ]
+    insert_chunks(ctx.conn, chunks)
+    ctx.conn.commit()
+
+    # 既存 collection に channel 付きで upsert(録音取込後の状態を模す)。
+    from core.storage.vector_store import ChunkVector
+
+    old_dim = ctx.vector_store.collection_dim()
+    ctx.vector_store.upsert(
+        [
+            ChunkVector(
+                id="mic-chunk", vector=[0.1] * old_dim, notebook_id=nb.id,
+                source_id=src.id, source_kind="recording", page=None,
+                heading_path=None, ord=0, start_ms=0, end_ms=1000,
+                speaker="you", channel="mic",
+            ),
+            ChunkVector(
+                id="sys-chunk", vector=[0.1] * old_dim, notebook_id=nb.id,
+                source_id=src.id, source_kind="recording", page=None,
+                heading_path=None, ord=1, start_ms=1000, end_ms=2000,
+                speaker="other", channel="system",
+            ),
+        ]
+    )
+
+    fake = _FakeGateway(dim=8)
+    ctx.ollama = fake
+    with _mock_tags_show(client, name="bge-m3", capabilities=["embedding"]):
+        r = client.post("/api/settings/embedding/switch", json={"model": "bge-m3"})
+    assert r.status_code == 200, r.text
+
+    hits = ctx.vector_store.search(query=[0.1] * 8, notebook_id=nb.id, limit=10)
+    by_id = {h.id: h.channel for h in hits}
+    assert by_id["mic-chunk"] == "mic"
+    assert by_id["sys-chunk"] == "system"
+
+
 def test_switch_publishes_progress_events(client):
     ctx = client.app.state.ctx
     _seed_chunks(ctx, n=2)

@@ -174,6 +174,37 @@ class VectorStore:
             )
         return hits
 
+    def export_channels(self) -> dict[str, str | None]:
+        """既存 collection の全点を走査し {orig_id: channel} を返す。
+
+        channel は vector-store payload 専用フィールド(SQLite には無い)で、
+        再インデックス時に list_chunks_for_source からは復元できない。recreate
+        前に本メソッドで現行 collection から退避し、再 upsert 時に carry-forward
+        することで録音引用の audio channel(mic/system)を保持する。
+        collection が無ければ空 dict。
+        """
+        existing = {c.name for c in self._client.get_collections().collections}
+        if COLLECTION not in existing:
+            return {}
+        out: dict[str, str | None] = {}
+        offset: object | None = None
+        while True:
+            records, offset = self._client.scroll(
+                collection_name=COLLECTION,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for rec in records:
+                payload = rec.payload or {}
+                orig_id = payload.get("orig_id")
+                if orig_id is not None:
+                    out[orig_id] = payload.get("channel")
+            if offset is None:
+                break
+        return out
+
     def delete_by_source(self, source_id: str) -> None:
         self._client.delete(
             collection_name=COLLECTION,
