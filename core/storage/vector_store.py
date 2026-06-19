@@ -71,6 +71,44 @@ class VectorStore:
             vectors_config=qm.VectorParams(size=self._dim, distance=qm.Distance.COSINE),
         )
 
+    def collection_dim(self) -> int | None:
+        """現行 collection のベクトル次元。collection が無ければ None。"""
+        existing = {c.name for c in self._client.get_collections().collections}
+        if COLLECTION not in existing:
+            return None
+        info = self._client.get_collection(COLLECTION)
+        return info.config.params.vectors.size
+
+    def recreate_collection(self, dim: int) -> None:
+        """既存 collection を drop してから dim 次元(COSINE)で作り直す。
+
+        全チャンクの再インデックス用。既存 collection が無くても新規作成する。
+        以降この VectorStore は新しい dim で動作する。
+
+        qdrant local mode は SQLite ベースのストレージを保持するため、
+        close してから SQLite ファイルを削除して再オープン・再作成することで
+        完全なリセットを保証する。Windows でファイルロックが残らないよう
+        delete_collection 前に close する。
+        """
+        import shutil
+
+        path = self._client._client.location  # type: ignore[attr-defined]
+        # close して Windows のファイルロックを解放してから削除する
+        self._client.close()
+        col_dir = Path(path) / "collection" / COLLECTION
+        if col_dir.exists():
+            shutil.rmtree(col_dir)
+        self._client = QdrantClient(path=path)
+        # meta.json から collection エントリを削除する
+        existing = {c.name for c in self._client.get_collections().collections}
+        if COLLECTION in existing:
+            self._client.delete_collection(collection_name=COLLECTION)
+        self._client.create_collection(
+            collection_name=COLLECTION,
+            vectors_config=qm.VectorParams(size=dim, distance=qm.Distance.COSINE),
+        )
+        self._dim = dim
+
     def upsert(self, vectors: Iterable[ChunkVector]) -> None:
         points = [
             qm.PointStruct(
