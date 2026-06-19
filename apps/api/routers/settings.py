@@ -27,6 +27,7 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             endpoint=cfg.ollama.endpoint,
             default_model=cfg.ollama.default_model,
             embedding_model=cfg.ollama.embedding_model,
+            embedding_dim=request.app.state.ctx.vector_store.collection_dim(),
         ),
         generation=GenerationSettingsSchema(
             context_budget_ratio=cfg.generation.context_budget_ratio,
@@ -131,6 +132,7 @@ async def put_ollama_settings(
         endpoint=cfg.ollama.endpoint,
         default_model=cfg.ollama.default_model,
         embedding_model=cfg.ollama.embedding_model,
+        embedding_dim=None,
     )
 
 

@@ -20,6 +20,7 @@ class OllamaSettingsSchema(BaseModel):
     endpoint: str
     default_model: str
     embedding_model: str
+    embedding_dim: int | None = None
 
 
 class OllamaSettingsUpdate(BaseModel):
