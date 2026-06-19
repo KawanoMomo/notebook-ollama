@@ -93,3 +93,12 @@ def test_classify_kind_fallback_chat_by_default():
 def test_classify_kind_unknown_when_no_signal():
     # capabilities 空 かつ name も空 → 判定不能。
     assert classify_kind(capabilities=[], name="") == "unknown"
+
+
+def test_classify_kind_non_signal_capability_falls_back_to_name():
+    # capabilities が ["vision"] のように signal を含まない → 名前フォールバック
+    assert classify_kind(capabilities=["vision"], name="llava") == "chat"
+    assert (
+        classify_kind(capabilities=["vision"], name="some-embed-model")
+        == "embedding"
+    )
