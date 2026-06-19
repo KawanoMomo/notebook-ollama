@@ -56,7 +56,7 @@
 - 検証(統合): chat-capable を選ぶと 200 + `settings.json` の `ollama.default_model` 更新。embedding-only を選ぶと 400。
 
 #### (B-2) ノートブックごと上書き
-- バックエンド: 既存 `PATCH /api/notebooks/{id}`(`default_model`)を流用(変更なし)。`default_model=null` で全体既定に戻す。
+- バックエンド: 既存 `PATCH /api/notebooks/{id}`(`default_model`)を流用するが、**明示 `null` クリア対応の最小修正を要する**。現行 `core/storage/notebooks_repo.py` は `new_model = default_model if default_model is not None else existing.default_model` のため `default_model=null` を送っても既存値が温存され全体既定に戻せない。`update_notebook` に `clear_default_model` フラグを足し、router 側で Pydantic `model_dump(exclude_unset=True)` により「`default_model` が明示送信されかつ `None`」を検出してクリアする(プラン Task 4 参照)。これにより `default_model=null` で全体既定に戻せる。
 - フロント:
   - `routes/notebooks/[id]/+page.svelte` の `.topbar`(現在は戻る + ノート名のみ)にモデルピッカー(小さい `<select>`、ラベル「このノートのモデル」)を追加。
     - 先頭 option = `既定 (＝{全体既定名})` → 選択で `default_model=null` を送る。
