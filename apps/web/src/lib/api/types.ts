@@ -107,7 +107,7 @@ export interface ModelInfo {
   modified_at: string;
   kind: "chat" | "embedding" | "both" | "unknown";
   recommended_for: string[];
-  embedding_dim?: number | null;
+  embedding_dim: number | null;
 }
 
 export interface NotebookDefault {
@@ -181,4 +181,18 @@ export interface RetrievalHit {
   source_title: string;
   location: string;
   score: number;
+}
+
+export interface ReindexProgress {
+  done: number;
+  total: number;
+}
+
+export interface ReindexComplete {
+  model: string;
+  dim: number;
+}
+
+export interface ReindexError {
+  message: string;
 }

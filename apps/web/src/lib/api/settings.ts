@@ -20,4 +20,9 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  switchEmbedding: (model: string) =>
+    request<unknown>('/api/settings/embedding/switch', {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    }),
 };
