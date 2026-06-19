@@ -193,6 +193,11 @@ def test_build_context_wires_embedding_getter(tmp_path):
     assert ctx.pipeline._deps.embedding_model_getter is not None
     assert ctx.pipeline._deps.embedding_model_getter() == "bge-m3"
     assert ctx.recording_pipeline._deps.embedding_model_getter() == "bge-m3"
+    # retrieval も getter が配線されること(Task 7 が retrieval 経路を叩くため回帰ガード)
+    assert ctx.retrieval._embedding_model_getter is not None
+    assert ctx.retrieval._embedding_model_getter() == "bge-m3"
     ctx.config.ollama = ctx.config.ollama.model_copy(update={"embedding_model": "nomic-embed-text"})
     assert ctx.pipeline._deps.embedding_model_getter() == "nomic-embed-text"
     assert ctx.recording_pipeline._deps.embedding_model_getter() == "nomic-embed-text"
+    # 既存の model_copy 更新に相乗りし、retrieval も実行時反映することを確認
+    assert ctx.retrieval._embedding_model_getter() == "nomic-embed-text"
