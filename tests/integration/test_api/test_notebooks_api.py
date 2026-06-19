@@ -45,3 +45,24 @@ def test_create_list_get_update_delete_notebook(client):
 def test_create_notebook_validation_error(client):
     r = client.post("/api/notebooks", json={"name": ""})
     assert r.status_code == 422
+
+
+def test_patch_clears_default_model_with_explicit_null(client):
+    # まずモデルを設定
+    r = client.post("/api/notebooks", json={"name": "N", "default_model": "qwen2.5:14b"})
+    assert r.status_code == 201
+    nb_id = r.json()["id"]
+    assert r.json()["default_model"] == "qwen2.5:14b"
+
+    # 明示 null でクリア(=全体既定に戻す)
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"default_model": None})
+    assert r.status_code == 200
+    assert r.json()["default_model"] is None
+
+    # フィールド未指定では default_model を変えない(温存)
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"default_model": "llama3.1:8b"})
+    assert r.status_code == 200
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"name": "N2"})
+    assert r.status_code == 200
+    assert r.json()["name"] == "N2"
+    assert r.json()["default_model"] == "llama3.1:8b"

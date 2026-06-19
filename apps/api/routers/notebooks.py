@@ -54,12 +54,15 @@ async def get(request: Request, notebook_id: str) -> Notebook:
 @router.patch("/{notebook_id}", response_model=Notebook)
 async def update(request: Request, notebook_id: str, body: NotebookUpdate) -> Notebook:
     ctx = request.app.state.ctx
+    fields = body.model_dump(exclude_unset=True)
+    clear_default_model = "default_model" in fields and fields["default_model"] is None
     rec = notebooks_repo.update_notebook(
         ctx.conn,
         notebook_id,
         name=body.name,
         description=body.description,
         default_model=body.default_model,
+        clear_default_model=clear_default_model,
     )
     return _to_schema(rec)
 
