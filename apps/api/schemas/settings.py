@@ -51,3 +51,7 @@ class AppSettingsSchema(BaseModel):
     generation: GenerationSettingsSchema
     retrieval: RetrievalSettingsSchema
     audio: AudioSettingsSchema
+
+
+class EmbeddingSwitchRequest(BaseModel):
+    model: str
