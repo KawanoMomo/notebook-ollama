@@ -9,6 +9,7 @@ export interface CurrentNotebookStore {
   readonly loading: boolean;
   readonly error: string | null;
   load(id: string): Promise<void>;
+  update(patch: { default_model?: string | null }): Promise<void>;
   clear(): void;
   upsertSource(s: Source): void;
   removeSource(id: string): void;
@@ -53,6 +54,15 @@ export function createCurrentNotebookStore(
         error = e instanceof Error ? e.message : String(e);
       } finally {
         loading = false;
+      }
+    },
+    async update(patch) {
+      if (!notebook) return;
+      const id = notebook.id;
+      const updated = await nbApi.update(id, patch);
+      // load() で別ノートに切り替わっていない場合のみ反映
+      if (notebook && notebook.id === id) {
+        notebook = updated;
       }
     },
     clear() {

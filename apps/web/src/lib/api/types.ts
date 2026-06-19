@@ -28,7 +28,8 @@ export interface NotebookCreate {
 export interface NotebookUpdate {
   name?: string;
   description?: string;
-  default_model?: string;
+  /** null を明示送信するとノート既定をクリアし全体既定にフォールバックする。 */
+  default_model?: string | null;
 }
 
 export type SourceStatus =
