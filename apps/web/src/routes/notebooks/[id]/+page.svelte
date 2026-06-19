@@ -3,8 +3,11 @@
   import { goto } from '$app/navigation';
   import { ArrowLeft } from '@lucide/svelte';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
+  import { modelsStore } from '$lib/stores/models.svelte';
+  import { settingsStore } from '$lib/stores/settings.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
   import { eventsStore } from '$lib/stores/events.svelte';
+  import { pushToast } from '$lib/components/Toast.svelte';
   import { bindShortcuts } from '$lib/utils/keys';
   import Spinner from '$lib/components/Spinner.svelte';
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
@@ -19,6 +22,33 @@
   let selectedSourceId = $state<string | null>(null);
   let selectedChunkId = $state<string | null>(null);
   let unbindShortcuts: (() => void) | null = null;
+
+  // 全体既定名(設定未ロード時は空文字)
+  const globalDefault = $derived(settingsStore.settings?.ollama.default_model ?? '');
+  // チャット可能モデルのみ(kind が chat / both)
+  const chatModels = $derived(
+    modelsStore.models.filter((m) => m.kind === 'chat' || m.kind === 'both'),
+  );
+  // <select> の現在値。null(=既定)は空文字 '' を選択。
+  const selectedModel = $derived(currentNotebookStore.notebook?.default_model ?? '');
+
+  async function onModelChange(e: Event) {
+    const value = (e.currentTarget as HTMLSelectElement).value;
+    const next: string | null = value === '' ? null : value;
+    const prev = currentNotebookStore.notebook?.default_model ?? null;
+    if (next === prev) return;
+    try {
+      await currentNotebookStore.update({ default_model: next });
+      pushToast(
+        next === null
+          ? `このノートのモデルを既定（${globalDefault}）に戻しました`
+          : `このノートのモデルを ${next} に変更しました`,
+        'success',
+      );
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err), 'error');
+    }
+  }
 
   // when notebook changes, reset conversation (clear messages, drop current conv ref)
   $effect(() => {
@@ -37,6 +67,9 @@
     window.addEventListener('dragover', blockFileDrop);
     window.addEventListener('drop', blockFileDrop);
     await currentNotebookStore.load(data.notebookId);
+    // モデルピッカー用: モデル一覧と全体既定名を取得(失敗してもページは描画継続)
+    void modelsStore.load();
+    void settingsStore.load();
     eventsStore.start(data.notebookId);
     unbindShortcuts = bindShortcuts([
       {
@@ -69,7 +102,18 @@
       <ArrowLeft size="16" />
     </button>
     <h2>{currentNotebookStore.notebook?.name ?? '読み込み中…'}</h2>
-  </div>
+      {#if currentNotebookStore.notebook}
+        <label class="model-pick">
+          <span class="model-pick-label">このノートのモデル</span>
+          <select value={selectedModel} onchange={onModelChange}>
+            <option value="">既定（{globalDefault || '全体既定'}）</option>
+            {#each chatModels as m (m.name)}
+              <option value={m.name}>{m.name}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+    </div>
 
   {#if currentNotebookStore.loading}
     <div class="state"><Spinner /> 読み込み中…</div>
@@ -132,6 +176,27 @@
   .topbar h2 {
     margin: 0;
     font-size: 16px;
+  }
+  .model-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+  .model-pick-label {
+    font-size: 11px;
+    color: var(--color-fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .model-pick select {
+    font-size: 12px;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    max-width: 220px;
   }
   .back {
     background: none;
