@@ -13,12 +13,17 @@ from apps.api.schemas.source_content import (
     DocumentSection,
     RecordingContent,
     RecordingSegment,
+    SpeakerRename,
 )
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.parsers import get_parser
 from core.ingestion.hashing import sha256_bytes
 from core.storage import notebooks_repo, sources_repo
-from core.storage.chunks_repo import delete_chunks_for_source, list_chunks_for_source
+from core.storage.chunks_repo import (
+    delete_chunks_for_source,
+    list_chunks_for_source,
+    rename_speaker_in_source,
+)
 
 router = APIRouter(prefix="/api/notebooks", tags=["sources"])
 
@@ -228,6 +233,32 @@ async def rename_source(
         raise AppError(ErrorCode.INPUT_INVALID, "title must not be empty")
     updated = sources_repo.update_source_title(ctx.conn, source_id, title)
     return _to_schema(updated, ctx.config.sources_dir)
+
+
+@router.patch("/{notebook_id}/sources/{source_id}/speaker")
+async def rename_speaker(
+    request: Request,
+    notebook_id: str,
+    source_id: str,
+    body: SpeakerRename,
+) -> dict:
+    """Bulk-rename one speaker label across all chunks of a source (within-source).
+
+    Updates both SQLite (source of truth) and the Qdrant payload (best-effort).
+    """
+    ctx = request.app.state.ctx
+    to_label = body.to_label.strip()
+    if not to_label:
+        raise AppError(ErrorCode.INPUT_INVALID, "to_label must not be empty")
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    updated = rename_speaker_in_source(
+        ctx.conn, source_id, body.from_label, to_label
+    )
+    # Qdrant payload is display-only; keep it in sync but never fail the request on it.
+    ctx.vector_store.rename_speaker(source_id, body.from_label, to_label)
+    return {"updated": updated}
 
 
 @router.get("/{notebook_id}/sources/{source_id}/chunks/{chunk_id}")

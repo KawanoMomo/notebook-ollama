@@ -27,3 +27,8 @@ class DocumentContent(BaseModel):
 class RecordingContent(BaseModel):
     kind: Literal["recording"] = "recording"
     segments: list[RecordingSegment]
+
+
+class SpeakerRename(BaseModel):
+    from_label: str
+    to_label: str

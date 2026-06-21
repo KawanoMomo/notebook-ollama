@@ -205,6 +205,34 @@ class VectorStore:
                 break
         return out
 
+    def rename_speaker(self, source_id: str, from_label: str, to_label: str) -> None:
+        """Update the ``speaker`` payload for all points of one source's label.
+
+        Filters on ``source_id`` AND ``speaker == from_label`` (within-source
+        scope, M4) and sets ``speaker = to_label``. Best-effort: SQLite is the
+        source of truth, so payload-update failures are logged and swallowed
+        (the speaker payload is only used for citation display, not filtering).
+        """
+        flt = qm.Filter(
+            must=[
+                qm.FieldCondition(key="source_id", match=qm.MatchValue(value=source_id)),
+                qm.FieldCondition(key="speaker", match=qm.MatchValue(value=from_label)),
+            ]
+        )
+        try:
+            self._client.set_payload(
+                collection_name=COLLECTION,
+                payload={"speaker": to_label},
+                points=flt,
+            )
+        except Exception as exc:  # pragma: no cover - best-effort, SQLite is source of truth
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "qdrant rename_speaker failed (source_id=%s, %r->%r): %s",
+                source_id, from_label, to_label, exc,
+            )
+
     def delete_by_source(self, source_id: str) -> None:
         self._client.delete(
             collection_name=COLLECTION,
