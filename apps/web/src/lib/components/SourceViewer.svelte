@@ -10,6 +10,7 @@
   import Spinner from './Spinner.svelte';
   import AudioCitationPlayer from './AudioCitationPlayer.svelte';
   import SharedAudioPlayer from './SharedAudioPlayer.svelte';
+  import { pushToast } from './Toast.svelte';
   import { formatBytes } from '$lib/utils/format';
 
   function formatTimecode(ms: number): string {
@@ -106,6 +107,37 @@
     fn?.(seg.start_ms);
   }
 
+  // 話者チップのクリック編集 → source 内の同一話者を一括リネーム。
+  // 成功時: 結果トースト + 表示中チャンク / 全文セグメントの speaker をローカル更新。
+  async function handleRenameSpeaker(fromLabel: string, toLabel: string) {
+    const sid = resolvedSourceId;
+    if (!sid) return;
+    try {
+      const { updated } = await sourceDetailApi.renameSpeaker(
+        notebookId,
+        sid,
+        fromLabel,
+        toLabel,
+      );
+      // 表示中チャンク(引用プレイヤー)を即時更新。
+      if (chunk && chunk.speaker === fromLabel) {
+        chunk = { ...chunk, speaker: toLabel };
+      }
+      // 全文表示中のセグメントも同一話者を更新(source 全体に反映)。
+      if (content?.kind === 'recording') {
+        content = {
+          kind: 'recording',
+          segments: content.segments.map((s) =>
+            s.speaker === fromLabel ? { ...s, speaker: toLabel } : s,
+          ),
+        };
+      }
+      pushToast(`${updated} 件の発言を「${toLabel}」に更新しました`, 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   // Which channels actually appear, so we only mount players we need.
   let recordingChannels = $derived.by<Array<'mic' | 'system'>>(() => {
     if (content?.kind !== 'recording') return [];
@@ -142,6 +174,7 @@
           startMs={chunk.start_ms}
           endMs={chunk.end_ms}
           speaker={chunk.speaker}
+          onRenameSpeaker={handleRenameSpeaker}
         />
         <div class="path">
           {#if chunk.speaker}{chunk.speaker} · {/if}{formatTimecode(chunk.start_ms)}{#if chunk.end_ms != null}–{formatTimecode(chunk.end_ms)}{/if}

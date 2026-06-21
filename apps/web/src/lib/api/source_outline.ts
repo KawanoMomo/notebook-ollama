@@ -38,4 +38,17 @@ export const sourceDetailApi = {
     request<SourceContent>(
       `/api/notebooks/${notebookId}/sources/${sourceId}/content`,
     ),
+  renameSpeaker: (
+    notebookId: string,
+    sourceId: string,
+    fromLabel: string,
+    toLabel: string,
+  ) =>
+    request<{ updated: number }>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/speaker`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ from_label: fromLabel, to_label: toLabel }),
+      },
+    ),
 };
