@@ -125,6 +125,7 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
 
     from core.recording.levels import LevelMeter
     from core.recording.live_caption import LiveCaption
+    from core.recording.mute_state import MuteState
 
     cap_queue: _queue.Queue = _queue.Queue()
     live_segments: list[dict] = []
@@ -139,6 +140,12 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
 
     sess.extras["queue"] = cap_queue
     sess.extras["live_segments"] = live_segments
+    # --- Channel mute state (M1: time-windowed muting) --------------------
+    # t0 は録音開始の wall-clock 基準(perf_counter)。WS の "mute" コマンド受信時刻を
+    # 録音開始からの相対 ms に変換するのに使う。mute_state はチャンネル別ミュート区間を
+    # 蓄積し、停止時に mute_intervals.json へ永続化する。
+    sess.extras["mute_state"] = MuteState()
+    sess.extras["t0"] = _time.perf_counter()
 
     mic_lc = sys_lc = None
     live_active = False
@@ -170,12 +177,21 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     mic_meter = LevelMeter("mic", push_to_queue, min_interval_ms=50)
     sys_meter = LevelMeter("system", push_to_queue, min_interval_ms=50)
 
+    mute_state = sess.extras["mute_state"]
+
+    # Live STT gating: ミュート中チャンネルのフレームは STT に渡さず、レベルメータも
+    # 止める(WS 側で level 0 をエコーして UI をグレーアウトする)。bool 読み取りは
+    # アトミックなのでロック不要。録音した WAV 自体は完全な原本として残る(M1)。
     def on_mic_chunk(samples):
+        if mute_state.is_muted("mic"):
+            return
         mic_meter(samples)
         if mic_lc is not None:
             mic_lc.accept(samples)
 
     def on_system_chunk(samples):
+        if mute_state.is_muted("system"):
+            return
         sys_meter(samples)
         if sys_lc is not None:
             sys_lc.accept(samples)
@@ -291,6 +307,27 @@ async def stop_recording(
             pass
     paths = sess.recorder.stop()
     sess.extras["paths"] = {k: (str(v) if v else None) for k, v in paths.items()}
+
+    # --- Persist channel mute intervals (sidecar JSON) -----------------------
+    # 録音終了時刻でミュート中区間をクローズし、mute_intervals.json を録音ディレクトリ
+    # (mic.wav / system.wav と同階層)へ書く。オフラインパイプラインでの除外は別タスク。
+    mute_state = sess.extras.get("mute_state")
+    if mute_state is not None:
+        try:
+            import time as _time
+
+            t0 = sess.extras.get("t0")
+            now_ms = int((_time.perf_counter() - t0) * 1000) if t0 is not None else 0
+            mute_state.close_all(now_ms=now_ms)
+            from core.recording.mute_state import write_mute_intervals
+
+            write_mute_intervals(mute_state, sess.session_dir)
+        except Exception as exc:  # 永続化失敗で停止フローを止めない
+            from core.logging import get_logger
+
+            get_logger("recording.mute").warning(
+                "mute_intervals_persist_failed", rid=rid, error=str(exc)
+            )
 
     # --- Dispatch the offline RAG ingestion pipeline as a background task -----
     mic_wav = _resolve_wav(paths.get("mic"))

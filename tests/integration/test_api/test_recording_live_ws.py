@@ -94,3 +94,75 @@ def test_live_gain_without_workers_returns_ok_clamped(client):
     assert body["ok"] is True
     assert body["mic_db"] == 18.0
     assert body["sys_db"] == 0.0
+
+
+# --- Bidirectional WS: client→server "mute" command --------------------------
+
+
+def _drain_until(ws, predicate, max_msgs=10):
+    """Receive up to max_msgs and return the first matching predicate, else None."""
+    for _ in range(max_msgs):
+        msg = ws.receive_json()
+        if predicate(msg):
+            return msg
+    return None
+
+
+def test_ws_mute_command_updates_state_and_echoes(client):
+    nb = _create_nb(client)
+    rid = _start_recording(client, nb)
+
+    with client.websocket_connect(f"/ws/recordings/{rid}/live") as ws:
+        ws.send_json({"type": "mute", "channel": "mic", "muted": True})
+        echo = _drain_until(ws, lambda m: m.get("type") == "mute_state")
+        assert echo == {"type": "mute_state", "channel": "mic", "muted": True}
+        # the muted channel also gets a level 0 to grey out its meter
+        lvl = _drain_until(ws, lambda m: m.get("type") == "level")
+        assert lvl["channel"] == "mic"
+        assert lvl["rms_db"] == -80.0
+
+    # server-side mute state reflects the command
+    sess = client.app.state.ctx.recordings.get(rid)
+    assert sess.extras["mute_state"].is_muted("mic") is True
+
+
+def test_ws_mute_then_unmute_records_interval(client):
+    nb = _create_nb(client)
+    rid = _start_recording(client, nb)
+
+    with client.websocket_connect(f"/ws/recordings/{rid}/live") as ws:
+        ws.send_json({"type": "mute", "channel": "system", "muted": True})
+        assert _drain_until(ws, lambda m: m.get("type") == "mute_state") is not None
+        ws.send_json({"type": "mute", "channel": "system", "muted": False})
+        echo = _drain_until(ws, lambda m: m.get("type") == "mute_state")
+        assert echo == {"type": "mute_state", "channel": "system", "muted": False}
+
+    sess = client.app.state.ctx.recordings.get(rid)
+    intervals = sess.extras["mute_state"].to_dict()["system"]
+    assert len(intervals) == 1
+    iv = intervals[0]
+    assert iv["end_ms"] >= iv["start_ms"]
+    assert sess.extras["mute_state"].is_muted("system") is False
+
+
+def test_ws_unknown_command_is_ignored_and_streaming_still_works(client):
+    """Backward-compat: unknown/garbage client messages don't break streaming."""
+    nb = _create_nb(client)
+    rid = _start_recording(client, nb)
+
+    sess = client.app.state.ctx.recordings.get(rid)
+    with client.websocket_connect(f"/ws/recordings/{rid}/live") as ws:
+        # unknown type / channel / missing field -> all ignored, no echo, no crash
+        ws.send_json({"type": "bogus"})
+        ws.send_json({"type": "mute", "channel": "speaker", "muted": True})
+        ws.send_json({"type": "mute", "channel": "mic"})
+        # a normal server→client caption still flows
+        cap = {"type": "caption", "id": "mic-1", "label": "あなた",
+               "text": "テスト", "start_ms": 0, "end_ms": 500}
+        sess.extras["queue"].put_nowait(cap)
+        got = _drain_until(ws, lambda m: m.get("type") == "caption")
+        assert got == cap
+
+    # no mute interval was opened by the ignored commands
+    assert sess.extras["mute_state"].is_muted("mic") is False
+    assert sess.extras["mute_state"].to_dict() == {"mic": [], "system": []}

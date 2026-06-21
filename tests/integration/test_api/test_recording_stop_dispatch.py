@@ -153,6 +153,70 @@ def test_stop_treats_zero_byte_wav_as_absent(client):
     assert call["system_wav"] is None
 
 
+def test_stop_persists_mute_intervals_json(client):
+    """A session with accumulated mute intervals writes mute_intervals.json into
+    the recording dir on stop (alongside mic.wav / system.wav)."""
+    import json
+
+    nb = _create_nb(client)
+    fake_pipeline = _FakePipeline()
+    client.app.state.ctx.recording_pipeline = fake_pipeline
+
+    r = client.post(f"/api/notebooks/{nb}/recordings", json={"live_caption": False})
+    assert r.status_code == 200, r.text
+    rid = r.json()["recording_id"]
+    src_id = r.json()["source_id"]
+
+    # Simulate a mute toggle during recording by driving the session mute state
+    # directly (no real audio device needed): mute mic, then unmute.
+    sess = client.app.state.ctx.recordings.get(rid)
+    ms = sess.extras["mute_state"]
+    ms.set_muted("mic", True, 1000)
+    ms.set_muted("mic", False, 2000)
+    # leave system muted/open so close_all has to close it at stop
+    ms.set_muted("system", True, 1500)
+
+    session_dir = client.app.state.ctx.config.sources_dir / src_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "mic.wav").write_bytes(b"RIFF" + b"\x00" * 200)
+
+    r_stop = client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
+    assert r_stop.status_code == 200, r_stop.text
+
+    out = session_dir / "mute_intervals.json"
+    assert out.exists(), "mute_intervals.json was not written on stop"
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["mic"] == [{"start_ms": 1000, "end_ms": 2000}]
+    # the open system interval was closed by close_all at recording end
+    assert len(data["system"]) == 1
+    sys_iv = data["system"][0]
+    assert sys_iv["start_ms"] == 1500
+    assert sys_iv["end_ms"] >= sys_iv["start_ms"]
+
+
+def test_stop_writes_empty_mute_intervals_when_never_muted(client):
+    """No mute toggles -> mute_intervals.json still written with empty arrays."""
+    import json
+
+    nb = _create_nb(client)
+    fake_pipeline = _FakePipeline()
+    client.app.state.ctx.recording_pipeline = fake_pipeline
+
+    r = client.post(f"/api/notebooks/{nb}/recordings", json={"live_caption": False})
+    rid = r.json()["recording_id"]
+    src_id = r.json()["source_id"]
+    session_dir = client.app.state.ctx.config.sources_dir / src_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "mic.wav").write_bytes(b"RIFF" + b"\x00" * 200)
+
+    r_stop = client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
+    assert r_stop.status_code == 200, r_stop.text
+
+    out = session_dir / "mute_intervals.json"
+    assert out.exists()
+    assert json.loads(out.read_text(encoding="utf-8")) == {"mic": [], "system": []}
+
+
 def test_retry_threads_auto_title_flag(client):
     nb = _create_nb(client)
     fake_pipeline = _FakePipeline()

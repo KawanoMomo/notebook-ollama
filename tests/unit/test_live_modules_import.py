@@ -7,6 +7,7 @@ import pytest
     ("core.recording.live_caption", "LiveCaption"),
     ("core.recording.agc", "apply_gain"),
     ("core.recording.levels", "LevelMeter"),
+    ("core.recording.mute_state", "MuteState"),
 ])
 def test_recording_module_imports(mod, sym):
     try:
