@@ -1,4 +1,6 @@
 <script lang="ts">
+  import SpeakerChip from './SpeakerChip.svelte';
+
   interface Props {
     notebookId: string;
     sourceId: string;
@@ -20,41 +22,6 @@
   // Speaker chip colour: self → accent blue, others → green.
   let chipColor = $derived(speaker === 'あなた' ? 'var(--color-accent)' : '#16a34a');
   let speakerLabel = $derived(speaker ?? '不明');
-
-  // 話者チップのインライン編集 (SourceCard パターン流用)。
-  // onRenameSpeaker が渡されたときのみ編集可。Enter/✓ で確定、Esc/✕ で取消。
-  // 確定値が空 or 変更なしなら親へ通知しない (no-op)。
-  let editingSpeaker = $state(false);
-  let speakerEditValue = $state('');
-
-  function startSpeakerEdit() {
-    if (!onRenameSpeaker) return;
-    speakerEditValue = speaker ?? '';
-    editingSpeaker = true;
-  }
-
-  function commitSpeakerEdit() {
-    if (!editingSpeaker) return;
-    editingSpeaker = false;
-    const next = speakerEditValue.trim();
-    const from = speaker ?? '';
-    if (!next || next === from || !from) return;
-    onRenameSpeaker?.(from, next);
-  }
-
-  function cancelSpeakerEdit() {
-    editingSpeaker = false;
-  }
-
-  function onSpeakerEditKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitSpeakerEdit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelSpeakerEdit();
-    }
-  }
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let playing = $state(false);
@@ -181,45 +148,7 @@
   </div>
 
   <div class="row2">
-    {#if editingSpeaker}
-      <span class="spk-edit">
-        <span class="dot" style="background:{chipColor}"></span>
-        <!-- svelte-ignore a11y_autofocus -->
-        <input
-          class="spk-input"
-          type="text"
-          bind:value={speakerEditValue}
-          onkeydown={onSpeakerEditKeydown}
-          autofocus
-          aria-label="話者名を編集"
-        />
-        <button
-          class="spk-act ok"
-          type="button"
-          onclick={commitSpeakerEdit}
-          aria-label="確定"
-          title="確定">✓</button
-        >
-        <button
-          class="spk-act cancel"
-          type="button"
-          onclick={cancelSpeakerEdit}
-          aria-label="取消"
-          title="取消">✕</button
-        >
-      </span>
-    {:else if onRenameSpeaker}
-      <button
-        class="spk-chip editable"
-        type="button"
-        style="background:{chipColor}"
-        onclick={startSpeakerEdit}
-        aria-label="話者名を編集"
-        title="クリックで話者名を編集">● {speakerLabel}</button
-      >
-    {:else}
-      <span class="spk-chip" style="background:{chipColor}">● {speakerLabel}</span>
-    {/if}
+    <SpeakerChip speaker={speakerLabel} color={chipColor} onRename={onRenameSpeaker} />
     <span class="ttime">{formatTime(currentTime)} / {formatTime(duration)}</span>
   </div>
 
@@ -274,65 +203,6 @@
     justify-content: space-between;
     align-items: center;
     margin-top: var(--space-2);
-  }
-  .spk-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: 11px;
-    font-weight: 600;
-    border-radius: 999px;
-    padding: 2px 9px;
-    color: #fff;
-  }
-  /* クリック編集可の chip は button だが見た目は span と同一にする。 */
-  button.spk-chip {
-    border: none;
-    cursor: pointer;
-    font: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.2;
-  }
-  button.spk-chip.editable:hover {
-    filter: brightness(1.08);
-  }
-  .spk-edit {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-  }
-  .spk-edit .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex: none;
-  }
-  .spk-input {
-    width: 9em;
-    min-width: 0;
-    font-size: 11px;
-    font-weight: 600;
-    border: 1px solid var(--color-accent);
-    border-radius: var(--radius-sm);
-    padding: 1px var(--space-1);
-  }
-  .spk-act {
-    border: none;
-    background: none;
-    padding: 0 2px;
-    font-size: 12px;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .spk-act.ok {
-    color: var(--color-success);
-  }
-  .spk-act.cancel {
-    color: var(--color-fg-muted);
-  }
-  .spk-act:hover {
-    filter: brightness(0.85);
   }
   .ttime {
     font-size: 11px;

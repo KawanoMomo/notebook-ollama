@@ -10,6 +10,7 @@
   import Spinner from './Spinner.svelte';
   import AudioCitationPlayer from './AudioCitationPlayer.svelte';
   import SharedAudioPlayer from './SharedAudioPlayer.svelte';
+  import SpeakerChip from './SpeakerChip.svelte';
   import { pushToast } from './Toast.svelte';
   import { formatBytes } from '$lib/utils/format';
 
@@ -99,6 +100,12 @@
 
   function segChannel(speaker: string | null): 'mic' | 'system' {
     return speaker === 'あなた' ? 'mic' : 'system';
+  }
+
+  // 話者チップの色: 自分(mic) → accent blue, それ以外 → green。
+  // (AudioCitationPlayer の chipColor と同一ロジック。)
+  function segColor(speaker: string | null): string {
+    return speaker === 'あなた' ? 'var(--color-accent)' : '#16a34a';
   }
 
   function seekToSegment(seg: RecordingSegmentContent) {
@@ -228,20 +235,20 @@
         {/if}
         <ul class="transcript">
           {#each content.segments as seg (seg.ord)}
-            <li>
+            <li class="line">
+              {#if seg.speaker}
+                <SpeakerChip
+                  speaker={seg.speaker}
+                  color={segColor(seg.speaker)}
+                  onRename={handleRenameSpeaker}
+                />
+              {/if}
               <button
                 type="button"
-                class="line"
+                class="seek"
                 onclick={() => seekToSegment(seg)}
                 disabled={seg.start_ms == null}
               >
-                {#if seg.speaker}
-                  <span
-                    class="spk-chip"
-                    style="background:{seg.speaker === 'あなた' ? 'var(--color-accent)' : '#16a34a'}"
-                    >● {seg.speaker}</span
-                  >
-                {/if}
                 {#if seg.start_ms != null}
                   <span class="tc">{formatTimecode(seg.start_ms)}</span>
                 {/if}
@@ -331,32 +338,28 @@
     display: flex;
     align-items: baseline;
     gap: var(--space-2);
-    width: 100%;
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+  }
+  .line:hover {
+    background: var(--color-bg-elevated);
+  }
+  .seek {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex: 1;
+    min-width: 0;
     text-align: left;
     background: none;
     border: none;
-    border-radius: var(--radius-sm);
-    padding: var(--space-2);
+    padding: 0;
     cursor: pointer;
     font: inherit;
     color: inherit;
   }
-  .line:hover:not(:disabled) {
-    background: var(--color-bg-elevated);
-  }
-  .line:disabled {
+  .seek:disabled {
     cursor: default;
-  }
-  .spk-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: 11px;
-    font-weight: 600;
-    border-radius: 999px;
-    padding: 2px 9px;
-    color: #fff;
-    flex: none;
   }
   .tc {
     font-size: 11px;
