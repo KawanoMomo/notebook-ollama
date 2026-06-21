@@ -18,6 +18,9 @@ qdrant/
 *.db
 *.db-journal
 
+# Visual verification scratch dir (seed script + screenshots, never committed)
+.visual-verify-data/
+
 # Editor
 .vscode/
 .idea/
