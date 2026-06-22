@@ -250,6 +250,15 @@ async def rename_speaker(
     to_label = body.to_label.strip()
     if not to_label:
         raise AppError(ErrorCode.INPUT_INVALID, "to_label must not be empty")
+    # mic("あなた")は録音のチャンネル identity を兼ねる固定ラベル。リネームすると
+    # フロントの mic/system 判定(色・シーク・音声ファイル選択)が壊れるため禁止する。
+    # name_inference も "あなた" を自動改名から除外している(recording_pipeline._MIC_SPEAKER)。
+    _MIC_LABEL = "あなた"
+    if body.from_label == _MIC_LABEL or to_label == _MIC_LABEL:
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "話者「あなた」(自分/マイク)はリネームできません",
+        )
     src = sources_repo.get_source(ctx.conn, source_id)
     if src.notebook_id != notebook_id:
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")

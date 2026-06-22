@@ -20,6 +20,7 @@ export interface ConversationStore {
   ensureConversation(notebookId: string): Promise<Conversation>;
   send(notebookId: string, content: string, sourceIds?: string[]): Promise<void>;
   cancel(): void;
+  renameSpeakerInSource(sourceId: string, fromLabel: string, toLabel: string): void;
 }
 
 export function createConversationStore(api = chatApi): ConversationStore {
@@ -176,6 +177,37 @@ export function createConversationStore(api = chatApi): ConversationStore {
     cancel() {
       abortController?.abort();
       stopBeatWatch();
+    },
+    renameSpeakerInSource(sourceId, fromLabel, toLabel) {
+      // 話者リネーム成功時、チャット内に既に描画済みの引用カードの表示も更新する
+      // (spec §3.2「右パネル・チャット内の引用とも新名称に更新」)。録音引用の
+      // location は "<話者> <HH:MM:SS>"(locations.format_location)なので、先頭の
+      // 話者ラベルだけを置換する。完全一致(話者のみ)/ "ラベル " 前方一致のみ対象に
+      // して、部分語の誤マッチを避ける。
+      if (!fromLabel || fromLabel === toLabel) return;
+      const prefix = `${fromLabel} `;
+      let changed = false;
+      const next = messages.map((m) => {
+        if (!m.citations?.length) return m;
+        let touched = false;
+        const cites = m.citations.map((c) => {
+          if (c.source_id !== sourceId) return c;
+          let loc = c.location;
+          if (loc === fromLabel) {
+            loc = toLabel;
+          } else if (loc.startsWith(prefix)) {
+            loc = toLabel + loc.slice(fromLabel.length);
+          } else {
+            return c;
+          }
+          touched = true;
+          return { ...c, location: loc };
+        });
+        if (!touched) return m;
+        changed = true;
+        return { ...m, citations: cites };
+      });
+      if (changed) messages = next;
     },
   };
 }

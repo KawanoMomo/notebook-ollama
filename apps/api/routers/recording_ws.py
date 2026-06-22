@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 from core.logging import get_logger
 from core.recording.mute_state import handle_mute_command
@@ -14,12 +14,22 @@ router = APIRouter()
 log = get_logger("recording.ws")
 
 
-def _now_ms(sess) -> int:
-    """録音開始(t0)からの相対 ms。t0 未設定(古いセッション)なら 0。"""
-    t0 = sess.extras.get("t0") if sess else None
-    if t0 is None:
-        return 0
-    return int((time.perf_counter() - t0) * 1000)
+async def _safe_send(ws: WebSocket, msg: dict) -> bool:
+    """接続中のときだけ send_json する。送れなければ False を返す。
+
+    双方向の二タスク構成では、片方(out_task)の送出が先にピア切断を検知して
+    application_state を DISCONNECTED にした直後に、もう片方(in_task)が mute の
+    エコー/level を送ろうとすると Starlette が RuntimeError("Cannot call send once
+    a close message has been sent") を投げ、テアダウン時のログノイズになる。送出前に
+    接続状態を確認し、競合窓で漏れた RuntimeError も握って静かに False を返す。
+    """
+    if ws.application_state != WebSocketState.CONNECTED:
+        return False
+    try:
+        await ws.send_json(msg)
+        return True
+    except (WebSocketDisconnect, RuntimeError):
+        return False
 
 
 @router.websocket("/ws/recordings/{rid}/live")
@@ -59,7 +69,8 @@ async def recording_live(ws: WebSocket, rid: str):
                 if ctx.recordings.get(rid) is None:
                     return
                 continue
-            await ws.send_json(msg)
+            if not await _safe_send(ws, msg):
+                return  # peer gone — stop pumping
 
     async def pump_incoming() -> None:
         """Receive client control messages (currently only "mute").
@@ -83,17 +94,19 @@ async def recording_live(ws: WebSocket, rid: str):
             mute_state = cur.extras.get("mute_state")
             if mute_state is None:
                 continue  # session has no mute state (shouldn't happen) -> ignore
-            echo = handle_mute_command(mute_state, msg, _now_ms(cur))
+            echo = handle_mute_command(mute_state, msg)
             if echo is None:
                 continue  # unknown type/channel/missing field -> ignored
             # Echo mute_state so the UI can sync, plus a level 0 for the muted
             # channel so its meter greys out immediately (we stop feeding real
             # levels for muted channels at the recorder callback).
-            await ws.send_json(echo)
+            if not await _safe_send(ws, echo):
+                return  # peer gone — stop receiving
             if echo["muted"]:
-                await ws.send_json(
+                await _safe_send(
+                    ws,
                     {"type": "level", "channel": echo["channel"],
-                     "rms_db": -80.0, "peak_db": -80.0}
+                     "rms_db": -80.0, "peak_db": -80.0},
                 )
 
     out_task = asyncio.create_task(pump_outgoing())

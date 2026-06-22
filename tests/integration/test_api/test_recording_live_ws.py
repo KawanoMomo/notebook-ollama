@@ -126,22 +126,20 @@ def test_ws_mute_command_updates_state_and_echoes(client):
     assert sess.extras["mute_state"].is_muted("mic") is True
 
 
-def test_ws_mute_then_unmute_records_interval(client):
+def test_ws_mute_then_unmute_toggles_state(client):
     nb = _create_nb(client)
     rid = _start_recording(client, nb)
 
     with client.websocket_connect(f"/ws/recordings/{rid}/live") as ws:
         ws.send_json({"type": "mute", "channel": "system", "muted": True})
-        assert _drain_until(ws, lambda m: m.get("type") == "mute_state") is not None
+        echo_on = _drain_until(ws, lambda m: m.get("type") == "mute_state")
+        assert echo_on == {"type": "mute_state", "channel": "system", "muted": True}
         ws.send_json({"type": "mute", "channel": "system", "muted": False})
         echo = _drain_until(ws, lambda m: m.get("type") == "mute_state")
         assert echo == {"type": "mute_state", "channel": "system", "muted": False}
 
+    # ミュートは録音側で無音書き込み。状態はチャンネル別の真偽値のみ(区間は持たない)。
     sess = client.app.state.ctx.recordings.get(rid)
-    intervals = sess.extras["mute_state"].to_dict()["system"]
-    assert len(intervals) == 1
-    iv = intervals[0]
-    assert iv["end_ms"] >= iv["start_ms"]
     assert sess.extras["mute_state"].is_muted("system") is False
 
 
@@ -163,9 +161,9 @@ def test_ws_unknown_command_is_ignored_and_streaming_still_works(client):
         got = _drain_until(ws, lambda m: m.get("type") == "caption")
         assert got == cap
 
-    # no mute interval was opened by the ignored commands
+    # 無視されたコマンドではミュート状態が変化していない
     assert sess.extras["mute_state"].is_muted("mic") is False
-    assert sess.extras["mute_state"].to_dict() == {"mic": [], "system": []}
+    assert sess.extras["mute_state"].is_muted("system") is False
 
 
 def test_ws_malformed_frame_does_not_kill_session(client):

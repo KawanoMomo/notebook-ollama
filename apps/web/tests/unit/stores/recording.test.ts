@@ -9,6 +9,7 @@ class FakeWS {
   static instances: FakeWS[] = [];
   readyState = 1;
   sent: string[] = [];
+  onopen: (() => void) | null = null;
   onmessage: ((e: { data: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   onclose: (() => void) | null = null;
@@ -140,6 +141,35 @@ describe('recording store', () => {
       channel: 'system',
       muted: true,
     });
+  });
+
+  it('WS未OPEN時の toggleMute は状態を反転せずエラーを立てる(乖離防止)', async () => {
+    const store = createRecordingStore(makeApi() as never, noopNbStore);
+    await store.start('nb1');
+    const ws = FakeWS.instances.at(-1)!;
+    // 接続が CONNECTING / 切断中の状況を模倣
+    ws.readyState = 0;
+
+    store.toggleMute('mic');
+    expect(store.micMuted).toBe(false); // 反転していない
+    expect(ws.sent).toHaveLength(0); // コマンドも送られていない
+    expect(store.error).toContain('送信できませんでした');
+  });
+
+  it('再接続(onopen)時に現在のミュート状態をサーバへ再送する', async () => {
+    const store = createRecordingStore(makeApi() as never, noopNbStore);
+    await store.start('nb1');
+    const ws = FakeWS.instances.at(-1)!;
+    // mic をミュート(OPEN なので成功)
+    store.toggleMute('mic');
+    expect(store.micMuted).toBe(true);
+    ws.sent.length = 0; // 以降の再送だけを観測
+
+    // 再接続確立を模倣: onopen が両チャンネルの現在状態を再送する
+    ws.onopen?.();
+    const sent = ws.sent.map((s) => JSON.parse(s));
+    expect(sent).toContainEqual({ type: 'mute', channel: 'mic', muted: true });
+    expect(sent).toContainEqual({ type: 'mute', channel: 'system', muted: false });
   });
 
   it('サーバの mute_state でミュート状態が同期される', async () => {

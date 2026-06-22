@@ -140,19 +140,14 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
 
     sess.extras["queue"] = cap_queue
     sess.extras["live_segments"] = live_segments
-    # --- Channel mute state (M1: time-windowed muting) --------------------
-    # t0 は録音開始の wall-clock 基準(perf_counter)。WS の "mute" コマンド受信時刻を
-    # 録音開始からの相対 ms に変換するのに使う。mute_state はチャンネル別ミュート区間を
-    # 蓄積し、停止時に mute_intervals.json へ永続化する。
+    # --- Channel mute state -----------------------------------------------
+    # ミュートは「録音側で無音書き込み」方式(設計確定 2026-06-23)。ミュート中は
+    # recorder が当該チャンネルの WAV に無音を書くため、ミュート区間は STT 以降の
+    # 全工程に到達しない。mute_state は現在のミュート真偽値をチャンネル別に保持する
+    # だけ(WS が更新、recorder と live STT ゲートが参照)。区間タイムスタンプや
+    # mute_intervals.json は不要(ループバックの無音ドロップで WAV 時間軸が圧縮され、
+    # 壁時計→WAV の写像が非線形になるため、タイムスタンプ方式は採らない)。
     sess.extras["mute_state"] = MuteState()
-    sess.extras["t0"] = _time.perf_counter()
-    # wav_t0: the perf_counter at the moment the FIRST audio frame is actually
-    # captured. t0 (above) is taken BEFORE recorder.start(), so it precedes the
-    # device-open latency, while offline STT timestamps are relative to the first
-    # captured WAV frame. Capturing wav_t0 here lets the offline filter (2-BE2)
-    # align t0-relative mute intervals onto WAV-relative ms. Set on the first
-    # chunk callback of either channel (recorder thread); never reset afterwards.
-    sess.extras["wav_t0"] = None
 
     mic_lc = sys_lc = None
     live_active = False
@@ -186,19 +181,11 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
 
     mute_state = sess.extras["mute_state"]
 
-    # Live STT gating: ミュート中チャンネルのフレームは STT に渡さず、レベルメータも
+    # Live STT gating: ミュート中チャンネルのフレームは live STT に渡さず、レベルメータも
     # 止める(WS 側で level 0 をエコーして UI をグレーアウトする)。is_muted は内部で
-    # ロックを取るのでスレッド安全。録音した WAV 自体は完全な原本として残る(M1)。
-    def _mark_wav_t0():
-        # First captured frame (either channel) anchors the WAV timebase. Set
-        # once; the chunk callbacks run on the recorder thread, but a benign
-        # double-set on a near-simultaneous first mic/system frame only shifts
-        # wav_t0 by sub-millisecond and never reopens it (we only set when None).
-        if sess.extras.get("wav_t0") is None:
-            sess.extras["wav_t0"] = _time.perf_counter()
-
+    # ロックを取るのでスレッド安全。なお recorder は同じ mute_state を見てミュート中の
+    # WAV を無音化するため、オフライン側もミュート区間は自動的に除外される。
     def on_mic_chunk(samples):
-        _mark_wav_t0()
         if mute_state.is_muted("mic"):
             return
         mic_meter(samples)
@@ -206,7 +193,6 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
             mic_lc.accept(samples)
 
     def on_system_chunk(samples):
-        _mark_wav_t0()
         if mute_state.is_muted("system"):
             return
         sys_meter(samples)
@@ -217,6 +203,8 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         sess.recorder.start(
             mic_index=body.mic_device_index, system_index=body.system_device_index,
             mic_on_chunk=on_mic_chunk, system_on_chunk=on_system_chunk,
+            mic_mute_check=lambda: mute_state.is_muted("mic"),
+            system_mute_check=lambda: mute_state.is_muted("system"),
         )
     except Exception as exc:
         # Recorder failed to open the device(s). Roll back the registered session
@@ -325,39 +313,9 @@ async def stop_recording(
     paths = sess.recorder.stop()
     sess.extras["paths"] = {k: (str(v) if v else None) for k, v in paths.items()}
 
-    # --- Persist channel mute intervals (sidecar JSON) -----------------------
-    # 録音終了時刻でミュート中区間をクローズし、mute_intervals.json を録音ディレクトリ
-    # (mic.wav / system.wav と同階層)へ書く。オフラインパイプラインでの除外は別タスク。
-    mute_state = sess.extras.get("mute_state")
-    if mute_state is not None:
-        try:
-            import time as _time
-
-            t0 = sess.extras.get("t0")
-            now_ms = int((_time.perf_counter() - t0) * 1000) if t0 is not None else 0
-            mute_state.close_all(now_ms=now_ms)
-            from core.recording.mute_state import write_mute_intervals
-
-            # wav_start_offset_ms = (wav_t0 - t0) in ms. 2-BE2 SUBTRACTS this from
-            # each interval ms to convert t0-relative -> WAV-relative. 0 when the
-            # WAV timebase is unknown (no frame ever captured, or t0 missing); in
-            # that case 2-BE2 must fall back to the spec conservative-boundary rule
-            # (any overlap => exclude).
-            wav_t0 = sess.extras.get("wav_t0")
-            if wav_t0 is not None and t0 is not None:
-                wav_start_offset_ms = int((wav_t0 - t0) * 1000)
-            else:
-                wav_start_offset_ms = 0
-            write_mute_intervals(
-                mute_state, sess.session_dir,
-                wav_start_offset_ms=wav_start_offset_ms,
-            )
-        except Exception as exc:  # 永続化失敗で停止フローを止めない
-            from core.logging import get_logger
-
-            get_logger("recording.mute").warning(
-                "mute_intervals_persist_failed", rid=rid, error=str(exc)
-            )
+    # ミュート区間は recorder が録音時に無音化済み(録音側ミュート)。サイドカー JSON や
+    # オフラインのタイムスタンプ除外は不要(下流の STT がミュート区間=無音から何も
+    # 起こさない)。
 
     # --- Dispatch the offline RAG ingestion pipeline as a background task -----
     mic_wav = _resolve_wav(paths.get("mic"))

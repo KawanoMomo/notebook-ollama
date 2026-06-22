@@ -98,14 +98,19 @@
       : null,
   );
 
+  // mic("あなた")はチャンネル identity を兼ねる固定ラベル。色・シーク・音声ファイル
+  // 選択がこの文字列に依存するため、リネームは禁止する(下の SpeakerChip で onRename を
+  // 渡さない + バックエンドでも拒否)。name_inference も "あなた" を改名対象外にしている。
+  const MIC_SPEAKER = 'あなた';
+
   function segChannel(speaker: string | null): 'mic' | 'system' {
-    return speaker === 'あなた' ? 'mic' : 'system';
+    return speaker === MIC_SPEAKER ? 'mic' : 'system';
   }
 
   // 話者チップの色: 自分(mic) → accent blue, それ以外 → green。
   // (AudioCitationPlayer の chipColor と同一ロジック。)
   function segColor(speaker: string | null): string {
-    return speaker === 'あなた' ? 'var(--color-accent)' : '#16a34a';
+    return speaker === MIC_SPEAKER ? 'var(--color-accent)' : '#16a34a';
   }
 
   function seekToSegment(seg: RecordingSegmentContent) {
@@ -139,6 +144,8 @@
           ),
         };
       }
+      // チャット内に既に描画済みの引用カードの表示も更新(spec §3.2)。
+      conversationStore.renameSpeakerInSource(sid, fromLabel, toLabel);
       pushToast(`${updated} 件の発言を「${toLabel}」に更新しました`, 'success');
     } catch (e) {
       pushToast(e instanceof Error ? e.message : String(e), 'error');
@@ -181,7 +188,7 @@
           startMs={chunk.start_ms}
           endMs={chunk.end_ms}
           speaker={chunk.speaker}
-          onRenameSpeaker={handleRenameSpeaker}
+          onRenameSpeaker={chunk.speaker === MIC_SPEAKER ? undefined : handleRenameSpeaker}
         />
         <div class="path">
           {#if chunk.speaker}{chunk.speaker} · {/if}{formatTimecode(chunk.start_ms)}{#if chunk.end_ms != null}–{formatTimecode(chunk.end_ms)}{/if}
@@ -240,7 +247,7 @@
                 <SpeakerChip
                   speaker={seg.speaker}
                   color={segColor(seg.speaker)}
-                  onRename={handleRenameSpeaker}
+                  onRename={seg.speaker === MIC_SPEAKER ? undefined : handleRenameSpeaker}
                 />
               {/if}
               <button

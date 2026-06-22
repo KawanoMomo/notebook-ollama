@@ -153,11 +153,12 @@ def test_stop_treats_zero_byte_wav_as_absent(client):
     assert call["system_wav"] is None
 
 
-def test_stop_persists_mute_intervals_json(client):
-    """A session with accumulated mute intervals writes mute_intervals.json into
-    the recording dir on stop (alongside mic.wav / system.wav)."""
-    import json
+def test_stop_does_not_write_mute_intervals_json(client):
+    """ミュートは録音側で無音書き込み方式のため、stop でサイドカー JSON は書かない。
 
+    (旧: mute_intervals.json を書きオフラインで除外していたが、ループバックの無音
+    ドロップで WAV 時間軸が圧縮され写像が破綻するため廃止。録音側で無音化する。)
+    """
     nb = _create_nb(client)
     fake_pipeline = _FakePipeline()
     client.app.state.ctx.recording_pipeline = fake_pipeline
@@ -167,14 +168,12 @@ def test_stop_persists_mute_intervals_json(client):
     rid = r.json()["recording_id"]
     src_id = r.json()["source_id"]
 
-    # Simulate a mute toggle during recording by driving the session mute state
-    # directly (no real audio device needed): mute mic, then unmute.
+    # ミュート操作(録音側で無音化されるだけ。状態は真偽値のみ)。
     sess = client.app.state.ctx.recordings.get(rid)
     ms = sess.extras["mute_state"]
-    ms.set_muted("mic", True, 1000)
-    ms.set_muted("mic", False, 2000)
-    # leave system muted/open so close_all has to close it at stop
-    ms.set_muted("system", True, 1500)
+    ms.set_muted("mic", True)
+    ms.set_muted("mic", False)
+    ms.set_muted("system", True)
 
     session_dir = client.app.state.ctx.config.sources_dir / src_id
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -184,47 +183,7 @@ def test_stop_persists_mute_intervals_json(client):
     assert r_stop.status_code == 200, r_stop.text
 
     out = session_dir / "mute_intervals.json"
-    assert out.exists(), "mute_intervals.json was not written on stop"
-    data = json.loads(out.read_text(encoding="utf-8"))
-    # version 1: alignment メタ + t0 相対の mic/system 区間
-    assert data["version"] == 1
-    assert data["wav_start_offset_ms"] == 0  # fake recorder は frame を出さない
-    assert data["mic"] == [{"start_ms": 1000, "end_ms": 2000}]
-    # the open system interval was closed by close_all at recording end
-    assert len(data["system"]) == 1
-    sys_iv = data["system"][0]
-    assert sys_iv["start_ms"] == 1500
-    assert sys_iv["end_ms"] >= sys_iv["start_ms"]
-
-
-def test_stop_writes_empty_mute_intervals_when_never_muted(client):
-    """No mute toggles -> mute_intervals.json still written with empty arrays."""
-    import json
-
-    nb = _create_nb(client)
-    fake_pipeline = _FakePipeline()
-    client.app.state.ctx.recording_pipeline = fake_pipeline
-
-    r = client.post(f"/api/notebooks/{nb}/recordings", json={"live_caption": False})
-    rid = r.json()["recording_id"]
-    src_id = r.json()["source_id"]
-    session_dir = client.app.state.ctx.config.sources_dir / src_id
-    session_dir.mkdir(parents=True, exist_ok=True)
-    (session_dir / "mic.wav").write_bytes(b"RIFF" + b"\x00" * 200)
-
-    r_stop = client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
-    assert r_stop.status_code == 200, r_stop.text
-
-    out = session_dir / "mute_intervals.json"
-    assert out.exists()
-    # version 1 形状(version + wav_start_offset_ms + 空の mic/system 配列)。
-    # 実オーディオを録っていない(fake recorder)ので wav_t0 は未取得 -> offset 0。
-    assert json.loads(out.read_text(encoding="utf-8")) == {
-        "version": 1,
-        "wav_start_offset_ms": 0,
-        "mic": [],
-        "system": [],
-    }
+    assert not out.exists(), "mute_intervals.json should no longer be written"
 
 
 def test_retry_threads_auto_title_flag(client):

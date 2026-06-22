@@ -212,6 +212,32 @@ def test_rename_speaker_empty_to_label_returns_400(client):
     assert r.json()["error"]["code"] == "input.invalid"
 
 
+def test_rename_speaker_rejects_mic_label_you(client):
+    """話者「あなた」(mic)は from/to いずれでもリネーム禁止(チャンネル identity 保護)。"""
+    nb = _create_nb(client)
+    sid = _create_recording(client, nb)
+    ctx = client.app.state.ctx
+    _insert_chunk(ctx, cid="c0", sid=sid, nb=nb, ord_=0, speaker="あなた")
+    # from_label が「あなた」-> 400
+    r = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "あなた", "to_label": "自分"},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "input.invalid"
+    # to_label が「あなた」-> 400(別話者を mic ラベルに化けさせない)
+    r2 = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "相手1", "to_label": "あなた"},
+    )
+    assert r2.status_code == 400, r2.text
+    # 「あなた」チャンクは変更されていない
+    row = ctx.conn.execute(
+        "SELECT speaker FROM chunks WHERE id='c0'"
+    ).fetchone()
+    assert row["speaker"] == "あなた"
+
+
 def test_rename_speaker_unknown_from_label_returns_zero(client):
     nb = _create_nb(client)
     sid = _create_recording(client, nb)

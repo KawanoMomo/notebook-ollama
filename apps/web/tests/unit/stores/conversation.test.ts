@@ -83,6 +83,59 @@ describe('conversation store', () => {
     expect(store.warning).toBeNull();
   });
 
+  it('renameSpeakerInSource が同一 source の引用 location の話者ラベルだけ置換する', async () => {
+    const cite = (
+      n: number,
+      source_id: string,
+      location: string,
+    ) => ({
+      n,
+      chunk_id: `chunk-${n}`,
+      source_id,
+      source_title: 't',
+      location,
+      url_or_path: null,
+      snippet: 's',
+      audio_source_id: source_id,
+      audio_start_ms: 0,
+    });
+    const seeded = [
+      {
+        id: 'm1',
+        conversation_id: 'c1',
+        role: 'assistant',
+        content: 'a',
+        model: null,
+        created_at: '2026-06-19T00:00:00Z',
+        citations: [
+          cite(1, 'src-A', '相手1 00:12:30'), // 置換対象
+          cite(2, 'src-A', '相手1'), // 話者のみ -> 置換対象
+          cite(3, 'src-A', '相手10 00:01:00'), // 前方一致だが別ラベル -> 不変
+          cite(4, 'src-B', '相手1 00:00:05'), // 別 source -> 不変
+          cite(5, 'src-A', 'あなた 00:00:01'), // 別話者 -> 不変
+        ],
+      },
+    ];
+    const api = {
+      createConversation: vi.fn().mockResolvedValue(conv),
+      listMessages: vi.fn().mockResolvedValue(seeded),
+      sendMessage: vi.fn(),
+    };
+    const store = createConversationStore(api as never);
+    await store.load('nb1', 'c1');
+
+    store.renameSpeakerInSource('src-A', '相手1', '田中さん');
+
+    const locs = store.messages[0].citations.map((c) => c.location);
+    expect(locs).toEqual([
+      '田中さん 00:12:30', // 置換
+      '田中さん', // 置換(話者のみ)
+      '相手10 00:01:00', // 前方一致誤マッチ回避 -> 不変
+      '相手1 00:00:05', // 別 source -> 不変
+      'あなた 00:00:01', // 別話者 -> 不変
+    ]);
+  });
+
   it('cancel() で abort され streaming/監視が止まる', async () => {
     let resolveGen!: () => void;
     const gate = new Promise<void>((r) => (resolveGen = r));

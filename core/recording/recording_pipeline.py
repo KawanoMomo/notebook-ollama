@@ -27,7 +27,6 @@ from core.logging import get_logger
 from core.recording.audio_export import convert_audio, delete_if_exists, ext_for_format
 from core.recording.chunking import chunk_segments
 from core.recording.merger import merge
-from core.recording.mute_filter import filter_muted_segments, load_mute_intervals
 from core.recording.name_inference import infer_names
 from core.recording.segment_correct import Segment, correct_segments_aligned
 from core.recording.title_inference import infer_title
@@ -212,41 +211,9 @@ class RecordingPipeline:
                             language=ts.language or "ja",
                         ))
 
-            # --- 2.5 ミュート区間除外 (STT 後・整文/分離後ラベル付け前) ----------
-            # 録音ディレクトリ (mic.wav / system.wav と同階層) の mute_intervals.json
-            # を読み、各チャンネルのミュート区間と重なるセグメントを破棄する。ここは
-            # チャンネル identity が一意 (mic_segments=mic / system_segments=system) な
-            # 最後の地点。除外は整文・チャンク化・埋め込みより前なので、ミュート区間は
-            # LLM 推論にも埋め込みにも到達しない (設計 §2.5)。mute_intervals.json が
-            # 無い古い録音は除外ゼロ (load_mute_intervals が空構造を返す)。
-            rec_dir = None
-            for _wav in (mic_wav, system_wav):
-                if _wav is not None:
-                    rec_dir = _wav.parent
-                    break
-            if rec_dir is not None:
-                mute = load_mute_intervals(rec_dir)
-                offset_ms = mute["wav_start_offset_ms"]
-                if mute[_MIC_CHANNEL] and mic_segments:
-                    mic_segments, mic_dropped = filter_muted_segments(
-                        mic_segments, mute[_MIC_CHANNEL], offset_ms
-                    )
-                    if mic_dropped:
-                        log.info(
-                            "recording_mute_excluded",
-                            source_id=source_id, channel=_MIC_CHANNEL,
-                            dropped=mic_dropped,
-                        )
-                if mute[_SYSTEM_CHANNEL] and system_segments:
-                    system_segments, sys_dropped = filter_muted_segments(
-                        system_segments, mute[_SYSTEM_CHANNEL], offset_ms
-                    )
-                    if sys_dropped:
-                        log.info(
-                            "recording_mute_excluded",
-                            source_id=source_id, channel=_SYSTEM_CHANNEL,
-                            dropped=sys_dropped,
-                        )
+            # ミュート区間の除外は不要: recorder が録音時にミュート中チャンネルの WAV を
+            # 無音化しているため、STT がミュート区間から何も生成しない(無音 → VAD 除去)。
+            # よってここに到達するセグメントには既にミュート発話が含まれない。
 
             all_segments: list[Segment] = sorted(
                 mic_segments + system_segments, key=lambda s: s.start_ms

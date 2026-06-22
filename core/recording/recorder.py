@@ -101,6 +101,7 @@ class _ChannelRecorder:
         on_chunk: Optional[Callable] = None,
         pyaudio_instance=None,
         open_lock: Optional[threading.Lock] = None,
+        mute_check: Optional[Callable[[], bool]] = None,
     ):
         self._device_info = device_info
         self._device_index = int(device_info["index"])
@@ -110,6 +111,11 @@ class _ChannelRecorder:
         self._out_path = out_path
         self._target_sr = target_sample_rate
         self._on_chunk = on_chunk
+        # ミュート中はこのチャンネルの WAV に実音声でなく無音を書く(設計: 録音側ミュート)。
+        # これにより、ミュート区間は STT・整文・話者分離・チャンク化・埋め込み・推論の
+        # いずれにも到達しない(無音 → VAD で除去)。ループバックがアイドル時にフレームを
+        # 落とし WAV 時間軸が圧縮される問題があっても、タイムスタンプ計算に依存せず確実。
+        self._mute_check = mute_check
         self._pa = pyaudio_instance  # 親 Recorder から共有される
         self._open_lock = open_lock or threading.Lock()
         self._stop = threading.Event()
@@ -196,6 +202,11 @@ class _ChannelRecorder:
                             x_old = np.linspace(0, 1, len(arr), endpoint=False)
                             x_new = np.linspace(0, 1, new_len, endpoint=False)
                             arr = np.interp(x_new, x_old, arr).astype(np.int16)
+                    # ミュート中はこのチャンネルを無音化して WAV に書く(実音声は残さない)。
+                    # WAV 長は実音声時と同じだけ進むが内容は無音なので、下流の STT 以降に
+                    # ミュート区間の発話が一切到達しない。
+                    if self._mute_check is not None and self._mute_check():
+                        arr = np.zeros_like(arr)
                     wf.writeframes(arr.tobytes())
                     chunk_count += 1
                     if chunk_count == 1:
@@ -271,6 +282,8 @@ class Recorder:
         system_index: Optional[int] = None,
         mic_on_chunk: Optional[Callable] = None,
         system_on_chunk: Optional[Callable] = None,
+        mic_mute_check: Optional[Callable[[], bool]] = None,
+        system_mute_check: Optional[Callable[[], bool]] = None,
     ) -> None:
         if mic_index is None:
             mic_index = find_default_mic_index()
@@ -295,14 +308,14 @@ class Recorder:
             self._mic = _ChannelRecorder(
                 mic_info, self._mic_path, self._sample_rate,
                 on_chunk=mic_on_chunk, pyaudio_instance=self._pa,
-                open_lock=open_lock,
+                open_lock=open_lock, mute_check=mic_mute_check,
             )
             self._mic.start()
         if sys_info is not None:
             self._sys = _ChannelRecorder(
                 sys_info, self._system_path, self._sample_rate,
                 on_chunk=system_on_chunk, pyaudio_instance=self._pa,
-                open_lock=open_lock,
+                open_lock=open_lock, mute_check=system_mute_check,
             )
             self._sys.start()
 

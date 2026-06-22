@@ -97,7 +97,10 @@ class RetrievalService:
                 score=score_by_id.get(rec.id, 0.0),
                 start_ms=hit_by_id[rec.id].start_ms,
                 end_ms=hit_by_id[rec.id].end_ms,
-                speaker=hit_by_id[rec.id].speaker,
+                # speaker は SQLite を正とする(話者リネームは SQLite を即時更新、
+                # Qdrant payload 更新は best-effort なので、payload 由来だと
+                # リネーム後に旧名が引用へ残りうる)。text と同じく rec から取る。
+                speaker=rec.speaker,
                 channel=hit_by_id[rec.id].channel,
             )
             for rec in records
