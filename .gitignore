@@ -21,6 +21,9 @@ qdrant/
 # Visual verification scratch dir (seed script + screenshots, never committed)
 .visual-verify-data/
 
+# Dev server scratch log (ad-hoc uvicorn runs during verification)
+.uvicorn-eval.log
+
 # Editor
 .vscode/
 .idea/

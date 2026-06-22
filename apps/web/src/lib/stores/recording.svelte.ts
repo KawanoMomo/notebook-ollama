@@ -22,11 +22,16 @@ export interface RecordingStore {
   readonly captions: LiveCaption[];
   readonly micLevel: number;
   readonly sysLevel: number;
+  readonly micMuted: boolean;
+  readonly systemMuted: boolean;
   readonly error: string | null;
   start(notebookId: string): Promise<void>;
   stop(): Promise<void>;
   toggleLiveCaption(): void;
+  toggleMute(channel: MuteChannel): void;
 }
+
+export type MuteChannel = 'mic' | 'system';
 
 const MAX_CAPTIONS = 200;
 
@@ -50,6 +55,8 @@ export function createRecordingStore(
   let captions = $state<LiveCaption[]>([]);
   let micLevel = $state(0);
   let sysLevel = $state(0);
+  let micMuted = $state(false);
+  let systemMuted = $state(false);
   let error = $state<string | null>(null);
 
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -90,6 +97,8 @@ export function createRecordingStore(
     captions = [];
     micLevel = 0;
     sysLevel = 0;
+    micMuted = false;
+    systemMuted = false;
     startedAt = 0;
   }
 
@@ -109,6 +118,13 @@ export function createRecordingStore(
         start_ms: Number(msg.start_ms ?? 0),
         is_final: Boolean(msg.is_final),
       };
+      // ミュート中チャンネルの新規字幕は追加しない(過去分は残す)。
+      // サーバ側でも送出は止まるが、操作直後の往復遅延で在庫フレームが
+      // 届く場合に備えた防御的ガード。ラベル「あなた」=mic / それ以外=system。
+      const capMuted = cap.label === 'あなた' ? micMuted : systemMuted;
+      if (capMuted) {
+        return;
+      }
       const idx = captions.findIndex((c) => c.id === cap.id);
       if (idx >= 0) {
         captions = captions.map((c, i) => (i === idx ? cap : c));
@@ -125,8 +141,27 @@ export function createRecordingStore(
       } else if (channel === 'system') {
         sysLevel = level;
       }
+    } else if (type === 'mute_state') {
+      // サーバからのミュート状態同期(確定値)。楽観更新と一致させる。
+      const channel = String(msg.channel ?? '');
+      const muted = Boolean(msg.muted);
+      if (channel === 'mic') {
+        micMuted = muted;
+      } else if (channel === 'system') {
+        systemMuted = muted;
+      }
     } else if (type === 'error') {
       error = String(msg.msg ?? 'recording error');
+    }
+  }
+
+  function sendMute(channel: MuteChannel, muted: boolean) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'mute', channel, muted }));
+      } catch {
+        // 送信失敗は無視(次回操作で再同期される)
+      }
     }
   }
 
@@ -175,6 +210,12 @@ export function createRecordingStore(
     },
     get sysLevel() {
       return sysLevel;
+    },
+    get micMuted() {
+      return micMuted;
+    },
+    get systemMuted() {
+      return systemMuted;
     },
     get error() {
       return error;
@@ -239,6 +280,16 @@ export function createRecordingStore(
     },
     toggleLiveCaption() {
       liveCaptionEnabled = !liveCaptionEnabled;
+    },
+    toggleMute(channel) {
+      const next = channel === 'mic' ? !micMuted : !systemMuted;
+      // 楽観更新(サーバの mute_state echo で確定)
+      if (channel === 'mic') {
+        micMuted = next;
+      } else {
+        systemMuted = next;
+      }
+      sendMute(channel, next);
     },
   };
 }
