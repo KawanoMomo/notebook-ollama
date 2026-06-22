@@ -186,6 +186,9 @@ def test_stop_persists_mute_intervals_json(client):
     out = session_dir / "mute_intervals.json"
     assert out.exists(), "mute_intervals.json was not written on stop"
     data = json.loads(out.read_text(encoding="utf-8"))
+    # version 1: alignment メタ + t0 相対の mic/system 区間
+    assert data["version"] == 1
+    assert data["wav_start_offset_ms"] == 0  # fake recorder は frame を出さない
     assert data["mic"] == [{"start_ms": 1000, "end_ms": 2000}]
     # the open system interval was closed by close_all at recording end
     assert len(data["system"]) == 1
@@ -214,7 +217,14 @@ def test_stop_writes_empty_mute_intervals_when_never_muted(client):
 
     out = session_dir / "mute_intervals.json"
     assert out.exists()
-    assert json.loads(out.read_text(encoding="utf-8")) == {"mic": [], "system": []}
+    # version 1 形状(version + wav_start_offset_ms + 空の mic/system 配列)。
+    # 実オーディオを録っていない(fake recorder)ので wav_t0 は未取得 -> offset 0。
+    assert json.loads(out.read_text(encoding="utf-8")) == {
+        "version": 1,
+        "wav_start_offset_ms": 0,
+        "mic": [],
+        "system": [],
+    }
 
 
 def test_retry_threads_auto_title_flag(client):

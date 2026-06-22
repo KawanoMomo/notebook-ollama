@@ -131,10 +131,26 @@ def test_write_mute_intervals_writes_json(tmp_path):
     assert out == rec_dir / "mute_intervals.json"
     assert out.exists()
     loaded = json.loads(out.read_text(encoding="utf-8"))
+    # version 1 形状: version + wav_start_offset_ms + mic/system 区間配列
     assert loaded == {
+        "version": 1,
+        "wav_start_offset_ms": 0,  # 既定(未指定)は 0
         "mic": [{"start_ms": 70000, "end_ms": 95000}],
         "system": [],
     }
+
+
+def test_write_mute_intervals_records_wav_start_offset(tmp_path):
+    ms = MuteState()
+    ms.set_muted("system", True, 1000)
+    ms.set_muted("system", False, 2000)
+    out = write_mute_intervals(ms, tmp_path / "rec", wav_start_offset_ms=137)
+    loaded = json.loads(out.read_text(encoding="utf-8"))
+    assert loaded["version"] == 1
+    assert loaded["wav_start_offset_ms"] == 137
+    # mic/system 区間は t0 相対のまま(オフセットは別フィールド)
+    assert loaded["mic"] == []
+    assert loaded["system"] == [{"start_ms": 1000, "end_ms": 2000}]
 
 
 def test_write_mute_intervals_creates_dir(tmp_path):
@@ -142,7 +158,12 @@ def test_write_mute_intervals_creates_dir(tmp_path):
     rec_dir = tmp_path / "does" / "not" / "exist"
     out = write_mute_intervals(ms, rec_dir)
     assert out.exists()
-    assert json.loads(out.read_text(encoding="utf-8")) == {"mic": [], "system": []}
+    assert json.loads(out.read_text(encoding="utf-8")) == {
+        "version": 1,
+        "wav_start_offset_ms": 0,
+        "mic": [],
+        "system": [],
+    }
 
 
 # --- handle_mute_command (WS の薄いロジック / 実オーディオ非依存) --------------

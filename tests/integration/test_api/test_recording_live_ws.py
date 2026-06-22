@@ -166,3 +166,28 @@ def test_ws_unknown_command_is_ignored_and_streaming_still_works(client):
     # no mute interval was opened by the ignored commands
     assert sess.extras["mute_state"].is_muted("mic") is False
     assert sess.extras["mute_state"].to_dict() == {"mic": [], "system": []}
+
+
+def test_ws_malformed_frame_does_not_kill_session(client):
+    """A non-JSON text frame must be ignored (not fatal): a subsequent valid mute
+    command over the SAME connection still works, and the stream keeps flowing."""
+    nb = _create_nb(client)
+    rid = _start_recording(client, nb)
+
+    sess = client.app.state.ctx.recordings.get(rid)
+    with client.websocket_connect(f"/ws/recordings/{rid}/live") as ws:
+        # garbage / non-JSON text frame -> ignored, connection stays alive
+        ws.send_text("this is not json {{{")
+        ws.send_text("")  # empty frame, also malformed JSON
+        # a valid mute command after the malformed frames still takes effect
+        ws.send_json({"type": "mute", "channel": "mic", "muted": True})
+        echo = _drain_until(ws, lambda m: m.get("type") == "mute_state")
+        assert echo == {"type": "mute_state", "channel": "mic", "muted": True}
+        # and server→client streaming still works after the malformed frames
+        cap = {"type": "caption", "id": "mic-1", "label": "あなた",
+               "text": "テスト", "start_ms": 0, "end_ms": 500}
+        sess.extras["queue"].put_nowait(cap)
+        got = _drain_until(ws, lambda m: m.get("type") == "caption")
+        assert got == cap
+
+    assert sess.extras["mute_state"].is_muted("mic") is True

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from core.logging import get_logger
 from core.recording.mute_state import handle_mute_command
 
 router = APIRouter()
+
+log = get_logger("recording.ws")
 
 
 def _now_ms(sess) -> int:
@@ -58,9 +62,21 @@ async def recording_live(ws: WebSocket, rid: str):
             await ws.send_json(msg)
 
     async def pump_incoming() -> None:
-        """Receive client control messages (currently only "mute")."""
+        """Receive client control messages (currently only "mute").
+
+        A malformed / non-JSON text frame must NOT kill the session: it is logged
+        and ignored, and the loop continues (so the live caption + level stream
+        keeps flowing). Only a genuine ``WebSocketDisconnect`` ends the loop.
+        """
         while True:
-            msg = await ws.receive_json()
+            raw = await ws.receive_text()  # raises WebSocketDisconnect on disconnect
+            try:
+                msg = json.loads(raw)
+            except (json.JSONDecodeError, ValueError, TypeError):
+                # Non-JSON / malformed text frame. Ignore it (do not terminate the
+                # connection); a well-behaved client is unaffected.
+                log.info("ws_ignored_malformed_frame", rid=rid)
+                continue
             cur = ctx.recordings.get(rid)
             if cur is None:
                 return  # recording stopped
@@ -84,20 +100,24 @@ async def recording_live(ws: WebSocket, rid: str):
     in_task = asyncio.create_task(pump_incoming())
     try:
         # Whichever pump finishes first (client disconnect / recording stopped /
-        # error) ends the session; the other is then cancelled.
+        # error) ends the session; the other is then cancelled. asyncio.wait does
+        # NOT re-raise task exceptions, so any WebSocketDisconnect surfaces below
+        # when we await the finished task (handled in the finally block).
         await asyncio.wait({out_task, in_task}, return_when=asyncio.FIRST_COMPLETED)
-    except WebSocketDisconnect:
-        pass
     finally:
         for t in (out_task, in_task):
             if not t.done():
                 t.cancel()
-        # Await cancellation so tasks don't leak; swallow cancellation and normal
-        # disconnects (a client closing the socket is expected teardown).
+        # Await each task so it doesn't leak and so its exception is retrieved.
+        # Cancellation and a normal client disconnect are expected teardown and
+        # swallowed silently; anything else is logged (never silently dropped).
         for t in (out_task, in_task):
             try:
                 await t
             except (asyncio.CancelledError, WebSocketDisconnect):
                 pass
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning(
+                    "ws_pump_task_error", rid=rid,
+                    error=f"{type(exc).__name__}: {exc}",
+                )

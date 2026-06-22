@@ -28,9 +28,9 @@ class MuteState:
       - ``_closed``: 確定済み区間 ``[{"start_ms", "end_ms"}, ...]``
 
     スレッド安全性: WS ハンドラ(イベントループ)からの更新と、live caption の
-    供給ゲート(録音スレッド)からの読み取りが並行しうる。bool 読み取りは
-    アトミックなので ``is_muted`` はロック不要。区間の開閉(リスト変更)は
-    ``_lock`` で保護する。
+    供給ゲート(録音スレッド)からの読み取りが並行しうる。区間の開閉(リスト変更)
+    と ``is_muted`` の読み取りはいずれも ``_lock`` で保護する(free-threaded ビルド
+    でも安全)。ロックは非競合なのでチャンク毎の取得でもコストは無視できる。
     """
 
     def __init__(self) -> None:
@@ -42,8 +42,14 @@ class MuteState:
         self._closed: dict[str, list[dict]] = {ch: [] for ch in CHANNELS}
 
     def is_muted(self, channel: str) -> bool:
-        """``channel`` が現在ミュート中か。未知チャンネルは常に False。"""
-        return bool(self._muted.get(channel, False))
+        """``channel`` が現在ミュート中か。未知チャンネルは常に False。
+
+        非競合な ``_lock`` を取って読む(オーディオチャンク毎の取得でも軽量)。
+        bool 読み取りは CPython の GIL 下では原子的だが、free-threaded ビルドでは
+        保証されないため、明示的にロックして安全側に倒す。
+        """
+        with self._lock:
+            return bool(self._muted.get(channel, False))
 
     def set_muted(self, channel: str, muted: bool, now_ms: int) -> bool:
         """``channel`` のミュート状態を ``muted`` に設定する。
@@ -129,17 +135,48 @@ def handle_mute_command(
     }
 
 
-def write_mute_intervals(mute_state: MuteState, recording_dir: Path) -> Path:
+# 永続化スキーマのバージョン。形状を変えたら上げる(2-BE2 がこれで読み分ける)。
+MUTE_INTERVALS_VERSION = 1
+
+
+def write_mute_intervals(
+    mute_state: MuteState,
+    recording_dir: Path,
+    *,
+    wav_start_offset_ms: int = 0,
+) -> Path:
     """``mute_state`` を ``recording_dir/mute_intervals.json`` へ永続化する。
 
     録音ディレクトリ(mic.wav / system.wav と同階層)にサイドカー JSON を書く。
     書き込んだパスを返す。
+
+    永続化形状(version 1):
+    ::
+
+        {
+          "version": 1,
+          "wav_start_offset_ms": <int>,
+          "mic":    [{"start_ms":.., "end_ms":..}, ...],
+          "system": [...]
+        }
+
+    - ``mic`` / ``system`` の区間 ms は従来どおり「録音開始(t0)= 0ms」相対。
+    - ``wav_start_offset_ms`` = (wav_t0 - t0) の ms。オフラインフィルタ(2-BE2)は
+      各区間 ms からこの値を **減算** して WAV 先頭相対 ms に変換する。WAV の時間
+      基準が不明なら 0(その場合 2-BE2 は仕様の保守的境界規則「重なれば除外」に
+      頼る)。
     """
     recording_dir = Path(recording_dir)
     recording_dir.mkdir(parents=True, exist_ok=True)
     out = recording_dir / "mute_intervals.json"
+    channels = mute_state.to_dict()
+    payload = {
+        "version": MUTE_INTERVALS_VERSION,
+        "wav_start_offset_ms": int(wav_start_offset_ms),
+        **channels,
+    }
     out.write_text(
-        json.dumps(mute_state.to_dict(), ensure_ascii=False, indent=2),
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return out

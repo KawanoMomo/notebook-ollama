@@ -146,6 +146,13 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     # 蓄積し、停止時に mute_intervals.json へ永続化する。
     sess.extras["mute_state"] = MuteState()
     sess.extras["t0"] = _time.perf_counter()
+    # wav_t0: the perf_counter at the moment the FIRST audio frame is actually
+    # captured. t0 (above) is taken BEFORE recorder.start(), so it precedes the
+    # device-open latency, while offline STT timestamps are relative to the first
+    # captured WAV frame. Capturing wav_t0 here lets the offline filter (2-BE2)
+    # align t0-relative mute intervals onto WAV-relative ms. Set on the first
+    # chunk callback of either channel (recorder thread); never reset afterwards.
+    sess.extras["wav_t0"] = None
 
     mic_lc = sys_lc = None
     live_active = False
@@ -180,9 +187,18 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     mute_state = sess.extras["mute_state"]
 
     # Live STT gating: ミュート中チャンネルのフレームは STT に渡さず、レベルメータも
-    # 止める(WS 側で level 0 をエコーして UI をグレーアウトする)。bool 読み取りは
-    # アトミックなのでロック不要。録音した WAV 自体は完全な原本として残る(M1)。
+    # 止める(WS 側で level 0 をエコーして UI をグレーアウトする)。is_muted は内部で
+    # ロックを取るのでスレッド安全。録音した WAV 自体は完全な原本として残る(M1)。
+    def _mark_wav_t0():
+        # First captured frame (either channel) anchors the WAV timebase. Set
+        # once; the chunk callbacks run on the recorder thread, but a benign
+        # double-set on a near-simultaneous first mic/system frame only shifts
+        # wav_t0 by sub-millisecond and never reopens it (we only set when None).
+        if sess.extras.get("wav_t0") is None:
+            sess.extras["wav_t0"] = _time.perf_counter()
+
     def on_mic_chunk(samples):
+        _mark_wav_t0()
         if mute_state.is_muted("mic"):
             return
         mic_meter(samples)
@@ -190,6 +206,7 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
             mic_lc.accept(samples)
 
     def on_system_chunk(samples):
+        _mark_wav_t0()
         if mute_state.is_muted("system"):
             return
         sys_meter(samples)
@@ -321,7 +338,20 @@ async def stop_recording(
             mute_state.close_all(now_ms=now_ms)
             from core.recording.mute_state import write_mute_intervals
 
-            write_mute_intervals(mute_state, sess.session_dir)
+            # wav_start_offset_ms = (wav_t0 - t0) in ms. 2-BE2 SUBTRACTS this from
+            # each interval ms to convert t0-relative -> WAV-relative. 0 when the
+            # WAV timebase is unknown (no frame ever captured, or t0 missing); in
+            # that case 2-BE2 must fall back to the spec conservative-boundary rule
+            # (any overlap => exclude).
+            wav_t0 = sess.extras.get("wav_t0")
+            if wav_t0 is not None and t0 is not None:
+                wav_start_offset_ms = int((wav_t0 - t0) * 1000)
+            else:
+                wav_start_offset_ms = 0
+            write_mute_intervals(
+                mute_state, sess.session_dir,
+                wav_start_offset_ms=wav_start_offset_ms,
+            )
         except Exception as exc:  # 永続化失敗で停止フローを止めない
             from core.logging import get_logger
 
