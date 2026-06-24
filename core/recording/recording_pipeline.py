@@ -88,6 +88,8 @@ class RecordingPipelineDeps:
     embedding_model: str
     broker: _BrokerLike | None = None
     embedding_model_getter: Callable[[], str] | None = None
+    # READY 直後に呼ばれる要約フック。失敗しても録音取込は READY を維持する。
+    summary_runner: Callable[[str], Any] | None = None
 
 
 def _token_counter(text: str) -> int:
@@ -396,6 +398,17 @@ class RecordingPipeline:
                 "recording_ingestion_complete",
                 source_id=source_id, chunk_count=total,
             )
+
+            # Best-effort: 要約フック(失敗しても READY は維持する)。
+            if self._deps.summary_runner is not None:
+                try:
+                    result = self._deps.summary_runner(source_id)
+                    if hasattr(result, "__await__"):
+                        await result
+                except Exception:
+                    log.warning(
+                        "recording_summary_runner_failed", source_id=source_id
+                    )
 
         except ConversionCancelled:
             # ユーザー停止: error("...停止...") に落として握りつぶす(再送出しない)。

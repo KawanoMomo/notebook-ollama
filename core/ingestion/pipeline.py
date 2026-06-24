@@ -32,6 +32,9 @@ class PipelineDeps:
     embedding_model: str
     broker: _BrokerLike | None = None
     embedding_model_getter: Callable[[], str] | None = None
+    # READY 直後に呼ばれる要約フック。失敗しても取込は READY を維持する。
+    # アプリ層で SummaryJob.run を asyncio.create_task でラップして渡す想定。
+    summary_runner: Callable[[str], Any] | None = None
 
 
 class IngestionPipeline:
@@ -129,6 +132,15 @@ class IngestionPipeline:
                 source_id=source_id,
                 chunk_count=len(chunk_records),
             )
+
+            # Best-effort: 要約フックを呼ぶ。失敗しても READY は維持する。
+            if self._deps.summary_runner is not None:
+                try:
+                    result = self._deps.summary_runner(source_id)
+                    if hasattr(result, "__await__"):
+                        await result
+                except Exception:
+                    log.warning("summary_runner_failed", source_id=source_id)
 
         except AppError as exc:
             update_source_status(conn, source_id, status=SourceStatus.ERROR, error_msg=exc.message)
