@@ -15,6 +15,7 @@ from core.retrieval.search import RetrievalService
 from core.settings_store import load_overrides
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
+from core.summary.summarizer import SummaryDeps, SummaryJob
 
 _DEFAULT_EMBEDDING_DIM = 1024  # bge-m3
 
@@ -54,6 +55,7 @@ class AppContext:
     generation: GenerationService
     recordings: RecordingRegistry
     recording_pipeline: RecordingPipeline
+    summary_runner: object  # async callable: (source_id: str) -> awaitable
 
 
 def build_context(config: AppConfig) -> AppContext:
@@ -73,6 +75,24 @@ def build_context(config: AppConfig) -> AppContext:
         embedding_options=config.ollama.embedding_options or None,
     )
     sse_broker = SseBroker()
+
+    summary_job = SummaryJob(
+        deps=SummaryDeps(
+            conn=conn,
+            llm=gateway,
+            model=config.ollama.default_model,
+            broker=sse_broker,
+        )
+    )
+
+    async def _summary_runner(source_id: str) -> None:
+        # Best-effort: 失敗しても呼び出し元(取込パイプライン or summarize endpoint)を
+        # 巻き込まない。SummaryJob 内部で status を error に落とす。
+        try:
+            await summary_job.run(source_id=source_id)
+        except Exception:
+            pass
+
     pipeline = IngestionPipeline(
         deps=PipelineDeps(
             conn=conn,
@@ -81,6 +101,7 @@ def build_context(config: AppConfig) -> AppContext:
             embedding_model=config.ollama.embedding_model,
             embedding_model_getter=lambda: config.ollama.embedding_model,
             broker=sse_broker,
+            summary_runner=_summary_runner,
         )
     )
     retrieval = RetrievalService(
@@ -100,6 +121,7 @@ def build_context(config: AppConfig) -> AppContext:
             embedding_model=config.ollama.embedding_model,
             embedding_model_getter=lambda: config.ollama.embedding_model,
             broker=sse_broker,
+            summary_runner=_summary_runner,
         )
     )
     return AppContext(
@@ -113,4 +135,5 @@ def build_context(config: AppConfig) -> AppContext:
         generation=generation,
         recordings=recordings,
         recording_pipeline=recording_pipeline,
+        summary_runner=_summary_runner,
     )

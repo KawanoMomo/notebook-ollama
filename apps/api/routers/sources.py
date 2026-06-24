@@ -88,6 +88,10 @@ def _to_schema(rec, sources_dir) -> Source:
         page_count=rec.page_count,
         chunk_count=rec.chunk_count,
         has_audio=_has_recording_audio(rec, sources_dir),
+        summary=rec.summary,
+        summary_status=(
+            rec.summary_status.value if rec.summary_status is not None else None
+        ),
         created_at=rec.created_at,
         updated_at=rec.updated_at,
     )
@@ -350,6 +354,37 @@ async def get_source_content(
         for s in doc.sections
     ]
     return DocumentContent(sections=sections)
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/summarize",
+    status_code=202,
+    response_model=Source,
+)
+async def summarize_source(
+    request: Request,
+    background: BackgroundTasks,
+    notebook_id: str,
+    source_id: str,
+) -> Source:
+    """summary_status を generating にリセットして SummaryJob を再起動する。
+
+    要約が ready/error/未生成 のいずれの状態からでも呼べる(手動再生成用)。
+    アプリ層に summary_runner が無い構成では status だけ反映して終了する。
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    sources_repo.update_source_summary_status(
+        ctx.conn,
+        source_id,
+        status=sources_repo.SummaryStatus.GENERATING,
+    )
+    summary_runner = getattr(ctx, "summary_runner", None)
+    if summary_runner is not None:
+        background.add_task(summary_runner, source_id)
+    return _to_schema(sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir)
 
 
 @router.post("/{notebook_id}/sources/{source_id}/retry", response_model=Source)

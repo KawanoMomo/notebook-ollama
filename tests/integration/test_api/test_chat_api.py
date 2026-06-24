@@ -46,7 +46,8 @@ def test_chat_streaming_returns_sse(client):
         router.post("http://fake/api/chat").mock(return_value=httpx.Response(200, content=payloads))
         r = client.post(
             f"/api/notebooks/{nb_id}/conversations/{conv_id}/messages",
-            json={"content": "質問"},
+            # source_ids が空だと 400 (旧「空=全選択」廃止 §3) のため、ダミー1件を渡す
+            json={"content": "質問", "source_ids": ["SRC_DUMMY"]},
         )
         assert r.status_code == 200
         body = r.text

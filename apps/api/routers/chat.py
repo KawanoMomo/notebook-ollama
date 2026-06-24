@@ -85,6 +85,16 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
 
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "conversation not in notebook")
 
+    # source_ids が空 or 未指定の場合は 400(旧「空=全選択」挙動は廃止)。
+    # SSE 開始後の例外は 500 化するため、EventSourceResponse を返す前に検査する。
+    if not body.source_ids:
+        from core.exceptions import AppError, ErrorCode
+
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "ソースが選択されていません。1 つ以上選んでください。",
+        )
+
     user_msg = messages_repo.append_message(
         ctx.conn, conversation_id=conv.id, role="user", content=body.content
     )
