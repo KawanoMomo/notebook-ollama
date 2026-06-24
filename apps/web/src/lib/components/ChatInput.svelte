@@ -1,16 +1,26 @@
 <script lang="ts">
   import Button from './Button.svelte';
-  import { Send, Square } from '@lucide/svelte';
+  import { Send, Square, AlertCircle } from '@lucide/svelte';
 
   interface Props {
     streaming: boolean;
     hint?: string | null;
+    /** 現在チェック済みのソース数(0 の場合は送信不可+警告)。 */
+    sourcesSelected?: number;
     onSend: (text: string) => void;
     onCancel: () => void;
   }
-  let { streaming, hint = null, onSend, onCancel }: Props = $props();
+  let {
+    streaming,
+    hint = null,
+    sourcesSelected = 1,
+    onSend,
+    onCancel,
+  }: Props = $props();
 
   let value = $state('');
+
+  const noSourcesSelected = $derived(sourcesSelected <= 0);
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -21,6 +31,7 @@
 
   function submit() {
     if (streaming) return;
+    if (noSourcesSelected) return;
     const t = value.trim();
     if (!t) return;
     onSend(t);
@@ -28,6 +39,12 @@
   }
 </script>
 
+{#if noSourcesSelected}
+  <div class="warn" role="alert">
+    <AlertCircle size="14" />
+    <span>ソースが選択されていません。1 つ以上選んでください。</span>
+  </div>
+{/if}
 <form class="input" onsubmit={(e) => { e.preventDefault(); submit(); }}>
   <textarea
     bind:value
@@ -42,7 +59,7 @@
         <Square size={14} /> 停止
       </Button>
     {:else}
-      <Button type="submit">
+      <Button type="submit" disabled={noSourcesSelected}>
         <Send size={14} /> 送信
       </Button>
     {/if}
@@ -77,5 +94,16 @@
   .hint {
     font-size: 11px;
     color: var(--color-fg-muted);
+  }
+  .warn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: #fff7ed;
+    color: #c2410c;
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid #fed7aa;
+    border-bottom: 1px solid #fed7aa;
+    font-size: 12px;
   }
 </style>

@@ -25,6 +25,7 @@
   hint={conversationStore.messages.length > 0
     ? `履歴: 直近${Math.min(3, Math.floor(conversationStore.messages.length / 2))}往復が含まれます`
     : null}
+  sourcesSelected={currentNotebookStore.selectedSourceIds.size}
   {onSend}
   onCancel={() => conversationStore.cancel()}
 />

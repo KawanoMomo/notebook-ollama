@@ -50,6 +50,8 @@ export type SourceKind =
   | "txt"
   | "recording";
 
+export type SummaryStatus = 'generating' | 'ready' | 'error';
+
 export interface Source {
   id: string;
   notebook_id: string;
@@ -65,6 +67,8 @@ export interface Source {
   /** Transient field populated from SSE during the embedding phase. */
   embedded?: number | null;
   duration_ms?: number | null;
+  summary?: string | null;
+  summary_status?: SummaryStatus | null;
   created_at: string;
   updated_at: string;
 }

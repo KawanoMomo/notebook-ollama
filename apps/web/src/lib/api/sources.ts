@@ -44,4 +44,10 @@ export const sourcesApi = {
   /** 録音音声のストリーミング URL(same-origin / dev は vite proxy で解決)。 */
   audioUrl: (notebookId: string, sourceId: string, channel: 'mic' | 'system') =>
     `/api/notebooks/${notebookId}/sources/${sourceId}/audio?channel=${channel}`,
+  /** 要約の再生成(summary_status=generating にリセットして BE で再実行)。 */
+  summarize: (notebookId: string, sourceId: string) =>
+    request<Source>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/summarize`,
+      { method: 'POST' },
+    ),
 };
