@@ -18,6 +18,12 @@ class SourceStatus(StrEnum):
     ERROR = "error"
 
 
+class SummaryStatus(StrEnum):
+    GENERATING = "generating"
+    READY = "ready"
+    ERROR = "error"
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -35,11 +41,16 @@ class SourceRecord:
     bytes: int | None
     page_count: int | None
     chunk_count: int | None
+    summary: str | None
+    summary_status: SummaryStatus | None
     created_at: str
     updated_at: str
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> SourceRecord:
+        keys = row.keys()
+        summary = row["summary"] if "summary" in keys else None
+        raw_status = row["summary_status"] if "summary_status" in keys else None
         return cls(
             id=row["id"],
             notebook_id=row["notebook_id"],
@@ -52,6 +63,8 @@ class SourceRecord:
             bytes=row["bytes"],
             page_count=row["page_count"],
             chunk_count=row["chunk_count"],
+            summary=summary,
+            summary_status=SummaryStatus(raw_status) if raw_status else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -126,6 +139,35 @@ def update_source_status(
             _now(),
             source_id,
         ),
+    )
+    return get_source(conn, source_id)
+
+
+def update_source_summary_status(
+    conn: sqlite3.Connection,
+    source_id: str,
+    *,
+    status: SummaryStatus,
+) -> SourceRecord:
+    get_source(conn, source_id)
+    conn.execute(
+        "UPDATE sources SET summary_status=?, updated_at=? WHERE id=?",
+        (status.value, _now(), source_id),
+    )
+    return get_source(conn, source_id)
+
+
+def update_source_summary(
+    conn: sqlite3.Connection,
+    source_id: str,
+    *,
+    summary: str,
+) -> SourceRecord:
+    """Persist the summary text and transition status to READY in one call."""
+    get_source(conn, source_id)
+    conn.execute(
+        "UPDATE sources SET summary=?, summary_status=?, updated_at=? WHERE id=?",
+        (summary, SummaryStatus.READY.value, _now(), source_id),
     )
     return get_source(conn, source_id)
 

@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS sources (
     bytes        INTEGER,
     page_count   INTEGER,
     chunk_count  INTEGER,
+    summary      TEXT,
+    summary_status TEXT,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
     UNIQUE(notebook_id, content_hash)
