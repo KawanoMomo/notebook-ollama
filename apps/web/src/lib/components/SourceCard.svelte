@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
   import { sourcesApi } from '$lib/api/sources';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -18,8 +18,16 @@
     onRename?: (id: string, title: string) => void;
     // 進行中の録音変換を停止する(録音 && 変換中のみ表示)。任意。
     onStopConversion?: () => void;
+    // ソースガイド(要約)。展開状態は親で制御する(クリックで開閉、選択でも自動展開)。
+    guideExpanded?: boolean;
+    onGuideToggle?: () => void;
+    onSummarize?: () => void;
   }
-  let { source, selected, onToggle, onSelect, onRetry, onReembed, onDelete, onRename, onStopConversion }: Props = $props();
+  let {
+    source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
+    onRename, onStopConversion,
+    guideExpanded = false, onGuideToggle, onSummarize,
+  }: Props = $props();
 
   const KIND_ICON: Record<string, typeof FileText> = {
     pdf: FileText,
@@ -221,6 +229,51 @@
     {/key}
   </div>
 {/if}
+{#if onGuideToggle}
+  <div class="guide">
+    <div class="guide-head">
+      <button
+        class="guide-toggle"
+        onclick={onGuideToggle}
+        aria-label="ソースガイドを開閉"
+      >
+        <span class="caret" class:open={guideExpanded}>
+          <ChevronRight size="12" />
+        </span>
+        <span class="guide-title">ソースガイド</span>
+      </button>
+      {#if onSummarize}
+        <button
+          class="icon guide-regen"
+          onclick={onSummarize}
+          aria-label="要約を再生成"
+          title="要約を再生成"
+        >
+          <RefreshCw size="12" />
+        </button>
+      {/if}
+    </div>
+    {#if guideExpanded}
+      <div class="guide-body">
+        {#if source.summary_status === 'generating'}
+          <div class="skeleton">
+            <span></span><span></span><span></span>
+          </div>
+          <p class="guide-hint"><Spinner size={12} /> 要約を生成中…</p>
+        {:else if source.summary_status === 'error'}
+          <p class="guide-err">
+            <AlertCircle size="12" color="var(--color-error)" />
+            生成に失敗しました(3 回)
+          </p>
+        {:else if source.summary}
+          <p class="guide-text">{source.summary}</p>
+        {:else}
+          <p class="guide-hint">要約はまだ生成されていません</p>
+        {/if}
+      </div>
+    {/if}
+  </div>
+{/if}
 </div>
 
 <style>
@@ -356,5 +409,95 @@
   .audio {
     width: 100%;
     height: 32px;
+  }
+  .guide {
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
+  }
+  .guide-head {
+    display: flex;
+    align-items: center;
+    padding: 4px var(--space-3) 4px 28px;
+    gap: var(--space-2);
+  }
+  .guide-toggle {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 0;
+    color: var(--color-fg-muted);
+    font-size: 11px;
+    text-align: left;
+  }
+  .guide-toggle:hover {
+    color: var(--color-fg);
+  }
+  .caret {
+    display: inline-flex;
+    transition: transform 0.15s;
+  }
+  .caret.open {
+    transform: rotate(90deg);
+  }
+  .guide-title {
+    font-weight: 500;
+  }
+  .guide-regen {
+    padding: 2px;
+  }
+  .guide-body {
+    padding: 0 var(--space-3) var(--space-2) 28px;
+    font-size: 12px;
+    color: var(--color-fg);
+  }
+  .guide-text {
+    margin: 0;
+    line-height: 1.55;
+  }
+  .guide-hint {
+    margin: 0;
+    color: var(--color-fg-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .guide-err {
+    margin: 0;
+    color: var(--color-error);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 4px;
+  }
+  .skeleton > span {
+    height: 8px;
+    background: linear-gradient(
+      90deg,
+      var(--color-bg-elevated) 25%,
+      var(--color-border) 50%,
+      var(--color-bg-elevated) 75%
+    );
+    background-size: 200% 100%;
+    border-radius: 4px;
+    animation: skel 1.4s infinite linear;
+  }
+  .skeleton > span:nth-child(2) {
+    width: 85%;
+  }
+  .skeleton > span:nth-child(3) {
+    width: 65%;
+  }
+  @keyframes skel {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 </style>
