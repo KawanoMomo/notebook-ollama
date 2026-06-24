@@ -99,6 +99,20 @@
     }
   }
 
+  async function onStopConversion(s: Source) {
+    // 進行中の録音変換を停止。BE は即座に error("変換を停止しました") へ落とすので、
+    // 最新 Source を取り直してカードに反映する(SSE でも追従するが即時性のため)。
+    try {
+      await sourcesApi.cancelConversion(notebookId, s.id);
+      const fresh = await sourcesApi.list(notebookId);
+      const updated = fresh.find((x) => x.id === s.id);
+      if (updated) currentNotebookStore.upsertSource(updated);
+      pushToast('変換を停止しました', 'info');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function onRetry(s: Source) {
     if (s.kind === 'recording') {
       await onReembed(s);
@@ -184,6 +198,7 @@
         onSelect={() => onSourceSelect(s.id)}
         onRetry={() => onRetry(s)}
         onReembed={() => onReembed(s)}
+        onStopConversion={() => onStopConversion(s)}
         onDelete={() => onDelete(s)}
         onRename={(id, title) => onRename(s, title)}
       />

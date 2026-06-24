@@ -35,4 +35,13 @@ export const sourcesApi = {
       `/api/notebooks/${notebookId}/recordings/${sourceId}/retry`,
       { method: 'POST' },
     ),
+  /** 進行中の録音変換に停止を要求する(次のチェックポイントで中断 → error)。 */
+  cancelConversion: (notebookId: string, sourceId: string) =>
+    request<{ source_id: string; status: string; cancelled: boolean }>(
+      `/api/notebooks/${notebookId}/recordings/${sourceId}/cancel`,
+      { method: 'POST' },
+    ),
+  /** 録音音声のストリーミング URL(same-origin / dev は vite proxy で解決)。 */
+  audioUrl: (notebookId: string, sourceId: string, channel: 'mic' | 'system') =>
+    `/api/notebooks/${notebookId}/sources/${sourceId}/audio?channel=${channel}`,
 };

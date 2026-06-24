@@ -18,6 +18,7 @@ try/except エラーハンドリングのパターンをミラーしている。
 from __future__ import annotations
 
 import sqlite3
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -44,6 +45,15 @@ _MIC_SPEAKER = "あなた"
 _SYSTEM_SPEAKER = "相手"
 _MIC_CHANNEL = "mic"
 _SYSTEM_CHANNEL = "system"
+
+_CANCELLED_MSG = "変換を停止しました"
+
+
+class ConversionCancelled(Exception):
+    """ユーザーがオフライン変換の停止を要求したことを表す内部シグナル。
+
+    run() はステップ境界 / 埋め込みループでこれを送出し、except で status=error に
+    落として握りつぶす(background task なので再送出しない)。"""
 
 
 class _GatewayLike(Protocol):
@@ -92,6 +102,28 @@ def _token_counter(text: str) -> int:
 class RecordingPipeline:
     def __init__(self, *, deps: RecordingPipelineDeps) -> None:
         self._deps = deps
+        # 進行中変換の協調キャンセル用。endpoint が request_cancel で source_id を
+        # 積み、run がステップ境界で is_cancelled を見て中断する。run/endpoint は同一
+        # イベントループだが、将来 STT 等をスレッドに退避しても安全なよう lock を持つ。
+        self._cancelled: set[str] = set()
+        self._cancel_lock = threading.Lock()
+
+    def request_cancel(self, source_id: str) -> None:
+        """進行中の変換に停止を要求する(次のチェックポイントで中断)。"""
+        with self._cancel_lock:
+            self._cancelled.add(source_id)
+
+    def is_cancelled(self, source_id: str) -> bool:
+        with self._cancel_lock:
+            return source_id in self._cancelled
+
+    def _clear_cancel(self, source_id: str) -> None:
+        with self._cancel_lock:
+            self._cancelled.discard(source_id)
+
+    def _check_cancel(self, source_id: str) -> None:
+        if self.is_cancelled(source_id):
+            raise ConversionCancelled
 
     def _embedding_model(self) -> str:
         getter = self._deps.embedding_model_getter
@@ -138,6 +170,7 @@ class RecordingPipeline:
         speaker_channel: dict[str, str] = {}
 
         try:
+            self._check_cancel(source_id)
             update_source_status(conn, source_id, status=SourceStatus.PARSING)
 
             # --- 1. transcribe -------------------------------------------------
@@ -171,6 +204,7 @@ class RecordingPipeline:
                 notebook_id=notebook_id, source_id=source_id, step="transcribe",
                 label="文字起こし完了", progress=0.25, status=SourceStatus.PARSING.value,
             )
+            self._check_cancel(source_id)
 
             # --- 2. diarize (system のみ) -------------------------------------
             system_segments: list[Segment] = []
@@ -271,6 +305,7 @@ class RecordingPipeline:
                     log.warning("recording_auto_title_failed", source_id=source_id)
 
             # --- 5. chunk ------------------------------------------------------
+            self._check_cancel(source_id)
             update_source_status(conn, source_id, status=SourceStatus.CHUNKING)
             await self._publish(
                 notebook_id=notebook_id, source_id=source_id, step="chunk",
@@ -293,6 +328,7 @@ class RecordingPipeline:
             records: list[ChunkRecord] = []
             vectors: list[ChunkVector] = []
             for chunk in chunks:
+                self._check_cancel(source_id)
                 vec = await self._deps.ollama.embed(
                     model=self._embedding_model(), text=chunk.text
                 )
@@ -313,6 +349,7 @@ class RecordingPipeline:
                     end_ms=chunk.end_ms, speaker=chunk.speaker, channel=channel,
                 ))
 
+            self._check_cancel(source_id)
             if records:
                 insert_chunks(conn, records)
             if vectors:
@@ -360,6 +397,19 @@ class RecordingPipeline:
                 source_id=source_id, chunk_count=total,
             )
 
+        except ConversionCancelled:
+            # ユーザー停止: error("...停止...") に落として握りつぶす(再送出しない)。
+            update_source_status(
+                conn, source_id, status=SourceStatus.ERROR, error_msg=_CANCELLED_MSG
+            )
+            try:
+                await self._publish(
+                    notebook_id=notebook_id, source_id=source_id, step="error",
+                    label="停止しました", progress=1.0, status=SourceStatus.ERROR.value,
+                )
+            except Exception:
+                pass
+            log.info("recording_ingestion_cancelled", source_id=source_id)
         except Exception as exc:  # background task: 例外は status に記録して握りつぶす
             update_source_status(
                 conn, source_id, status=SourceStatus.ERROR, error_msg=str(exc)
@@ -372,3 +422,7 @@ class RecordingPipeline:
             except Exception:
                 pass
             log.exception("recording_ingestion_failed", source_id=source_id)
+        finally:
+            # 成否に関わらず停止フラグをクリアし、後続の再試行が事前キャンセル状態に
+            # ならないようにする。
+            self._clear_cancel(source_id)

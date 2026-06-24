@@ -381,6 +381,45 @@ async def retry_recording(
     return {"source_id": source_id, "status": "processing"}
 
 
+@router.post("/api/notebooks/{notebook_id}/recordings/{source_id}/cancel")
+async def cancel_recording(request: Request, notebook_id: str, source_id: str):
+    """進行中のオフライン変換に停止を要求する。
+
+    パイプラインは次のチェックポイント(ステップ境界 / 埋め込みループ)で中断し、
+    status=error("変換を停止しました") に落ちる。即時の UI フィードバックのため、
+    処理中(parsing/chunking/embedding)なら即座に error へ反映する(変換チェックが
+    処理中状態を上書きしないよう、パイプライン側は status 書き込み前に停止を見る)。
+    同期 STT の最中だけはその呼び出しが返るまで停止が効かない。
+    """
+    from core.exceptions import AppError
+
+    ctx = request.app.state.ctx
+    try:
+        src = sources_repo.get_source(ctx.conn, source_id)
+    except AppError:
+        raise HTTPException(status_code=404, detail="source not found")
+    if src.notebook_id != notebook_id:
+        raise HTTPException(status_code=404, detail="source not in notebook")
+    if src.kind != "recording":
+        raise HTTPException(status_code=422, detail="source is not a recording")
+
+    pipeline = getattr(ctx, "recording_pipeline", None)
+    if pipeline is not None and hasattr(pipeline, "request_cancel"):
+        pipeline.request_cancel(source_id)
+
+    processing = {
+        sources_repo.SourceStatus.PARSING,
+        sources_repo.SourceStatus.CHUNKING,
+        sources_repo.SourceStatus.EMBEDDING,
+    }
+    if src.status in processing:
+        sources_repo.update_source_status(
+            ctx.conn, source_id,
+            status=sources_repo.SourceStatus.ERROR, error_msg="変換を停止しました",
+        )
+    return {"source_id": source_id, "status": "error", "cancelled": True}
+
+
 @router.put("/api/notebooks/{notebook_id}/recordings/{rid}/live-gain")
 async def live_gain(request: Request, notebook_id: str, rid: str):
     """Set the manual boost (dB) applied to mic/system live caption workers.

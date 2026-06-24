@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil } from '@lucide/svelte';
+  import { sourcesApi } from '$lib/api/sources';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -15,8 +16,10 @@
     // optional にして CR.4 単独でも SourcesPanel の callsite が型エラーにならないようにする
     // (CR.5 で実ハンドラを配線する)。
     onRename?: (id: string, title: string) => void;
+    // 進行中の録音変換を停止する(録音 && 変換中のみ表示)。任意。
+    onStopConversion?: () => void;
   }
-  let { source, selected, onToggle, onSelect, onRetry, onReembed, onDelete, onRename }: Props = $props();
+  let { source, selected, onToggle, onSelect, onRetry, onReembed, onDelete, onRename, onStopConversion }: Props = $props();
 
   const KIND_ICON: Record<string, typeof FileText> = {
     pdf: FileText,
@@ -60,6 +63,12 @@
       source.status === 'ready' &&
       source.has_audio === true,
   );
+
+  // 録音音声の再生(録音 && 音源あり)。めったに使わない機能なので、再生ボタンで
+  // インラインの小さな <audio> を開閉するだけの最小 UI。
+  const canPlay = $derived(source.kind === 'recording' && source.has_audio === true);
+  let showPlayer = $state(false);
+  let playChannel = $state<'mic' | 'system'>('mic');
 
   // インライン題名編集。鉛筆クリックで editing=true、Enter/blur で確定、Esc で取消。
   // 確定値が空 or 変更なしなら API を呼ばない (no-op)。
@@ -157,6 +166,11 @@
     </button>
   </div>
   <div class="actions">
+    {#if showConvStatus && onStopConversion}
+      <button class="icon" onclick={onStopConversion} aria-label="変換を停止" title="変換を停止">
+        <Square size="13" />
+      </button>
+    {/if}
     {#if source.status === 'error'}
       <button class="icon" onclick={onRetry} aria-label="再試行">
         <RefreshCw size="14" />
@@ -167,6 +181,17 @@
         <RefreshCw size="14" />
       </button>
     {/if}
+    {#if canPlay}
+      <button
+        class="icon"
+        class:on={showPlayer}
+        onclick={() => (showPlayer = !showPlayer)}
+        aria-label="録音を再生"
+        title="録音を再生"
+      >
+        <Play size="14" />
+      </button>
+    {/if}
     <button class="icon danger" onclick={onDelete} aria-label="削除">
       <Trash2 size="14" />
     </button>
@@ -174,6 +199,27 @@
 </div>
 {#if showConvStatus}
   <RecordingConvStatus sourceId={source.id} />
+{/if}
+{#if showPlayer && canPlay}
+  <div class="player">
+    <div class="player-tabs">
+      <button class="tab" class:active={playChannel === 'mic'} onclick={() => (playChannel = 'mic')}>
+        あなた
+      </button>
+      <button class="tab" class:active={playChannel === 'system'} onclick={() => (playChannel = 'system')}>
+        相手
+      </button>
+    </div>
+    {#key playChannel}
+      <!-- svelte-ignore a11y_media_has_caption -->
+      <audio
+        class="audio"
+        controls
+        preload="none"
+        src={sourcesApi.audioUrl(source.notebook_id, source.id, playChannel)}
+      ></audio>
+    {/key}
+  </div>
 {/if}
 </div>
 
@@ -277,5 +323,38 @@
   }
   .icon.danger:hover {
     color: var(--color-error);
+  }
+  .icon.on {
+    background: var(--color-bg-elevated);
+    color: var(--color-fg);
+  }
+  .player {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .player-tabs {
+    display: flex;
+    gap: var(--space-1);
+  }
+  .tab {
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-fg-muted);
+    font-size: 11px;
+    padding: 1px var(--space-2);
+    cursor: pointer;
+  }
+  .tab.active {
+    border-color: var(--color-accent);
+    color: var(--color-fg);
+  }
+  .audio {
+    width: 100%;
+    height: 32px;
   }
 </style>
