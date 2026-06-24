@@ -80,33 +80,43 @@ fi
 # ---------------------------------------------------------------------------
 echo "[start] Checking required models..."
 
-# Determine configured default_model from config.json if available
+# Read user-selected models from settings.json (the file the app actually
+# writes). It is sparse, so missing keys fall back to the defaults below.
 DEFAULT_MODEL="qwen2.5:14b"
-CONFIG_FILE="${DATA_DIR}/config.json"
-if [ -f "$CONFIG_FILE" ]; then
-    parsed=$(python3 -c "
-import json, sys
+EMBEDDING_MODEL="bge-m3"
+SETTINGS_FILE="${DATA_DIR}/settings.json"
+if [ -f "$SETTINGS_FILE" ]; then
+    dm=$(python3 -c "
+import json
 try:
-    cfg = json.load(open('${CONFIG_FILE}'))
+    cfg = json.load(open('${SETTINGS_FILE}'))
     print(cfg.get('ollama', {}).get('default_model', ''))
 except Exception:
     pass
 " 2>/dev/null || true)
-    if [ -n "$parsed" ]; then
-        DEFAULT_MODEL="$parsed"
-    fi
+    [ -n "$dm" ] && DEFAULT_MODEL="$dm"
+    em=$(python3 -c "
+import json
+try:
+    cfg = json.load(open('${SETTINGS_FILE}'))
+    print(cfg.get('ollama', {}).get('embedding_model', ''))
+except Exception:
+    pass
+" 2>/dev/null || true)
+    [ -n "$em" ] && EMBEDDING_MODEL="$em"
 fi
-
-EMBEDDING_MODEL="bge-m3"
 
 TAGS_JSON=$(curl -sf --max-time 10 "http://localhost:11434/api/tags" 2>/dev/null || true)
 if [ -n "$TAGS_JSON" ]; then
-    # Check embedding model
+    # Check embedding model. Ollama reports names as 'name:tag' (e.g.
+    # 'bge-m3:latest'); when the wanted name has no tag, match on the base name.
     if ! echo "$TAGS_JSON" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 names = [m['name'] for m in data.get('models', [])]
-sys.exit(0 if '${EMBEDDING_MODEL}' in names else 1)
+w = '${EMBEDDING_MODEL}'
+present = w in names or (':' not in w and any(n.split(':', 1)[0] == w for n in names))
+sys.exit(0 if present else 1)
 " 2>/dev/null; then
         echo "[start] WARNING: Embedding model '${EMBEDDING_MODEL}' not found."
         echo "        Run: ollama pull ${EMBEDDING_MODEL}"
@@ -114,13 +124,15 @@ sys.exit(0 if '${EMBEDDING_MODEL}' in names else 1)
         echo "[start] Embedding model '${EMBEDDING_MODEL}' OK."
     fi
 
-    # Check LLM
+    # Check LLM (same base-name matching as the embedding model)
     if ! echo "$TAGS_JSON" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 names = [m['name'] for m in data.get('models', [])]
+def present(w):
+    return w in names or (':' not in w and any(n.split(':', 1)[0] == w for n in names))
 candidates = ['${DEFAULT_MODEL}', 'qwen2.5:14b']
-sys.exit(0 if any(c in names for c in candidates) else 1)
+sys.exit(0 if any(present(c) for c in candidates) else 1)
 " 2>/dev/null; then
         echo "[start] WARNING: LLM model '${DEFAULT_MODEL}' (or qwen2.5:14b) not found."
         echo "        Run: ollama pull ${DEFAULT_MODEL}"
@@ -175,10 +187,11 @@ cleanup() {
 if [ "$BACKGROUND" = true ]; then
     echo "[start] Starting server in background (log -> ${LOG_FILE})..."
     cd "$PROJECT_ROOT"
+    # Single process: Qdrant local mode keeps an exclusive lock, so multiple
+    # uvicorn workers cannot share the storage. Do NOT add --workers.
     uv run uvicorn apps.api.main:app \
         --host 127.0.0.1 \
         --port "$PORT" \
-        --workers 1 \
         >> "$LOG_FILE" 2>&1 &
     SERVER_PID=$!
     echo "$SERVER_PID" > "$PID_FILE"
@@ -212,8 +225,7 @@ else
 
     uv run uvicorn apps.api.main:app \
         --host 127.0.0.1 \
-        --port "$PORT" \
-        --workers 1 &
+        --port "$PORT" &
     SERVER_PID=$!
     echo "$SERVER_PID" > "$PID_FILE"
 

@@ -29,7 +29,7 @@ Write-Host "[install] Task name: $TaskName"
 # ---------------------------------------------------------------------------
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
-    Write-Host "[install] Task '$TaskName' already exists — replacing it." -ForegroundColor Yellow
+    Write-Host "[install] Task '$TaskName' already exists - replacing it." -ForegroundColor Yellow
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
