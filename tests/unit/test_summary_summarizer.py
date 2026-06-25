@@ -160,5 +160,60 @@ async def test_chunk_text_is_truncated_to_token_limit(conn):
     assert len(sent_prompt) < len(long_chunk)
 
 
+# --- プロンプト設計の検証(deep-research §案A+B ハイブリッド) ---
+
+
+@pytest.mark.asyncio
+async def test_prompt_enforces_faithful_compression_and_format(conn):
+    """プロンプトに『資料外補完禁止』『箇条書き禁止』『思考過程出力禁止』
+    『3〜5 文』が含まれる。faithfulness と一貫性の両側面。"""
+    src = _make_source_with_chunks(conn, chunks=["本文 A", "本文 B"])
+    llm = _FakeLLM(["要約。"])
+    job = SummaryJob(deps=SummaryDeps(conn=conn, llm=llm, model="llm"))
+
+    await job.run(source_id=src.id)
+    prompt = llm.calls[0]["prompt"]
+
+    # 忠実性指示(資料外補完の禁止)
+    assert "資料" in prompt
+    assert "推測" in prompt or "補完" in prompt
+    # 出力フォーマット制約
+    assert "3" in prompt and "5" in prompt  # 3〜5 文
+    assert "箇条書き" in prompt
+    # 思考過程の漏出抑制
+    assert "思考過程" in prompt or "推論過程" in prompt
+    # 重要エンティティ(案 B 由来の網羅性指示)
+    assert "固有" in prompt or "エンティティ" in prompt or "数値" in prompt
+
+
+@pytest.mark.asyncio
+async def test_prompt_marks_truncation_when_max_tokens_reached(conn):
+    """切り詰めが発生したとき、プロンプトに『資料は途中までです』旨の注釈が
+    入り、欠落部分を推測で補わない指示が残る(deep-research の長文対処)。"""
+    long_chunk = "ぁ" * 8000
+    src = _make_source_with_chunks(conn, chunks=[long_chunk])
+    llm = _FakeLLM(["ok"])
+    job = SummaryJob(
+        deps=SummaryDeps(conn=conn, llm=llm, model="llm", max_input_tokens=200)
+    )
+
+    await job.run(source_id=src.id)
+    prompt = llm.calls[0]["prompt"]
+    # 切り詰め注釈が存在する
+    assert "切り詰" in prompt or "途中" in prompt or "抜粋" in prompt
+
+
+@pytest.mark.asyncio
+async def test_prompt_not_marked_when_no_truncation(conn):
+    """切り詰めが起きていないときに余計な注釈が混入しない。"""
+    src = _make_source_with_chunks(conn, chunks=["短い本文。"])
+    llm = _FakeLLM(["ok"])
+    job = SummaryJob(deps=SummaryDeps(conn=conn, llm=llm, model="llm"))
+    await job.run(source_id=src.id)
+    prompt = llm.calls[0]["prompt"]
+    assert "切り詰" not in prompt
+    assert "抜粋" not in prompt
+
+
 async def _no_sleep(_seconds: float) -> None:
     return None

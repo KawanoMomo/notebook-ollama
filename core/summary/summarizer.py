@@ -32,9 +32,41 @@ class _BrokerLike(Protocol):
     async def publish(self, topic: str, payload: dict[str, Any]) -> None: ...
 
 
-_PROMPT_HEADER = (
-    "以下の文書を 3〜5 文の日本語で要約してください。"
-    "箇条書きにはせず、平易な日本語で 1 段落にまとめてください。\n\n文書:\n"
+# 要約プロンプト設計(deep-research §案A+B ハイブリッド・2026-06)。
+#
+# 採択理由(短く):
+#   - Reasoning Budget Paradox (arXiv 2512.03503): CoT/長い推論は要約の
+#     faithfulness を必ずしも上げない。短い「忠実圧縮」が支配的タスクなので
+#     vanilla 寄りで指示する。
+#   - Chain of Density (arXiv 2309.04269): エンティティ網羅は人間評価で
+#     好まれるが最大密度は逆効果。「重要エンティティを過不足なく」と
+#     「読みやすさを保つ」の両立指示を入れる。
+#   - 出力フォーマット制約 (arXiv 2507.05123): 一貫性の改善は実証あり。
+#     箇条書き禁止・3〜5文・句点終止・前置き禁止は安価に効く。
+#   - 思考過程の漏出抑制: LRM 系(gpt-oss 含む)が要約本文に思考をこぼす
+#     現象への防御。
+#   - 切り詰め時の注釈は build 側で動的に挿入し、欠落部分を推測で補わせない。
+_PROMPT_INTRO = (
+    "あなたは与えられた資料の内容のみを用いて、簡潔かつ忠実に日本語で"
+    "要約するアシスタントです。\n\n"
+    "# 制約\n"
+    "- 資料に書かれていない事実、推測、一般常識による補完は一切行わない。\n"
+    "- 重要なエンティティ(人物・組織・製品・数値・日付・固有概念)を"
+    "見落とさず、過不足なく含める。\n"
+    "- 出力は日本語の平文で、句点で終わる 3〜5 文。"
+    "箇条書き・見出し・前置き・後書きを禁止する。\n"
+    "- 推論過程・思考過程を出力しない。要約本文のみを返す。\n"
+    "- 固有名詞・数値・日付は原文表記を尊重する。\n"
+    "- 情報量と読みやすさを両立させ、詰め込みすぎない。\n\n"
+)
+_PROMPT_DOC_HEAD = "# 資料\n"
+_PROMPT_TRUNCATED_NOTE = (
+    "\n(注: 資料は長いため先頭から一部のみ抜粋しています。"
+    "本文の欠落部分は推測せず、与えられた範囲だけから要約してください。)\n"
+)
+_PROMPT_REQUEST = (
+    "\n\n# 要求\n"
+    "上記資料の要点を 3〜5 文の日本語で要約してください。"
 )
 
 _DEFAULT_MAX_INPUT_TOKENS = 4000
@@ -136,13 +168,23 @@ class SummaryJob:
 
     def _build_prompt(self, chunks: list) -> str:
         joined = "\n\n".join(c.text for c in chunks)
-        joined = self._truncate_to_tokens(joined, self._deps.max_input_tokens)
-        return _PROMPT_HEADER + joined
+        truncated, was_cut = self._truncate_to_tokens(
+            joined, self._deps.max_input_tokens
+        )
+        truncation_note = _PROMPT_TRUNCATED_NOTE if was_cut else ""
+        return (
+            _PROMPT_INTRO
+            + _PROMPT_DOC_HEAD
+            + truncated
+            + truncation_note
+            + _PROMPT_REQUEST
+        )
 
     @staticmethod
-    def _truncate_to_tokens(text: str, max_tokens: int) -> str:
+    def _truncate_to_tokens(text: str, max_tokens: int) -> tuple[str, bool]:
+        """Return (text, was_truncated)。元のテキスト長を超えた場合のみ True。"""
         if count_tokens(text) <= max_tokens:
-            return text
+            return text, False
         enc = _encoder()
         ids = enc.encode(text)[:max_tokens]
-        return enc.decode(ids)
+        return enc.decode(ids), True
