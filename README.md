@@ -188,6 +188,46 @@ Get-ExecutionPolicy -List
 
 なお、`scripts\install-startup.ps1` がタスクスケジューラに登録する起動コマンドには `-ExecutionPolicy Bypass` が既に組み込まれているため、ログオン時自動起動はポリシー変更なしでも動作します。
 
+## トラブルシューティング
+
+### 大型モデル(GPT-OSS:20B 等)で「ネットワークエラー」が出る
+
+Ollama がモデルをロードしている間に HTTP タイムアウト(既定 600 秒)が切れている可能性があります。RTX 2080 Ti (VRAM 11 GB) など VRAM が小さい GPU では、20B モデルは CPU/GPU 分割ロードになり初回ロードに数分かかります。
+
+対策(優先順):
+
+1. **モデルを事前ロードして常駐させる**(推奨・追加コストなし)
+
+   別ターミナルで一度ロードしておくと、Notebook Ollama からの呼び出しは即時応答します。
+
+   ```powershell
+   ollama run gpt-oss:20b ""
+   ```
+
+   既定では 5 分間アイドルでアンロードされます。長く常駐させたい場合は `OLLAMA_KEEP_ALIVE=24h` を `ollama serve` の環境変数に指定してください。
+
+2. **設定 UI でタイムアウトを延ばす**
+
+   `設定 → モデル・Ollama → タイムアウト` で `request_timeout` と `chat_read_timeout` を 1200 (秒) 等に変更し保存。`settings.json` に永続化されます。
+
+3. **環境変数で起動時から伸ばす**(自動起動・サーバ運用向け)
+
+   PowerShell:
+
+   ```powershell
+   $env:NOTEBOOK_OLLAMA_OLLAMA__REQUEST_TIMEOUT_SECONDS = "1200"
+   $env:NOTEBOOK_OLLAMA_OLLAMA__CHAT_READ_TIMEOUT_SECONDS = "1200"
+   .\scripts\start.ps1
+   ```
+
+   Bash:
+
+   ```bash
+   export NOTEBOOK_OLLAMA_OLLAMA__REQUEST_TIMEOUT_SECONDS=1200
+   export NOTEBOOK_OLLAMA_OLLAMA__CHAT_READ_TIMEOUT_SECONDS=1200
+   ./scripts/start.sh
+   ```
+
 ## 本番ビルド
 
 ```bash

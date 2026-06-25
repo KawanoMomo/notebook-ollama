@@ -9,6 +9,12 @@
 #   --background      Run uvicorn in background, redirect output to log file
 #   --open-browser    Open browser after 2-second delay (uses xdg-open / open)
 #
+# Notes:
+#   Large Ollama models (GPT-OSS:20B etc.) may need longer timeouts than the
+#   600 s defaults. Either change them in Settings → Models / Ollama, or set:
+#     export NOTEBOOK_OLLAMA_OLLAMA__REQUEST_TIMEOUT_SECONDS=1200
+#     export NOTEBOOK_OLLAMA_OLLAMA__CHAT_READ_TIMEOUT_SECONDS=1200
+#
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
