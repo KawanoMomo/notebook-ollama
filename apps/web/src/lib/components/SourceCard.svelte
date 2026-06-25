@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
   import { sourcesApi } from '$lib/api/sources';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -22,12 +22,42 @@
     guideExpanded?: boolean;
     onGuideToggle?: () => void;
     onSummarize?: () => void;
+    // ADR(Architecture Decision Record)抽出。録音/ドキュメント横断。
+    onGenerateAdr?: () => void;
   }
   let {
     source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
     onRename, onStopConversion,
-    guideExpanded = false, onGuideToggle, onSummarize,
+    guideExpanded = false, onGuideToggle, onSummarize, onGenerateAdr,
   }: Props = $props();
+
+  // ADR ボタンの状態(設計: docs/specs/2026-06-26-meeting-adr-templates.md ui_design)
+  const adrDisabled = $derived(
+    (source.chunk_count ?? 0) === 0 ||
+      source.status !== 'ready' ||
+      source.adr_status === 'generating',
+  );
+  const adrButtonLabel = $derived(
+    source.adr_status === 'generating'
+      ? 'ADR を抽出中…'
+      : source.adr_status === 'ready'
+        ? 'ADR を再抽出'
+        : source.adr_status === 'error'
+          ? 'ADR 抽出を再試行'
+          : source.adr_status === 'skipped'
+            ? 'ADR を再抽出 (Decision 検出なし)'
+            : 'ADR を抽出',
+  );
+  // skipped 時、reason を JSON から取り出して表示する。
+  const adrSkipReason = $derived.by(() => {
+    if (source.adr_status !== 'skipped' || !source.adr_draft) return null;
+    try {
+      const o = JSON.parse(source.adr_draft);
+      return typeof o?.reason === 'string' ? o.reason : null;
+    } catch {
+      return null;
+    }
+  });
 
   const KIND_ICON: Record<string, typeof FileText> = {
     pdf: FileText,
@@ -252,6 +282,18 @@
           <RefreshCw size="12" />
         </button>
       {/if}
+      {#if onGenerateAdr}
+        <button
+          class="icon guide-adr"
+          onclick={onGenerateAdr}
+          disabled={adrDisabled}
+          aria-label={adrButtonLabel}
+          title={adrButtonLabel}
+        >
+          <FileCog size="12" />
+          <span class="adr-badge">ADR</span>
+        </button>
+      {/if}
     </div>
     {#if guideExpanded}
       <div class="guide-body">
@@ -269,6 +311,42 @@
           <p class="guide-text">{source.summary}</p>
         {:else}
           <p class="guide-hint">要約はまだ生成されていません</p>
+        {/if}
+
+        {#if source.adr_status}
+          <div class="adr-section">
+            <div class="adr-head">
+              <span class="adr-label">ADR</span>
+              {#if source.adr_template}
+                <span class="adr-meta">{source.adr_template}</span>
+              {/if}
+              {#if source.adr_confidence}
+                <span class="adr-meta conf-{source.adr_confidence}">
+                  confidence: {source.adr_confidence}
+                </span>
+              {/if}
+            </div>
+            {#if source.adr_status === 'generating'}
+              <div class="skeleton">
+                <span></span><span></span><span></span><span></span>
+              </div>
+              <p class="guide-hint"><Spinner size={12} /> ADR を抽出中…</p>
+            {:else if source.adr_status === 'error'}
+              <p class="guide-err">
+                <AlertCircle size="12" color="var(--color-error)" />
+                ADR 抽出に失敗しました
+              </p>
+            {:else if source.adr_status === 'skipped'}
+              <p class="guide-hint">
+                この資料には Architecture Decision が検出されませんでした
+                {#if adrSkipReason}
+                  ({adrSkipReason})
+                {/if}
+              </p>
+            {:else if source.adr_status === 'ready' && source.adr_draft}
+              <pre class="adr-markdown">{source.adr_draft}</pre>
+            {/if}
+          </div>
         {/if}
       </div>
     {/if}
@@ -499,5 +577,67 @@
   @keyframes skel {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
+  }
+  .guide-adr {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 4px;
+  }
+  .guide-adr:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .adr-badge {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    padding: 0 3px;
+    line-height: 1.2;
+  }
+  .adr-section {
+    margin-top: var(--space-3);
+    padding-top: var(--space-2);
+    border-top: 1px dashed var(--color-border);
+  }
+  .adr-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+  }
+  .adr-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-fg);
+    letter-spacing: 0.05em;
+  }
+  .adr-meta {
+    font-size: 10px;
+    color: var(--color-fg-muted);
+    background: var(--color-bg-elevated);
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-sm);
+  }
+  .adr-meta.conf-high {
+    color: var(--color-success);
+  }
+  .adr-meta.conf-low {
+    color: var(--color-error);
+  }
+  .adr-markdown {
+    margin: 0;
+    padding: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.55;
+    background: var(--color-bg-elevated);
+    border-radius: var(--radius-sm);
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 </style>

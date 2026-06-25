@@ -200,6 +200,21 @@
     }
   }
 
+  async function onGenerateAdr(s: Source) {
+    try {
+      const updated = await sourcesApi.generateAdr(notebookId, s.id);
+      currentNotebookStore.upsertSource(updated);
+      // ADR は決定があれば ready、無ければ skipped。toast は中立に。
+      pushToast('ADR 抽出を開始しました', 'info');
+      // ガイドも自動で開く(結果が見えるように)
+      if (!guideOpen.has(s.id)) {
+        guideOpen = new Set([...guideOpen, s.id]);
+      }
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function onRename(s: Source, title: string) {
     try {
       const updated = await sourcesApi.rename(notebookId, s.id, title);
@@ -273,6 +288,7 @@
         guideExpanded={guideOpen.has(s.id)}
         onGuideToggle={() => toggleGuide(s.id)}
         onSummarize={() => onSummarize(s)}
+        onGenerateAdr={() => onGenerateAdr(s)}
       />
     {/each}
     {#if filteredSources.length === 0}

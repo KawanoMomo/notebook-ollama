@@ -50,4 +50,16 @@ export const sourcesApi = {
       `/api/notebooks/${notebookId}/sources/${sourceId}/summarize`,
       { method: 'POST' },
     ),
+  /** ADR 抽出ジョブを起動(Decision Gate → 抽出 or スキップ)。 */
+  generateAdr: (notebookId: string, sourceId: string) =>
+    request<Source>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/adr`,
+      { method: 'POST' },
+    ),
+  /** ADR 関連列をクリア(やり直し用)。 */
+  deleteAdr: (notebookId: string, sourceId: string) =>
+    request<void>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/adr`,
+      { method: 'DELETE' },
+    ),
 };

@@ -51,6 +51,7 @@ export type SourceKind =
   | "recording";
 
 export type SummaryStatus = 'generating' | 'ready' | 'error';
+export type AdrStatus = 'generating' | 'ready' | 'error' | 'skipped';
 
 export interface Source {
   id: string;
@@ -69,6 +70,11 @@ export interface Source {
   duration_ms?: number | null;
   summary?: string | null;
   summary_status?: SummaryStatus | null;
+  adr_draft?: string | null;
+  adr_status?: AdrStatus | null;
+  adr_template?: string | null;
+  adr_confidence?: string | null;
+  adr_generated_at?: string | null;
   created_at: string;
   updated_at: string;
 }
