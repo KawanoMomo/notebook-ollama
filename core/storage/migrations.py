@@ -13,6 +13,14 @@ _SOURCE_SUMMARY_COLUMNS = (
     ("summary_status", "TEXT"),
 )
 
+_SOURCE_ADR_COLUMNS = (
+    ("adr_draft", "TEXT"),
+    ("adr_status", "TEXT"),
+    ("adr_template", "TEXT"),
+    ("adr_confidence", "TEXT"),
+    ("adr_generated_at", "TEXT"),
+)
+
 
 def run_chunk_timecode_migration(conn: sqlite3.Connection) -> None:
     """Add start_ms/end_ms/speaker to chunks if missing. Idempotent."""
@@ -26,5 +34,15 @@ def run_summary_migration(conn: sqlite3.Connection) -> None:
     """Add summary/summary_status to sources if missing. Idempotent."""
     existing = {r["name"] for r in conn.execute("PRAGMA table_info(sources)")}
     for name, sqltype in _SOURCE_SUMMARY_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE sources ADD COLUMN {name} {sqltype}")
+
+
+def run_adr_migration(conn: sqlite3.Connection) -> None:
+    """Add adr_draft/adr_status/adr_template/adr_confidence/adr_generated_at to
+    sources if missing. Idempotent. ALTER TABLE は SQLite では暗黙トランザクション
+    なので autocommit (`isolation_level=None`) でも順次 ADD で OK。"""
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(sources)")}
+    for name, sqltype in _SOURCE_ADR_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE sources ADD COLUMN {name} {sqltype}")

@@ -24,6 +24,20 @@ class SummaryStatus(StrEnum):
     ERROR = "error"
 
 
+class AdrStatus(StrEnum):
+    """ADR 抽出ジョブの状態。
+
+    SKIPPED は Decision Gate で「ADR にすべき情報が無い」と判定された状態で、
+    SummaryStatus には無い ADR 固有のステート。再試行は可能だが、ユーザに
+    「議事録には Decision が無さそう」と説明する文言を出して reTry を促さない。
+    """
+
+    GENERATING = "generating"
+    READY = "ready"
+    ERROR = "error"
+    SKIPPED = "skipped"
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -43,6 +57,11 @@ class SourceRecord:
     chunk_count: int | None
     summary: str | None
     summary_status: SummaryStatus | None
+    adr_draft: str | None
+    adr_status: AdrStatus | None
+    adr_template: str | None
+    adr_confidence: str | None
+    adr_generated_at: str | None
     created_at: str
     updated_at: str
 
@@ -51,6 +70,13 @@ class SourceRecord:
         keys = row.keys()
         summary = row["summary"] if "summary" in keys else None
         raw_status = row["summary_status"] if "summary_status" in keys else None
+        adr_draft = row["adr_draft"] if "adr_draft" in keys else None
+        adr_status_raw = row["adr_status"] if "adr_status" in keys else None
+        adr_template = row["adr_template"] if "adr_template" in keys else None
+        adr_confidence = row["adr_confidence"] if "adr_confidence" in keys else None
+        adr_generated_at = (
+            row["adr_generated_at"] if "adr_generated_at" in keys else None
+        )
         return cls(
             id=row["id"],
             notebook_id=row["notebook_id"],
@@ -65,6 +91,11 @@ class SourceRecord:
             chunk_count=row["chunk_count"],
             summary=summary,
             summary_status=SummaryStatus(raw_status) if raw_status else None,
+            adr_draft=adr_draft,
+            adr_status=AdrStatus(adr_status_raw) if adr_status_raw else None,
+            adr_template=adr_template,
+            adr_confidence=adr_confidence,
+            adr_generated_at=adr_generated_at,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -168,6 +199,95 @@ def update_source_summary(
     conn.execute(
         "UPDATE sources SET summary=?, summary_status=?, updated_at=? WHERE id=?",
         (summary, SummaryStatus.READY.value, _now(), source_id),
+    )
+    return get_source(conn, source_id)
+
+
+def update_source_adr_status(
+    conn: sqlite3.Connection,
+    source_id: str,
+    *,
+    status: AdrStatus,
+) -> SourceRecord:
+    """ADR 抽出ジョブの状態だけ更新する(本文は変更しない)。"""
+    get_source(conn, source_id)
+    conn.execute(
+        "UPDATE sources SET adr_status=?, updated_at=? WHERE id=?",
+        (status.value, _now(), source_id),
+    )
+    return get_source(conn, source_id)
+
+
+def update_source_adr(
+    conn: sqlite3.Connection,
+    source_id: str,
+    *,
+    draft: str,
+    template: str,
+    confidence: str,
+) -> SourceRecord:
+    """ADR 本文を保存し、status=READY と generated_at を一括設定する。"""
+    get_source(conn, source_id)
+    now = _now()
+    conn.execute(
+        "UPDATE sources SET adr_draft=?, adr_status=?, adr_template=?, "
+        "adr_confidence=?, adr_generated_at=?, updated_at=? WHERE id=?",
+        (
+            draft,
+            AdrStatus.READY.value,
+            template,
+            confidence,
+            now,
+            now,
+            source_id,
+        ),
+    )
+    return get_source(conn, source_id)
+
+
+def update_source_adr_skipped(
+    conn: sqlite3.Connection,
+    source_id: str,
+    *,
+    reason: str,
+    evidence: str | None = None,
+) -> SourceRecord:
+    """Decision Gate でスキップ判定された結果を保存する。
+
+    `adr_draft` には reason / evidence を 1 行 JSON で詰める。フロントは
+    `adr_status=='skipped'` のときだけこの JSON をパースする(API 層でデコード)。
+    """
+    import json as _json
+
+    get_source(conn, source_id)
+    now = _now()
+    body = _json.dumps(
+        {"adr_generated": False, "reason": reason, "evidence": evidence},
+        ensure_ascii=False,
+    )
+    conn.execute(
+        "UPDATE sources SET adr_draft=?, adr_status=?, adr_template=?, "
+        "adr_confidence=?, adr_generated_at=?, updated_at=? WHERE id=?",
+        (
+            body,
+            AdrStatus.SKIPPED.value,
+            None,
+            None,
+            now,
+            now,
+            source_id,
+        ),
+    )
+    return get_source(conn, source_id)
+
+
+def clear_source_adr(conn: sqlite3.Connection, source_id: str) -> SourceRecord:
+    """ADR 関連列を全て NULL に戻す(DELETE エンドポイントから呼ぶ)。"""
+    get_source(conn, source_id)
+    conn.execute(
+        "UPDATE sources SET adr_draft=NULL, adr_status=NULL, adr_template=NULL, "
+        "adr_confidence=NULL, adr_generated_at=NULL, updated_at=? WHERE id=?",
+        (_now(), source_id),
     )
     return get_source(conn, source_id)
 

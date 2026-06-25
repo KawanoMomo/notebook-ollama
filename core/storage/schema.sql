@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS sources (
     chunk_count  INTEGER,
     summary      TEXT,
     summary_status TEXT,
+    adr_draft    TEXT,
+    adr_status   TEXT,
+    adr_template TEXT,
+    adr_confidence TEXT,
+    adr_generated_at TEXT,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
     UNIQUE(notebook_id, content_hash)
