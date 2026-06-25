@@ -92,6 +92,13 @@ def _to_schema(rec, sources_dir) -> Source:
         summary_status=(
             rec.summary_status.value if rec.summary_status is not None else None
         ),
+        adr_draft=rec.adr_draft,
+        adr_status=(
+            rec.adr_status.value if rec.adr_status is not None else None
+        ),
+        adr_template=rec.adr_template,
+        adr_confidence=rec.adr_confidence,
+        adr_generated_at=rec.adr_generated_at,
         created_at=rec.created_at,
         updated_at=rec.updated_at,
     )
@@ -385,6 +392,56 @@ async def summarize_source(
     if summary_runner is not None:
         background.add_task(summary_runner, source_id)
     return _to_schema(sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir)
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/adr",
+    status_code=202,
+    response_model=Source,
+)
+async def generate_adr(
+    request: Request,
+    background: BackgroundTasks,
+    notebook_id: str,
+    source_id: str,
+) -> Source:
+    """ADR 抽出ジョブを起動する。
+
+    Decision Gate が yes なら Markdown ADR を生成、no なら skipped。
+    既に generating でも上書き起動(MVP)。adr_runner が無い構成では status
+    だけ generating に反映して終了する。
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    sources_repo.update_source_adr_status(
+        ctx.conn,
+        source_id,
+        status=sources_repo.AdrStatus.GENERATING,
+    )
+    adr_runner = getattr(ctx, "adr_runner", None)
+    if adr_runner is not None:
+        background.add_task(adr_runner, source_id)
+    return _to_schema(
+        sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir
+    )
+
+
+@router.delete(
+    "/{notebook_id}/sources/{source_id}/adr",
+    status_code=204,
+)
+async def delete_adr(
+    request: Request, notebook_id: str, source_id: str
+) -> Response:
+    """adr_* 列を全て NULL に戻す。"""
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    sources_repo.clear_source_adr(ctx.conn, source_id)
+    return Response(status_code=204)
 
 
 @router.post("/{notebook_id}/sources/{source_id}/retry", response_model=Source)

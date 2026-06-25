@@ -15,6 +15,7 @@ from core.retrieval.search import RetrievalService
 from core.settings_store import load_overrides
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
+from core.adr.adr_job import AdrDeps, AdrJob
 from core.summary.summarizer import SummaryDeps, SummaryJob
 
 _DEFAULT_EMBEDDING_DIM = 1024  # bge-m3
@@ -56,6 +57,7 @@ class AppContext:
     recordings: RecordingRegistry
     recording_pipeline: RecordingPipeline
     summary_runner: object  # async callable: (source_id: str) -> awaitable
+    adr_runner: object  # async callable: (source_id: str) -> awaitable
 
 
 def build_context(config: AppConfig) -> AppContext:
@@ -90,6 +92,23 @@ def build_context(config: AppConfig) -> AppContext:
         # 巻き込まない。SummaryJob 内部で status を error に落とす。
         try:
             await summary_job.run(source_id=source_id)
+        except Exception:
+            pass
+
+    adr_job = AdrJob(
+        deps=AdrDeps(
+            conn=conn,
+            llm=gateway,
+            model=config.ollama.default_model,
+            broker=sse_broker,
+        )
+    )
+
+    async def _adr_runner(source_id: str) -> None:
+        # Best-effort: 失敗しても呼び出し元(adr endpoint)を巻き込まない。
+        # AdrJob 内部で adr_status を error / skipped に落とす。
+        try:
+            await adr_job.run(source_id=source_id)
         except Exception:
             pass
 
@@ -136,4 +155,5 @@ def build_context(config: AppConfig) -> AppContext:
         recordings=recordings,
         recording_pipeline=recording_pipeline,
         summary_runner=_summary_runner,
+        adr_runner=_adr_runner,
     )

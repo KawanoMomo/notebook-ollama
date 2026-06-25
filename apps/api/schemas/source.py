@@ -17,6 +17,11 @@ class Source(BaseModel):
     has_audio: bool = False
     summary: str | None = None
     summary_status: str | None = None
+    adr_draft: str | None = None
+    adr_status: str | None = None
+    adr_template: str | None = None
+    adr_confidence: str | None = None
+    adr_generated_at: str | None = None
     created_at: str
     updated_at: str
 
