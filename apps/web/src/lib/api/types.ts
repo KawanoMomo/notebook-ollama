@@ -186,6 +186,24 @@ export interface Stats {
   data_dir: string;
 }
 
+/** プロンプト挿入機能 (docs/specs/2026-06-26-prompt-injection-design.md) */
+export interface FixedPromptSlotOut {
+  title: string;
+  body: string;
+  icon_url: string | null;
+}
+
+export interface DropdownPromptOut {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export interface PromptsOut {
+  fixed: FixedPromptSlotOut[]; // 常に長さ 3
+  dropdown: DropdownPromptOut[];
+}
+
 export interface RetrievalHit {
   chunk_id: string;
   source_title: string;

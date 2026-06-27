@@ -1,6 +1,9 @@
 <script lang="ts">
   import Button from './Button.svelte';
+  import PromptToolbar from './PromptToolbar.svelte';
   import { Send, Square, AlertCircle } from '@lucide/svelte';
+  import { promptsStore } from '$lib/stores/prompts.svelte';
+  import { onMount } from 'svelte';
 
   interface Props {
     streaming: boolean;
@@ -17,6 +20,14 @@
     onSend,
     onCancel,
   }: Props = $props();
+
+  onMount(() => {
+    if (!promptsStore.prompts) {
+      promptsStore.load().catch(() => {
+        /* degraded: ツールバー非表示で続行(設計 §6.2) */
+      });
+    }
+  });
 
   let value = $state('');
 
@@ -45,6 +56,15 @@
     <span>ソースが選択されていません。1 つ以上選んでください。</span>
   </div>
 {/if}
+<PromptToolbar
+  prompts={promptsStore.prompts}
+  {streaming}
+  {sourcesSelected}
+  onSend={(body) => {
+    if (streaming || noSourcesSelected) return;
+    onSend(body);
+  }}
+/>
 <form class="input" onsubmit={(e) => { e.preventDefault(); submit(); }}>
   <textarea
     bind:value
