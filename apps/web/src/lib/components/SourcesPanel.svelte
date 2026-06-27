@@ -183,10 +183,11 @@
     guideOpen = next;
   }
 
-  function openGuideAndSelect(s: Source) {
-    if (!guideOpen.has(s.id)) {
-      guideOpen = new Set([...guideOpen, s.id]);
-    }
+  function toggleGuideAndSelect(s: Source) {
+    // タイトルクリック = ガイドの開閉トグル + 右パネルの原文表示。
+    // 既存 ▶ キャレットでの開閉と挙動を統一する(2回目クリックで閉じる)。
+    // 右パネル表示は閉じても維持する(別ソースに切り替えるときだけ変わる)。
+    toggleGuide(s.id);
     onSourceSelect(s.id);
   }
 
@@ -279,7 +280,7 @@
         source={s}
         selected={currentNotebookStore.selectedSourceIds.has(s.id)}
         onToggle={() => currentNotebookStore.toggleSelected(s.id)}
-        onSelect={() => openGuideAndSelect(s)}
+        onSelect={() => toggleGuideAndSelect(s)}
         onRetry={() => onRetry(s)}
         onReembed={() => onReembed(s)}
         onStopConversion={() => onStopConversion(s)}
