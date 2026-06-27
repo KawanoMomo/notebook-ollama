@@ -24,6 +24,7 @@ from apps.api.routers import (
     events,
     health,
     notebooks,
+    prompts,
     recording_ws,
     recordings,
     sources,
@@ -106,6 +107,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
         status_map = {
             "input.invalid": 400,
+            "input.payload_too_large": 413,
+            "input.unsupported_media": 415,
             "ingestion.unsupported_kind": 400,
             "ingestion.duplicate": 409,
             "storage.not_found": 404,
@@ -128,6 +131,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(models_router.router)
     app.include_router(settings_router.router)
+    app.include_router(prompts.router)
     app.include_router(events.router)
     app.mount("/mcp", _McpAsgiProxy())
 
