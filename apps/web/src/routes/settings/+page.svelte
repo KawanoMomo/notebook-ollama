@@ -10,10 +10,11 @@
   import { openReindexEvents } from '$lib/api/reindexEvents';
   import Spinner from '$lib/components/Spinner.svelte';
   import AudioSettingsSection from '$lib/components/settings/AudioSettingsSection.svelte';
+  import PromptsSection from '$lib/components/settings/PromptsSection.svelte';
   import { pushToast } from '$lib/components/Toast.svelte';
   import type { ModelInfo } from '$lib/api/types';
 
-  let section = $state<'models' | 'gen' | 'audio' | 'storage' | 'modelsList'>('audio');
+  let section = $state<'models' | 'gen' | 'prompts' | 'audio' | 'storage' | 'modelsList'>('audio');
 
   // --- 埋め込みモデル切替 (section==='models') の state ---
   // <select> の選択値。'' = 未選択(=現行と同じ。切替なし)。
@@ -168,6 +169,17 @@
         </svg>
         生成・検索
       </button>
+      <button
+        class="nitem"
+        class:active={section === 'prompts'}
+        onclick={() => (section = 'prompts')}
+      >
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="M7 10h10M7 14h6" />
+        </svg>
+        プロンプト
+      </button>
 
       <div class="grp" style="margin-top:6px">入力 / 取り込み</div>
       <button
@@ -210,6 +222,8 @@
     <div class="scontent">
       {#if section === 'audio'}
         <AudioSettingsSection />
+      {:else if section === 'prompts'}
+        <PromptsSection />
       {:else if settingsStore.loading || modelsStore.loading}
         <div class="state"><Spinner /> 読み込み中…</div>
       {:else if settingsStore.error || modelsStore.error}
