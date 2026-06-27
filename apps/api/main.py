@@ -136,10 +136,45 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.mount("/mcp", _McpAsgiProxy())
 
     from pathlib import Path
-    from starlette.staticfiles import StaticFiles
+    from starlette.responses import FileResponse
     web_dist = Path(__file__).parents[1] / "web" / "dist"
     if web_dist.is_dir():
-        app.mount("/", StaticFiles(directory=web_dist, html=True), name="web")
+        # SPA フォールバック: SvelteKit の動的ルート(/notebooks/{id}, /settings 等)
+        # は dist にファイルが無い。StaticFiles(html=True) は SPA fallback を
+        # 実装しないため、catch-all で「存在ファイル→そのまま、存在しない→
+        # index.html」を提供する。これがないと:
+        #   1. /notebooks/{id} へ直アクセス・F5 リロードが 404
+        #   2. ハイドレーション前のクリックがネイティブ遷移して 404
+        # 加えて index.html には no-cache を付け、再ビルドで _app/immutable の
+        # ハッシュが変わったときに古い HTML が居座って 404 を出すのを防ぐ。
+        _index_html = web_dist / "index.html"
+        _web_dist_resolved = web_dist.resolve()
+        _no_cache_headers = {"Cache-Control": "no-cache, must-revalidate"}
+
+        from fastapi import HTTPException
+        from starlette.responses import Response
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_or_static(full_path: str) -> Response:
+            # `/api/...` と `/mcp/...` は専用ルーター/マウントが扱う範囲。
+            # ここまで来た = 専用ルートで match しなかった = 本物の 404。
+            # SPA fallback で index.html を返すと API クライアントが HTML を
+            # 受け取って混乱するため、明示的に 404 を返す。
+            if full_path.startswith("api/") or full_path.startswith("mcp"):
+                raise HTTPException(status_code=404, detail="Not Found")
+            # path traversal の defense-in-depth: 解決後に web_dist 配下に
+            # 収まらないパスは候補から外し、index.html へフォールバック。
+            try:
+                candidate = (web_dist / full_path).resolve()
+                candidate.relative_to(_web_dist_resolved)
+                inside = True
+            except (ValueError, OSError):
+                inside = False
+            if inside and candidate.is_file():
+                # 静的アセット(ハッシュ付き immutable / favicon 等)はキャッシュ
+                # 可能のまま配信する(starlette の既定 Cache-Control に任せる)。
+                return FileResponse(candidate)
+            return FileResponse(_index_html, headers=_no_cache_headers)
 
     return app
 
