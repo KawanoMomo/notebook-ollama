@@ -224,3 +224,119 @@ export interface ReindexComplete {
 export interface ReindexError {
   message: string;
 }
+
+/* -------------------------------------------------------------------------- */
+/* クラッシュレポート & お知らせ/フィードバックハブ                            */
+/* spec: docs/specs/2026-06-28-crash-report-feedback-hub-design.md            */
+/* backend: apps/api/routers/crash.py, apps/api/routers/feedback_hub.py       */
+/* -------------------------------------------------------------------------- */
+
+/** クラッシュ検知元 (spec §4.1)。backend `core/crash_reporter/pending_store.Source` と一致。 */
+export type CrashSource =
+  | "fastapi"
+  | "excepthook"
+  | "signal"
+  | "atexit"
+  | "frontend"
+  | "unclean_shutdown";
+
+/**
+ * ハードウェアスナップショット。`core/crash_reporter/hardware.collect()` の戻り値。
+ * 採取に失敗したキーは `"<unavailable>"` 文字列にフォールバックするため、
+ * 数値が期待される値も `number | string` 共用体で表現する。
+ *
+ * NOTE: backend `_build_frontend_crash` は `dict(hardware or {})` を書き込むため、
+ * frontend 由来のクラッシュではフィールドが部分的 / 空になり得る。
+ * 全フィールド optional とし、consumer 側で `?? "<unavailable>"` 等のガードを義務付ける。
+ */
+export interface CrashHardware {
+  cpu_model?: string;
+  cpu_cores?: number | string;
+  cpu_threads?: number | string;
+  ram_total_gb?: number | string;
+  ram_available_gb?: number | string;
+  gpu_model?: string;
+  gpu_vram_mb?: number | string;
+  driver_version?: string;
+  disk_free_gb?: number | string;
+  os_platform?: string;
+  python_version?: string;
+}
+
+/**
+ * 未送信クラッシュレポート 1 件。
+ * backend: `apps/api/routers/crash.py::PendingCrashOut`
+ * (= `core/crash_reporter/pending_store.PendingCrash` dataclass の HTTP 表現)。
+ */
+export interface PendingCrash {
+  id: string;
+  fingerprint: string;
+  /** ISO-8601 UTC (例: `"2026-06-28T00:00:00Z"`)。 */
+  created_at: string;
+  exception_type: string;
+  exception_message: string;
+  trace: string[];
+  hardware: CrashHardware;
+  /** 検疫済みの構造化ログ末尾。任意キーのため `unknown` 値で型付けする。 */
+  log_tail: Array<Record<string, unknown>>;
+  source: CrashSource;
+}
+
+/**
+ * GitHub Issue 起票 prefill URL レスポンス。
+ * backend: `apps/api/routers/crash.py::PrefillUrlOut`。
+ * `truncated=true` の場合は log_tail が 8KB 制限内に収まるよう切り詰められている。
+ */
+export interface PrefillUrlResponse {
+  url: string;
+  truncated: boolean;
+}
+
+/** お知らせのサブセクション (見出し + 箇条書き、spec §5.3)。 */
+export interface NoticeSubsection {
+  heading: string;
+  items: string[];
+}
+
+/**
+ * 1 件のお知らせ。
+ * backend: `apps/api/routers/feedback_hub.py::NoticeOut`
+ * (= `core/feedback_hub/notice_store.Notice` dataclass)。
+ */
+export interface Notice {
+  id: string;
+  /** ISO-8601 `YYYY-MM-DD` (辞書順 = 時系列順)。 */
+  date: string;
+  title: string;
+  /** Markdown 本文。 */
+  body: string;
+  subsections?: NoticeSubsection[] | null;
+}
+
+/**
+ * 未読 / 未送信件数。
+ * backend: `apps/api/routers/feedback_hub.py::UnreadCountOut`。
+ * MVP では未送信クラッシュレポート数のみ。お知らせ未読は FE 側 localStorage で管理。
+ */
+export interface UnreadCount {
+  count: number;
+}
+
+/** フィードバック分類。backend: `feedback_hub.KindLiteral` / `VALID_KINDS`。 */
+export type FeedbackKind = "feature" | "complaint" | "impression";
+
+/** 感情シグナル。backend: `feedback_hub.SentimentLiteral` / `VALID_SENTIMENTS`。 */
+export type Sentiment = "up" | "neutral" | "down";
+
+/**
+ * フィードバック送信ペイロード。
+ * backend: `apps/api/routers/feedback_hub.py::FeedbackIn`。
+ * `screenshot_b64` は URL に直接埋め込めない (8KB 制限) ため、サーバには送るが
+ * GitHub Issue prefill URL には載らない。
+ */
+export interface FeedbackInput {
+  kind: FeedbackKind;
+  body: string;
+  sentiment?: Sentiment | null;
+  screenshot_b64?: string | null;
+}
