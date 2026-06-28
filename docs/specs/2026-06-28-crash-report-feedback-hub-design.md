@@ -301,7 +301,8 @@ apps/web/src/lib/
 **ハードウェア・環境**:
 - CPU モデル名・コア数・スレッド数 (`platform.processor()`, `os.cpu_count()`)
 - RAM 合計・利用可能 (`psutil.virtual_memory()`)
-- GPU モデル名・VRAM・CUDA/ドライババージョン (`nvidia-smi --query-gpu=...`)
+- GPU モデル名・VRAM・ドライババージョン (`nvidia-smi --query-gpu=name,memory.total,driver_version`)
+  - **CUDA バージョンは Sprint 1 では採取しない** (上記クエリでは返らず、`nvidia-smi` ヘッダ行から best-effort で抜く実装は将来追加可能。adversarial-review 2026-06-28 option b)
 - アーキテクチャ・OS バージョン (`platform.machine()`, `platform.platform()`)
 - アプリ/Python/Node ビルド情報
 - ディスク空き容量 (パスは除外、数値のみ)
@@ -475,6 +476,35 @@ export async function captureCurrentView(): Promise<Blob> {
 - `~/.notebook-ollama/reported.txt` に1行1ハッシュで永続化
 - 同一ユーザーが同じバグを送ろうとした場合: 「これは前回 報告済みです。追加情報があればコメントしてください」と案内
 - **異なるユーザー同士の重複は防げない**(認証不要を優先)
+
+### ADR ノート (2026-06-28 sprint 1 verify 後追記)
+
+Sprint 1 の adversarial review (Task 1.2 `fingerprint` モジュール) で、以下2つの未解決の設計上の懸念が確認された。本節は「将来の貢献者が気付かずに挙動を変えないよう」明示的に記録するものである。
+
+#### 懸念 1: site-packages / ライブラリフレームが fingerprint に含まれる
+
+**観察された挙動**: 同一のユーザー関数から `lib_a()` を呼ぶ場合と `lib_b()` を呼ぶ場合で fingerprint が異なる。すなわち、ライブラリのバージョン bump やコールパスの微変化のたびに「新しい fingerprint」が生成され、crash-dedup が **under-merge (本来1つの Issue にまとまるべきものが分散)** する。
+
+#### 懸念 2: basename collision による false-positive dedup
+
+**観察された挙動**: `frame.filename.replace('\\', '/').rsplit('/', 1)[-1]` がファイル識別子を basename に縮約しているため、別ディレクトリ配下の2つの `utils.py` が **同じ fingerprint** を生む。結果として、実際には別のバグなのに「既に報告済みです」と silencing されてしまう可能性がある。仕様本文の「関数名+モジュール名のみ」という表現が、basename か dotted module path (`pkg.sub.utils`) かを曖昧にしていた点も原因。
+
+#### 当面の決定 (accept-for-now)
+
+Sprint 1 ではこの **両方の挙動をそのまま受け入れる**。理由:
+
+- dedup はあくまで **ヒント (hint)** であって保証 (guarantee) ではない。仕様にも「異なるユーザー同士の重複は防げない」と既に書いてあり、ローカル dedup の精度は best-effort という前提を踏襲する。
+- crash report においては **under-merge (本来同じ Issue が2つ起票される) の方が over-merge (本物の別バグが silencing される) より安全**。前者は開発者が GitHub 側でラベリング/クローズで吸収できるが、後者は永久に届かなくなる。
+- 本プロジェクトのディレクトリ構造では同名 `utils.py` が複数階層に並ぶケースは稀であり、basename collision の現実的な影響は当面小さい。
+
+#### 将来の再検討トリガー (Future trigger)
+
+本番のクラッシュレポート運用で次のいずれかが観測された場合、本 ADR を再検討する:
+
+- **意味のある collision**: 別バグが「既報告」として silencing されているケース → (b) basename をやめ、`sys.modules` を経由して推定した dotted module path (`pkg.sub.utils`) に切り替える。
+- **churn による断片化**: ライブラリのバージョン bump やコールパス変化で同一バグの fingerprint が大量に分散しているケース → (a) `sys.prefix` / `site-packages` ヒューリスティクスで library フレームをフィルタし、ユーザーコードフレームのみで fingerprint を構築する。
+
+**Reference**: adversarial verify result, 2026-06-28 (Sprint 1 Task 1.2 `core/crash_reporter/fingerprint.py`).
 
 ## 10. GitHub Issue URL生成 (8KB制限対応)
 
