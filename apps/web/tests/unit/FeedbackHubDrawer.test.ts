@@ -50,8 +50,8 @@ function makeCrash(overrides: Partial<PendingCrash> = {}): PendingCrash {
   };
 }
 
-function makeStores(crashItems: PendingCrash[] = []) {
-  const notices = createNoticesStore(makeNoticesApi() as never);
+function makeStores(crashItems: PendingCrash[] = [], notices_items: Notice[] = []) {
+  const notices = createNoticesStore(makeNoticesApi(notices_items) as never);
   const crashes = createCrashReportsStore(makeCrashApi(crashItems) as never);
   const hub = createFeedbackHubStore(notices, crashes);
   hub.open();
@@ -72,71 +72,71 @@ afterEach(() => cleanup());
 
 describe('FeedbackHubDrawer — 枠', () => {
   it('renders the drawer title「お知らせ・フィードバック」', () => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     expect(screen.getByText('お知らせ・フィードバック')).toBeDefined();
   });
 
   it('renders a backdrop element behind the drawer', () => {
-    const { hub, crashes } = makeStores();
-    const { container } = render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    const { container } = render(FeedbackHubDrawer, { hub, crashes, notices });
     expect(container.querySelector('.backdrop')).not.toBeNull();
   });
 
   it('drawer has role="dialog" with aria-modal and aria-label', () => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     const dlg = screen.getByRole('dialog');
     expect(dlg.getAttribute('aria-modal')).toBe('true');
     expect(dlg.getAttribute('aria-label')).toBe('お知らせ・フィードバック');
   });
 
   it('exposes a close-button (aria-label="閉じる")', () => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     expect(screen.getByLabelText('閉じる')).toBeDefined();
   });
 });
 
 describe('FeedbackHubDrawer — close behavior', () => {
   it('clicking the backdrop calls hub.close()', async () => {
-    const { hub, crashes } = makeStores();
+    const { hub, crashes, notices } = makeStores();
     const spy = vi.spyOn(hub, 'close');
-    const { container } = render(FeedbackHubDrawer, { hub, crashes });
+    const { container } = render(FeedbackHubDrawer, { hub, crashes, notices });
     const bd = container.querySelector('.backdrop') as HTMLElement;
     await fireEvent.click(bd);
     expect(spy).toHaveBeenCalled();
   });
 
   it('clicking the explicit close-button calls hub.close()', async () => {
-    const { hub, crashes } = makeStores();
+    const { hub, crashes, notices } = makeStores();
     const spy = vi.spyOn(hub, 'close');
-    render(FeedbackHubDrawer, { hub, crashes });
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     await fireEvent.click(screen.getByLabelText('閉じる'));
     expect(spy).toHaveBeenCalled();
   });
 
   it('ESC keydown calls hub.close()', async () => {
-    const { hub, crashes } = makeStores();
+    const { hub, crashes, notices } = makeStores();
     const spy = vi.spyOn(hub, 'close');
-    render(FeedbackHubDrawer, { hub, crashes });
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     await fireEvent.keyDown(window, { key: 'Escape' });
     expect(spy).toHaveBeenCalled();
   });
 
   it('clicking inside the drawer body does NOT call hub.close() (event does not bubble to backdrop)', async () => {
-    const { hub, crashes } = makeStores();
+    const { hub, crashes, notices } = makeStores();
     const spy = vi.spyOn(hub, 'close');
-    render(FeedbackHubDrawer, { hub, crashes });
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     const dlg = screen.getByRole('dialog');
     await fireEvent.click(dlg);
     expect(spy).not.toHaveBeenCalled();
   });
 
   it('keys other than Escape do not close', async () => {
-    const { hub, crashes } = makeStores();
+    const { hub, crashes, notices } = makeStores();
     const spy = vi.spyOn(hub, 'close');
-    render(FeedbackHubDrawer, { hub, crashes });
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     await fireEvent.keyDown(window, { key: 'Enter' });
     await fireEvent.keyDown(window, { key: 'a' });
     await fireEvent.keyDown(window, { key: 'Tab' });
@@ -146,21 +146,21 @@ describe('FeedbackHubDrawer — close behavior', () => {
 
 describe('FeedbackHubDrawer — 3 タブ (全網羅)', () => {
   it.each(ALL_TABS)('renders the "$label" tab button', ({ label }) => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     expect(screen.getByRole('tab', { name: new RegExp(label) })).toBeDefined();
   });
 
   it('renders exactly 3 tab buttons', () => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     expect(screen.getAllByRole('tab')).toHaveLength(3);
   });
 
   it.each(ALL_TABS)('clicking "$label" calls hub.setTab("$id")', async ({ id, label }) => {
-    const { hub, crashes } = makeStores();
+    const { hub, crashes, notices } = makeStores();
     const spy = vi.spyOn(hub, 'setTab');
-    render(FeedbackHubDrawer, { hub, crashes });
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     await fireEvent.click(screen.getByRole('tab', { name: new RegExp(label) }));
     expect(spy).toHaveBeenCalledWith(id);
   });
@@ -168,9 +168,9 @@ describe('FeedbackHubDrawer — 3 タブ (全網羅)', () => {
   it.each(ALL_TABS)(
     'when activeTab="$id" the corresponding tab has aria-selected=true and the others false',
     ({ id, label }) => {
-      const { hub, crashes } = makeStores();
+      const { hub, crashes, notices } = makeStores();
       hub.setTab(id);
-      render(FeedbackHubDrawer, { hub, crashes });
+      render(FeedbackHubDrawer, { hub, crashes, notices });
       for (const t of ALL_TABS) {
         const btn = screen.getByRole('tab', { name: new RegExp(t.label) });
         expect(btn.getAttribute('aria-selected')).toBe(t.id === id ? 'true' : 'false');
@@ -179,51 +179,64 @@ describe('FeedbackHubDrawer — 3 タブ (全網羅)', () => {
   );
 });
 
-describe('FeedbackHubDrawer — タブ内容 (Sprint 6/7/8 プレースホルダ)', () => {
-  it('default activeTab=notices shows the NoticesTab placeholder ("未実装")', () => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
-    // notices タブ pane に '未実装' プレースホルダ
-    expect(screen.getByText('未実装')).toBeDefined();
+describe('FeedbackHubDrawer — タブ内容 (Sprint 6: NoticesTab 実装後 / 7-8 プレースホルダ)', () => {
+  // Sprint 6 で NoticesTab は実装完了。空配列の API を注入すると
+  // 「お知らせはありません」 (empty state) が表示される。
+  it('default activeTab=notices shows the real NoticesTab (empty state)', async () => {
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
+    await waitFor(() => expect(screen.getByText('お知らせはありません')).toBeDefined());
   });
 
-  it.each(ALL_TABS)(
-    'when activeTab="$id" only that tab\'s panel is in the DOM',
-    ({ id }) => {
-      const { hub, crashes } = makeStores();
+  // bugs / feedback はまだ placeholder。notices だけ別経路で確認する。
+  it.each([
+    { id: 'bugs' as const, label: '不具合', marker: '未実装' },
+    { id: 'feedback' as const, label: 'ご意見', marker: '未実装' },
+  ])(
+    'when activeTab="$id" only that tab\'s placeholder is in the DOM',
+    ({ id, marker }) => {
+      const { hub, crashes, notices } = makeStores();
       hub.setTab(id);
-      render(FeedbackHubDrawer, { hub, crashes });
-      // 全タブで「未実装」プレースホルダが出るが、表示は 1 つだけ
-      const panels = screen.getAllByText('未実装');
+      render(FeedbackHubDrawer, { hub, crashes, notices });
+      const panels = screen.getAllByText(marker);
       expect(panels).toHaveLength(1);
     },
   );
+
+  it('when activeTab="notices" only NoticesTab is in the DOM (empty state, no placeholder)', async () => {
+    const { hub, crashes, notices } = makeStores();
+    hub.setTab('notices');
+    render(FeedbackHubDrawer, { hub, crashes, notices });
+    await waitFor(() => expect(screen.getByText('お知らせはありません')).toBeDefined());
+    // 他タブの placeholder「未実装」は notices アクティブ時には現れない
+    expect(screen.queryByText('未実装')).toBeNull();
+  });
 });
 
 describe('FeedbackHubDrawer — 不具合タブの pendingCount pill', () => {
   it('shows a pill with pendingCount on the bugs tab when > 0', async () => {
-    const { hub, crashes } = makeStores([
+    const { hub, crashes, notices } = makeStores([
       makeCrash({ id: 'c1' }),
       makeCrash({ id: 'c2' }),
     ]);
     await crashes.load();
-    render(FeedbackHubDrawer, { hub, crashes });
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     const bugsBtn = screen.getByRole('tab', { name: /不具合/ });
     expect(bugsBtn.textContent).toMatch(/2/);
   });
 
   it('does NOT show a pill when pendingCount = 0', () => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     const bugsBtn = screen.getByRole('tab', { name: /不具合/ });
     // 「不具合」だけがあり数字が出ない
     expect(bugsBtn.textContent?.trim()).toBe('不具合');
   });
 
   it('does NOT show a pill on the notices or feedback tab in Sprint 5', async () => {
-    const { hub, crashes } = makeStores([makeCrash({ id: 'c1' })]);
+    const { hub, crashes, notices } = makeStores([makeCrash({ id: 'c1' })]);
     await crashes.load();
-    render(FeedbackHubDrawer, { hub, crashes });
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     const noticesBtn = screen.getByRole('tab', { name: /お知らせ/ });
     const feedbackBtn = screen.getByRole('tab', { name: /ご意見/ });
     expect(noticesBtn.textContent?.trim()).toBe('お知らせ');
@@ -233,8 +246,8 @@ describe('FeedbackHubDrawer — 不具合タブの pendingCount pill', () => {
 
 describe('FeedbackHubDrawer — frame size (spec §5.2)', () => {
   it('drawer width style is 440px (matches spec §5.2)', () => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     const dlg = screen.getByRole('dialog');
     // CSS は inline 値ではなく <style> 経由のため、CSS 変数 / クラス名で表現される。
     // テストは drawer に専用クラス（.drawer）が付与されていることだけ確認し、
@@ -265,15 +278,15 @@ describe('FeedbackHubDrawer — accessibility focus management (spec §5.2)', ()
   // Megaphone → Settings → New Notebook → first notebook — never entered drawer.
   // Fix = auto-focus close button on open + Tab/Shift+Tab focus trap inside drawer.
   it('auto-focuses the close button when the drawer opens', async () => {
-    const { hub, crashes } = makeStores();
-    render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    render(FeedbackHubDrawer, { hub, crashes, notices });
     const closeBtn = screen.getByLabelText('閉じる');
     await waitFor(() => expect(document.activeElement).toBe(closeBtn));
   });
 
   it('Tab on the last focusable element wraps focus to the first inside the drawer', async () => {
-    const { hub, crashes } = makeStores();
-    const { container } = render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    const { container } = render(FeedbackHubDrawer, { hub, crashes, notices });
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByLabelText('閉じる')),
     );
@@ -292,8 +305,8 @@ describe('FeedbackHubDrawer — accessibility focus management (spec §5.2)', ()
   });
 
   it('Shift+Tab on the first focusable element wraps focus to the last inside the drawer', async () => {
-    const { hub, crashes } = makeStores();
-    const { container } = render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    const { container } = render(FeedbackHubDrawer, { hub, crashes, notices });
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByLabelText('閉じる')),
     );
@@ -311,8 +324,8 @@ describe('FeedbackHubDrawer — accessibility focus management (spec §5.2)', ()
   });
 
   it('Tab from a middle focusable does NOT wrap (browser default applies)', async () => {
-    const { hub, crashes } = makeStores();
-    const { container } = render(FeedbackHubDrawer, { hub, crashes });
+    const { hub, crashes, notices } = makeStores();
+    const { container } = render(FeedbackHubDrawer, { hub, crashes, notices });
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByLabelText('閉じる')),
     );

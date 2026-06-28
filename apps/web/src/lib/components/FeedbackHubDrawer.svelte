@@ -27,6 +27,7 @@
     crashReportsStore,
     type CrashReportsStore,
   } from '$lib/stores/crashReports.svelte';
+  import { noticesStore, type NoticesStore } from '$lib/stores/notices.svelte';
   import NoticesTab from './feedback-hub/NoticesTab.svelte';
   import BugReportTab from './feedback-hub/BugReportTab.svelte';
   import FeedbackTab from './feedback-hub/FeedbackTab.svelte';
@@ -34,8 +35,17 @@
   interface Props {
     hub?: FeedbackHubStore;
     crashes?: CrashReportsStore;
+    /**
+     * Sprint 6: NoticesTab が消費する store。テストでモック API を持つ
+     * インスタンスを注入できるよう prop で渡す。default は global singleton。
+     */
+    notices?: NoticesStore;
   }
-  let { hub = feedbackHubStore, crashes = crashReportsStore }: Props = $props();
+  let {
+    hub = feedbackHubStore,
+    crashes = crashReportsStore,
+    notices = noticesStore,
+  }: Props = $props();
 
   const TITLE = 'お知らせ・フィードバック';
 
@@ -140,7 +150,7 @@
 
     <div class="panel" role="tabpanel">
       {#if hub.activeTab === 'notices'}
-        <NoticesTab />
+        <NoticesTab store={notices} />
       {:else if hub.activeTab === 'bugs'}
         <BugReportTab />
       {:else if hub.activeTab === 'feedback'}
