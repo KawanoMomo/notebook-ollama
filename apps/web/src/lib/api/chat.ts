@@ -11,7 +11,8 @@ export type ChatEvent =
       model_used: string;
       dropped_history: number;
     }
-  | { kind: 'error'; code: string; message: string };
+  | { kind: 'error'; code: string; message: string }
+  | { kind: 'ping' };
 
 export const chatApi = {
   createConversation: (notebookId: string) =>
@@ -34,13 +35,14 @@ export const chatApi = {
     notebookId: string,
     conversationId: string,
     content: string,
+    sourceIds?: string[],
     signal?: AbortSignal,
   ): AsyncGenerator<ChatEvent, void, unknown> {
     const url = `/api/notebooks/${notebookId}/conversations/${conversationId}/messages`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, source_ids: sourceIds }),
       signal,
     });
     if (!response.ok || !response.body) {

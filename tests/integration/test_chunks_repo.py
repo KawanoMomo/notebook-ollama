@@ -3,6 +3,7 @@ from core.storage.chunks_repo import (
     delete_chunks_for_source,
     get_chunks_by_ids,
     insert_chunks,
+    rename_speaker_in_source,
 )
 from core.storage.database import connect, migrate
 from core.storage.notebooks_repo import create_notebook
@@ -17,7 +18,7 @@ def _ctx(tmp_path):
     return conn, nb, src
 
 
-def _chunk(nb_id, src_id, ord_: int, text: str) -> ChunkRecord:
+def _chunk(nb_id, src_id, ord_: int, text: str, speaker: str | None = None) -> ChunkRecord:
     return ChunkRecord(
         id="01HF" + str(ord_).rjust(22, "0"),
         source_id=src_id,
@@ -27,6 +28,7 @@ def _chunk(nb_id, src_id, ord_: int, text: str) -> ChunkRecord:
         heading_path="Ch1 > S1",
         text=text,
         token_count=len(text),
+        speaker=speaker,
     )
 
 
@@ -52,3 +54,70 @@ def test_delete_chunks_for_source(tmp_path):
     insert_chunks(conn, [_chunk(nb.id, src.id, 0, "x")])
     delete_chunks_for_source(conn, src.id)
     assert get_chunks_by_ids(conn, [_chunk(nb.id, src.id, 0, "x").id]) == []
+
+
+def test_list_chunks_for_source_orders_by_ord_asc(tmp_path):
+    from core.storage.chunks_repo import list_chunks_for_source
+
+    conn, nb, src = _ctx(tmp_path)
+    # insert out of ord order
+    insert_chunks(conn, [_chunk(nb.id, src.id, 2, "third")])
+    insert_chunks(conn, [_chunk(nb.id, src.id, 0, "first")])
+    insert_chunks(conn, [_chunk(nb.id, src.id, 1, "second")])
+
+    fetched = list_chunks_for_source(conn, src.id)
+    assert [c.ord for c in fetched] == [0, 1, 2]
+    assert [c.text for c in fetched] == ["first", "second", "third"]
+
+
+def test_list_chunks_for_source_scopes_to_source(tmp_path):
+    from core.storage.chunks_repo import list_chunks_for_source
+    from core.storage.sources_repo import create_source
+
+    conn, nb, src = _ctx(tmp_path)
+    other = create_source(conn, notebook_id=nb.id, kind="md", content_hash="h2")
+    # Use different ord values to avoid UNIQUE constraint collision on id
+    insert_chunks(conn, [_chunk(nb.id, src.id, 10, "mine")])
+    insert_chunks(conn, [_chunk(nb.id, other.id, 20, "theirs")])
+
+    fetched = list_chunks_for_source(conn, src.id)
+    assert [c.text for c in fetched] == ["mine"]
+
+
+def test_rename_speaker_in_source_updates_matching_and_returns_count(tmp_path):
+    conn, nb, src = _ctx(tmp_path)
+    insert_chunks(conn, [_chunk(nb.id, src.id, 0, "a", speaker="相手1")])
+    insert_chunks(conn, [_chunk(nb.id, src.id, 1, "b", speaker="相手1")])
+    insert_chunks(conn, [_chunk(nb.id, src.id, 2, "c", speaker="あなた")])
+
+    updated = rename_speaker_in_source(conn, src.id, "相手1", "田中さん")
+
+    assert updated == 2
+    rows = conn.execute(
+        "SELECT speaker FROM chunks WHERE source_id = ? ORDER BY ord", (src.id,)
+    ).fetchall()
+    assert [r["speaker"] for r in rows] == ["田中さん", "田中さん", "あなた"]
+
+
+def test_rename_speaker_in_source_scopes_to_source(tmp_path):
+    from core.storage.sources_repo import create_source
+
+    conn, nb, src = _ctx(tmp_path)
+    other = create_source(conn, notebook_id=nb.id, kind="md", content_hash="h2")
+    insert_chunks(conn, [_chunk(nb.id, src.id, 0, "mine", speaker="相手1")])
+    insert_chunks(conn, [_chunk(nb.id, other.id, 1, "theirs", speaker="相手1")])
+
+    updated = rename_speaker_in_source(conn, src.id, "相手1", "田中さん")
+
+    assert updated == 1
+    other_speaker = conn.execute(
+        "SELECT speaker FROM chunks WHERE source_id = ?", (other.id,)
+    ).fetchone()["speaker"]
+    assert other_speaker == "相手1"
+
+
+def test_rename_speaker_in_source_unknown_label_returns_zero(tmp_path):
+    conn, nb, src = _ctx(tmp_path)
+    insert_chunks(conn, [_chunk(nb.id, src.id, 0, "a", speaker="相手1")])
+    updated = rename_speaker_in_source(conn, src.id, "存在しない", "田中さん")
+    assert updated == 0

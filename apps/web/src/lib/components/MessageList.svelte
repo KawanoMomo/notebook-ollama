@@ -35,15 +35,26 @@
     <ChatMessage message={m} {onCitationClick} />
   {/each}
 
-  {#if conversationStore.streaming && conversationStore.streamingText}
+  {#if conversationStore.streaming}
     <article class="msg streaming">
       <div class="role">アシスタント</div>
-      {#if conversationStore.streamingHits.length > 0}
-        <div class="hits">参照中: {conversationStore.streamingHits.length} ソース</div>
+      {#if conversationStore.streamingText}
+        {#if conversationStore.streamingHits.length > 0}
+          <div class="hits">参照中: {conversationStore.streamingHits.length} ソース</div>
+        {/if}
+        <div class="content">{@html injectCitationBadges(renderMarkdown(conversationStore.streamingText), [])}</div>
+        <div class="caret"><Spinner size={10} /> 生成中…</div>
+      {:else}
+        <div class="pending">
+          <Spinner size={12} />
+          {conversationStore.streamingHits.length > 0 ? '生成中…' : '参照中…'}
+        </div>
       {/if}
-      <div class="content">{@html injectCitationBadges(renderMarkdown(conversationStore.streamingText), [])}</div>
-      <div class="caret"><Spinner size={10} /> 生成中…</div>
     </article>
+  {/if}
+
+  {#if conversationStore.warning}
+    <div class="warn">{conversationStore.warning}</div>
   {/if}
 
   {#if conversationStore.error}
@@ -79,6 +90,18 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
+  }
+  .pending {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 12px;
+    color: var(--color-fg-muted);
+  }
+  .warn {
+    padding: var(--space-2) var(--space-4);
+    font-size: 12px;
+    color: var(--color-warning, #b45309);
   }
   .err {
     padding: var(--space-4);

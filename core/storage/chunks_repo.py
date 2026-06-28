@@ -60,5 +60,26 @@ def get_chunks_by_ids(conn: sqlite3.Connection, ids: list[str]) -> list[ChunkRec
     return [by_id[i] for i in ids if i in by_id]
 
 
+def list_chunks_for_source(conn: sqlite3.Connection, source_id: str) -> list[ChunkRecord]:
+    rows = conn.execute(
+        "SELECT * FROM chunks WHERE source_id = ? ORDER BY ord ASC", (source_id,)
+    ).fetchall()
+    return [ChunkRecord.from_row(row) for row in rows]
+
+
 def delete_chunks_for_source(conn: sqlite3.Connection, source_id: str) -> None:
     conn.execute("DELETE FROM chunks WHERE source_id = ?", (source_id,))
+
+
+def rename_speaker_in_source(
+    conn: sqlite3.Connection, source_id: str, from_label: str, to_label: str
+) -> int:
+    """Rename all chunks of ``from_label`` to ``to_label`` within one source.
+
+    Scope is within-source only (M4). Returns the number of rows updated.
+    """
+    cur = conn.execute(
+        "UPDATE chunks SET speaker = ? WHERE source_id = ? AND speaker = ?",
+        (to_label, source_id, from_label),
+    )
+    return cur.rowcount

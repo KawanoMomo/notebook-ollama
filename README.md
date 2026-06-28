@@ -13,6 +13,7 @@ Ollama を推論エンジン、Qdrant をベクトルストアとした **RAG** 
 ## 何ができるか
 
 - **ソース取り込み**: PDF / Markdown / TXT / DOCX / PPTX / XLSX / Web URL を投入
+- **会議録音 → 文字起こし** (任意): マイク(あなた)+ システム音声(相手)を同時録音し、ライブ字幕を表示。停止後にオフラインで文字起こし・話者分離・話者名推定・整形・チャンク化・埋め込みまで自動処理してソース化（`uv sync --extra recording` で有効化、GPU 推奨）
 - **引用付き Q&A**: 質問するとローカル LLM が回答 + 該当チャンクへのカード形式リンクを返す
 - **3ペイン UI**: ソース一覧・チャット・ソースビューワを同時表示。引用カードクリックで該当ページの本文に即ジャンプ
 - **OS 通知**: タブが非アクティブでも「回答完了」「取り込み完了」を OS 通知
@@ -121,6 +122,71 @@ pwsh scripts/install-pdf-support.ps1
 ```
 
 AGPL-3.0 の同意プロンプトに `y` で答えると PyMuPDF が `uv sync --extra pdf` でインストールされます。
+
+### 5. 録音サポート (任意・GPU 推奨)
+
+会議録音と文字起こしを使う場合は、録音用の依存（faster-whisper / 話者分離 / CUDA ランタイム等。やや大きめ）を追加します。
+
+```bash
+uv sync --extra recording
+```
+
+- マイク + システム音声（ループバック）の**同時録音**と**ライブ字幕**
+- 停止後に**オフラインで** STT・話者分離・話者名推定・LLM 整形・チャンク化・埋め込み
+- 話者は「あなた」（マイク）/「相手1…」（システム）として記録され、チップから**リネーム**可能
+- NVIDIA GPU（CUDA）推奨。録音依存が未導入だと、録音 UI は表示されますが録音開始・文字起こしは失敗します（`uv sync --extra recording` を実行してください）。
+
+## Windows: PowerShell 実行ポリシーについて
+
+`scripts\*.ps1` を実行したとき、次のようなエラーが出ることがあります。
+
+```
+このシステムではスクリプトの実行が無効になっているため…
+FullyQualifiedErrorId : UnauthorizedAccess
+```
+
+Windows の既定 `Restricted` ポリシーが `.ps1` の直接実行をブロックしているためです。3 通りの対処があります。
+
+### ① 都度バイパス（恒久設定を変えたくないとき）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -OpenBrowser
+```
+
+レジストリを変更せず、そのプロセス内だけポリシーを上書きします。会社規定の影響を最小化したい場合の第一選択。
+
+### ② 現在のセッションだけ許可
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\start.ps1 -OpenBrowser
+```
+
+ウィンドウを閉じたら元に戻ります。
+
+### ③ ユーザースコープで恒久的に許可（管理者権限不要）
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+- ローカル作成の `.ps1` は無条件実行可能
+- インターネットからダウンロードした `.ps1` は署名がないと実行不可（一定のセキュリティを維持）
+- 個人 PC / 制限のない開発環境向け
+
+### 会社・規制環境での注意
+
+恒久変更（③）の前に、Group Policy で上書きされていないかを確認してください。
+
+```powershell
+Get-ExecutionPolicy -List
+```
+
+- `MachinePolicy` / `UserPolicy` が `Restricted` や `AllSigned` の場合は GPO で強制されており、`CurrentUser` を変更しても無効化されます。IT 部門への申請が必要、または社内規定違反になり得ます。
+- AppLocker / WDAC / EDR (Defender for Endpoint, CrowdStrike 等) が有効な環境では、ポリシー以前にスクリプト実行自体がブロックまたはログ収集対象になります。
+- 不明な場合は **①の都度バイパス方式**が最も無難です。
+
+なお、`scripts\install-startup.ps1` がタスクスケジューラに登録する起動コマンドには `-ExecutionPolicy Bypass` が既に組み込まれているため、ログオン時自動起動はポリシー変更なしでも動作します。
 
 ## 本番ビルド
 

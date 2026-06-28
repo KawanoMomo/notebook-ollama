@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request, status
 from sse_starlette.sse import EventSourceResponse
+from sse_starlette.event import ServerSentEvent
 
 from apps.api.schemas.chat import Conversation, Message, MessageInput
 from core.ollama.client import OllamaClient
@@ -18,6 +19,11 @@ from core.storage import (
 )
 
 router = APIRouter(prefix="/api/notebooks/{notebook_id}/conversations", tags=["chat"])
+
+
+def _ping_event() -> ServerSentEvent:
+    """名前付き ping イベント。フロントが lastBeatAt 更新に使う(未知イベントは無視されるため後方互換)。"""
+    return ServerSentEvent(data="{}", event="ping")
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Conversation)
@@ -79,6 +85,16 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
 
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "conversation not in notebook")
 
+    # source_ids が空 or 未指定の場合は 400(旧「空=全選択」挙動は廃止)。
+    # SSE 開始後の例外は 500 化するため、EventSourceResponse を返す前に検査する。
+    if not body.source_ids:
+        from core.exceptions import AppError, ErrorCode
+
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "ソースが選択されていません。1 つ以上選んでください。",
+        )
+
     user_msg = messages_repo.append_message(
         ctx.conn, conversation_id=conv.id, role="user", content=body.content
     )
@@ -110,6 +126,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
         citations: list[dict[str, Any]] = []
         async for ev in ctx.generation.run(
             notebook_id=notebook_id,
+            source_ids=body.source_ids,
             model=model,
             question=body.content,
             history=history,
@@ -134,4 +151,8 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
             model=model,
         )
 
-    return EventSourceResponse(event_gen())
+    return EventSourceResponse(
+        event_gen(),
+        ping=20,
+        ping_message_factory=_ping_event,
+    )

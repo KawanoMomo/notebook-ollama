@@ -48,3 +48,18 @@ def apply_overrides(config) -> None:
         except Exception:
             # 不正な settings.json で起動をクラッシュさせない (既定値で続行)。
             log.warning("settings_override_invalid", section="audio")
+
+    ollama = ov.get("ollama")
+    if isinstance(ollama, dict) and ollama:
+        # 永続化された ollama セクションを一体で適用する: default_model に加え
+        # embedding_model / embedding_dim も復元する。これにより、埋め込み切替後の
+        # 再起動で embedding_model が config 既定(bge-m3/1024)へ巻き戻り、
+        # 768 次元の collection に 1024 次元ベクトルを投げて全検索・全取込が
+        # 壊れる事故を構造的に防ぐ(model と次元は一体・順序非依存)。
+        # audio 方式と同じく丸ごとマージし、不正値でも起動を止めない。
+        merged = {**config.ollama.model_dump(), **ollama}
+        try:
+            config.ollama = config.ollama.__class__(**merged)
+        except Exception:
+            # 不正な settings.json で起動をクラッシュさせない (既定値で続行)。
+            log.warning("settings_override_invalid", section="ollama")

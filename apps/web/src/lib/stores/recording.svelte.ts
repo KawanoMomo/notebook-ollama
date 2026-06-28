@@ -22,11 +22,16 @@ export interface RecordingStore {
   readonly captions: LiveCaption[];
   readonly micLevel: number;
   readonly sysLevel: number;
+  readonly micMuted: boolean;
+  readonly systemMuted: boolean;
   readonly error: string | null;
   start(notebookId: string): Promise<void>;
   stop(): Promise<void>;
   toggleLiveCaption(): void;
+  toggleMute(channel: MuteChannel): void;
 }
+
+export type MuteChannel = 'mic' | 'system';
 
 const MAX_CAPTIONS = 200;
 
@@ -50,11 +55,18 @@ export function createRecordingStore(
   let captions = $state<LiveCaption[]>([]);
   let micLevel = $state(0);
   let sysLevel = $state(0);
+  let micMuted = $state(false);
+  let systemMuted = $state(false);
   let error = $state<string | null>(null);
 
   let timer: ReturnType<typeof setInterval> | null = null;
   let startedAt = 0;
   let ws: WebSocket | null = null;
+  // 意図的なクローズ(stop)か、ネットワーク/サーバ起因の切断かを区別する。
+  // 後者だけ自動再接続する(前者で再接続するとゾンビ接続になる)。
+  let intentionalClose = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectAttempts = 0;
 
   function clearTimer() {
     if (timer !== null) {
@@ -63,9 +75,19 @@ export function createRecordingStore(
     }
   }
 
+  function clearReconnect() {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  }
+
   function closeWs() {
+    intentionalClose = true; // これ以降の onclose で再接続しない
+    clearReconnect();
     if (ws) {
       // onclose は破棄処理を呼ばないよう外しておく
+      ws.onopen = null;
       ws.onmessage = null;
       ws.onerror = null;
       ws.onclose = null;
@@ -90,7 +112,10 @@ export function createRecordingStore(
     captions = [];
     micLevel = 0;
     sysLevel = 0;
+    micMuted = false;
+    systemMuted = false;
     startedAt = 0;
+    reconnectAttempts = 0;
   }
 
   function handleMessage(raw: string) {
@@ -109,6 +134,13 @@ export function createRecordingStore(
         start_ms: Number(msg.start_ms ?? 0),
         is_final: Boolean(msg.is_final),
       };
+      // ミュート中チャンネルの新規字幕は追加しない(過去分は残す)。
+      // サーバ側でも送出は止まるが、操作直後の往復遅延で在庫フレームが
+      // 届く場合に備えた防御的ガード。ラベル「あなた」=mic / それ以外=system。
+      const capMuted = cap.label === 'あなた' ? micMuted : systemMuted;
+      if (capMuted) {
+        return;
+      }
       const idx = captions.findIndex((c) => c.id === cap.id);
       if (idx >= 0) {
         captions = captions.map((c, i) => (i === idx ? cap : c));
@@ -125,9 +157,58 @@ export function createRecordingStore(
       } else if (channel === 'system') {
         sysLevel = level;
       }
+    } else if (type === 'mute_state') {
+      // サーバからのミュート状態同期(確定値)。楽観更新と一致させる。
+      const channel = String(msg.channel ?? '');
+      const muted = Boolean(msg.muted);
+      if (channel === 'mic') {
+        micMuted = muted;
+      } else if (channel === 'system') {
+        systemMuted = muted;
+      }
     } else if (type === 'error') {
       error = String(msg.msg ?? 'recording error');
     }
+  }
+
+  /** ミュートコマンドを送信し、送信できたか(WS が OPEN だったか)を返す。 */
+  function sendMute(channel: MuteChannel, muted: boolean): boolean {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'mute', channel, muted }));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /** 接続確立/再接続時に、UI が保持する現在のミュート状態をサーバへ再送して同期する。 */
+  function resyncMute(socket: WebSocket) {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    const states: Array<[MuteChannel, boolean]> = [
+      ['mic', micMuted],
+      ['system', systemMuted],
+    ];
+    for (const [channel, muted] of states) {
+      try {
+        socket.send(JSON.stringify({ type: 'mute', channel, muted }));
+      } catch {
+        // ignore — onclose 経由で再接続が走る
+      }
+    }
+  }
+
+  function scheduleReconnect(rid: string) {
+    if (intentionalClose || !recording) return;
+    // 指数バックオフ(最大 8s)。録音継続中のみ再接続する。
+    const delay = Math.min(8000, 500 * 2 ** reconnectAttempts);
+    reconnectAttempts += 1;
+    clearReconnect();
+    reconnectTimer = setTimeout(() => {
+      if (!intentionalClose && recording) connectWs(rid);
+    }, delay);
   }
 
   function connectWs(rid: string) {
@@ -135,9 +216,19 @@ export function createRecordingStore(
     const socket = new WebSocket(
       `${proto}://${location.host}/ws/recordings/${rid}/live`,
     );
+    socket.onopen = () => {
+      reconnectAttempts = 0;
+      // 再接続でつながったら接続エラー表示をクリアし、現ミュート状態を再送して同期。
+      if (error === 'ライブ字幕の接続でエラーが発生しました') error = null;
+      resyncMute(socket);
+    };
     socket.onmessage = (e) => handleMessage(e.data as string);
     socket.onerror = () => {
       error = 'ライブ字幕の接続でエラーが発生しました';
+    };
+    socket.onclose = () => {
+      // 意図的な停止でなく録音継続中なら自動再接続(切断中の乖離固定化を防ぐ)。
+      if (!intentionalClose && recording) scheduleReconnect(rid);
     };
     ws = socket;
   }
@@ -176,6 +267,12 @@ export function createRecordingStore(
     get sysLevel() {
       return sysLevel;
     },
+    get micMuted() {
+      return micMuted;
+    },
+    get systemMuted() {
+      return systemMuted;
+    },
     get error() {
       return error;
     },
@@ -193,10 +290,14 @@ export function createRecordingStore(
       sysLevel = 0;
       elapsedMs = 0;
       startedAt = Date.now();
+      micMuted = false;
+      systemMuted = false;
       clearTimer();
       timer = setInterval(() => {
         elapsedMs = Date.now() - startedAt;
       }, 200);
+      intentionalClose = false; // 新規接続。onclose での自動再接続を許可する
+      reconnectAttempts = 0;
       connectWs(started.recording_id);
     },
     async stop() {
@@ -239,6 +340,22 @@ export function createRecordingStore(
     },
     toggleLiveCaption() {
       liveCaptionEnabled = !liveCaptionEnabled;
+    },
+    toggleMute(channel) {
+      const next = channel === 'mic' ? !micMuted : !systemMuted;
+      // サーバへ送信できたときだけ状態を反映する。WS 未接続/送信失敗時に楽観反転すると
+      // UI は「ミュート」表示なのにサーバはフレームを STT/変換/埋め込みへ流し続け、
+      // 恒久的に乖離する(漏洩)。送れないなら反転せずエラーを出す。確定値はサーバの
+      // mute_state エコーで上書きされる(再接続時は resyncMute で再同期)。
+      if (!sendMute(channel, next)) {
+        error = 'ミュート操作を送信できませんでした(接続待ち/切断中)';
+        return;
+      }
+      if (channel === 'mic') {
+        micMuted = next;
+      } else {
+        systemMuted = next;
+      }
     },
   };
 }

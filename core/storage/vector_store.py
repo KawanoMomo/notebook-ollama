@@ -59,6 +59,7 @@ class SearchHit:
 class VectorStore:
     def __init__(self, *, path: Path, dim: int) -> None:
         path.mkdir(parents=True, exist_ok=True)
+        self._path = path
         self._client = QdrantClient(path=str(path))
         self._dim = dim
 
@@ -70,6 +71,43 @@ class VectorStore:
             collection_name=COLLECTION,
             vectors_config=qm.VectorParams(size=self._dim, distance=qm.Distance.COSINE),
         )
+
+    def collection_dim(self) -> int | None:
+        """現行 collection のベクトル次元。collection が無ければ None。"""
+        existing = {c.name for c in self._client.get_collections().collections}
+        if COLLECTION not in existing:
+            return None
+        info = self._client.get_collection(COLLECTION)
+        return info.config.params.vectors.size
+
+    def recreate_collection(self, dim: int) -> None:
+        """既存 collection を drop してから dim 次元(COSINE)で作り直す。
+
+        全チャンクの再インデックス用。既存 collection が無くても新規作成する。
+        以降この VectorStore は新しい dim で動作する。
+
+        qdrant local mode は SQLite ベースのストレージを保持するため、
+        close してから SQLite ファイルを削除して再オープン・再作成することで
+        完全なリセットを保証する。Windows でファイルロックが残らないよう
+        delete_collection 前に close する。
+        """
+        import shutil
+
+        # close して Windows のファイルロックを解放してから削除する
+        self._client.close()
+        col_dir = self._path / "collection" / COLLECTION
+        if col_dir.exists():
+            shutil.rmtree(col_dir)
+        self._client = QdrantClient(path=str(self._path))
+        # meta.json から collection エントリを削除する
+        existing = {c.name for c in self._client.get_collections().collections}
+        if COLLECTION in existing:
+            self._client.delete_collection(collection_name=COLLECTION)
+        self._client.create_collection(
+            collection_name=COLLECTION,
+            vectors_config=qm.VectorParams(size=dim, distance=qm.Distance.COSINE),
+        )
+        self._dim = dim
 
     def upsert(self, vectors: Iterable[ChunkVector]) -> None:
         points = [
@@ -100,13 +138,19 @@ class VectorStore:
         query: list[float],
         notebook_id: str,
         limit: int,
+        source_ids: list[str] | None = None,
     ) -> list[SearchHit]:
+        must: list[qm.Condition] = [
+            qm.FieldCondition(key="notebook_id", match=qm.MatchValue(value=notebook_id))
+        ]
+        if source_ids:
+            must.append(
+                qm.FieldCondition(key="source_id", match=qm.MatchAny(any=source_ids))
+            )
         result = self._client.query_points(
             collection_name=COLLECTION,
             query=query,
-            query_filter=qm.Filter(
-                must=[qm.FieldCondition(key="notebook_id", match=qm.MatchValue(value=notebook_id))]
-            ),
+            query_filter=qm.Filter(must=must),
             limit=limit,
         )
         hits: list[SearchHit] = []
@@ -129,6 +173,65 @@ class VectorStore:
                 )
             )
         return hits
+
+    def export_channels(self) -> dict[str, str | None]:
+        """既存 collection の全点を走査し {orig_id: channel} を返す。
+
+        channel は vector-store payload 専用フィールド(SQLite には無い)で、
+        再インデックス時に list_chunks_for_source からは復元できない。recreate
+        前に本メソッドで現行 collection から退避し、再 upsert 時に carry-forward
+        することで録音引用の audio channel(mic/system)を保持する。
+        collection が無ければ空 dict。
+        """
+        existing = {c.name for c in self._client.get_collections().collections}
+        if COLLECTION not in existing:
+            return {}
+        out: dict[str, str | None] = {}
+        offset: object | None = None
+        while True:
+            records, offset = self._client.scroll(
+                collection_name=COLLECTION,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for rec in records:
+                payload = rec.payload or {}
+                orig_id = payload.get("orig_id")
+                if orig_id is not None:
+                    out[orig_id] = payload.get("channel")
+            if offset is None:
+                break
+        return out
+
+    def rename_speaker(self, source_id: str, from_label: str, to_label: str) -> None:
+        """Update the ``speaker`` payload for all points of one source's label.
+
+        Filters on ``source_id`` AND ``speaker == from_label`` (within-source
+        scope, M4) and sets ``speaker = to_label``. Best-effort: SQLite is the
+        source of truth, so payload-update failures are logged and swallowed
+        (the speaker payload is only used for citation display, not filtering).
+        """
+        flt = qm.Filter(
+            must=[
+                qm.FieldCondition(key="source_id", match=qm.MatchValue(value=source_id)),
+                qm.FieldCondition(key="speaker", match=qm.MatchValue(value=from_label)),
+            ]
+        )
+        try:
+            self._client.set_payload(
+                collection_name=COLLECTION,
+                payload={"speaker": to_label},
+                points=flt,
+            )
+        except Exception as exc:  # pragma: no cover - best-effort, SQLite is source of truth
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "qdrant rename_speaker failed (source_id=%s, %r->%r): %s",
+                source_id, from_label, to_label, exc,
+            )
 
     def delete_by_source(self, source_id: str) -> None:
         self._client.delete(

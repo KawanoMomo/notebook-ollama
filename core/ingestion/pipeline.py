@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from core.exceptions import AppError, ErrorCode
 from core.ids import new_id
@@ -31,11 +31,19 @@ class PipelineDeps:
     ollama: _GatewayLike
     embedding_model: str
     broker: _BrokerLike | None = None
+    embedding_model_getter: Callable[[], str] | None = None
+    # READY 直後に呼ばれる要約フック。失敗しても取込は READY を維持する。
+    # アプリ層で SummaryJob.run を asyncio.create_task でラップして渡す想定。
+    summary_runner: Callable[[str], Any] | None = None
 
 
 class IngestionPipeline:
     def __init__(self, *, deps: PipelineDeps) -> None:
         self._deps = deps
+
+    def _embedding_model(self) -> str:
+        getter = self._deps.embedding_model_getter
+        return getter() if getter is not None else self._deps.embedding_model
 
     async def run(self, *, source_id: str, kind: str, data: bytes) -> None:
         conn = self._deps.conn
@@ -90,7 +98,7 @@ class IngestionPipeline:
             await _publish(SourceStatus.EMBEDDING, chunk_count=total, embedded=0)
             vectors: list[ChunkVector] = []
             for i, rec in enumerate(chunk_records):
-                vec = await self._deps.ollama.embed(model=self._deps.embedding_model, text=rec.text)
+                vec = await self._deps.ollama.embed(model=self._embedding_model(), text=rec.text)
                 vectors.append(
                     ChunkVector(
                         id=rec.id,
@@ -124,6 +132,15 @@ class IngestionPipeline:
                 source_id=source_id,
                 chunk_count=len(chunk_records),
             )
+
+            # Best-effort: 要約フックを呼ぶ。失敗しても READY は維持する。
+            if self._deps.summary_runner is not None:
+                try:
+                    result = self._deps.summary_runner(source_id)
+                    if hasattr(result, "__await__"):
+                        await result
+                except Exception:
+                    log.warning("summary_runner_failed", source_id=source_id)
 
         except AppError as exc:
             update_source_status(conn, source_id, status=SourceStatus.ERROR, error_msg=exc.message)

@@ -1,12 +1,17 @@
 <script lang="ts">
+  import SpeakerChip from './SpeakerChip.svelte';
+
   interface Props {
     notebookId: string;
     sourceId: string;
     startMs: number;
     endMs: number | null;
     speaker: string | null;
+    // 任意: 渡されたときだけ話者チップをクリック編集可能にする(後方互換)。
+    // (fromLabel, toLabel) を親に通知し、親が API 呼び出し + 表示更新を担う。
+    onRenameSpeaker?: (fromLabel: string, toLabel: string) => void;
   }
-  let { notebookId, sourceId, startMs, endMs, speaker }: Props = $props();
+  let { notebookId, sourceId, startMs, endMs, speaker, onRenameSpeaker }: Props = $props();
 
   // mic = "あなた" (self / microphone), otherwise the system/loopback channel.
   let channel = $derived(speaker === 'あなた' ? 'mic' : 'system');
@@ -143,7 +148,7 @@
   </div>
 
   <div class="row2">
-    <span class="spk-chip" style="background:{chipColor}">● {speakerLabel}</span>
+    <SpeakerChip speaker={speakerLabel} color={chipColor} onRename={onRenameSpeaker} />
     <span class="ttime">{formatTime(currentTime)} / {formatTime(duration)}</span>
   </div>
 
@@ -198,16 +203,6 @@
     justify-content: space-between;
     align-items: center;
     margin-top: var(--space-2);
-  }
-  .spk-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: 11px;
-    font-weight: 600;
-    border-radius: 999px;
-    padding: 2px 9px;
-    color: #fff;
   }
   .ttime {
     font-size: 11px;

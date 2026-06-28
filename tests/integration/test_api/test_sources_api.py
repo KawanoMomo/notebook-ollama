@@ -24,9 +24,19 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
-def _create_nb(client) -> str:
-    r = client.post("/api/notebooks", json={"name": "N"})
+def _create_nb(client, name="N") -> str:
+    r = client.post("/api/notebooks", json={"name": name})
     return r.json()["id"]
+
+
+def _create_recording(client, nb) -> str:
+    from core.storage import sources_repo
+
+    ctx = client.app.state.ctx
+    src = sources_repo.create_source(
+        ctx.conn, notebook_id=nb, kind="recording", title=None, origin="録音"
+    )
+    return src.id
 
 
 def test_upload_markdown_source(client):
@@ -109,6 +119,148 @@ def test_get_chunk_returns_chunk_text(client):
     r = client.get(f"/api/notebooks/{nb}/sources/{sid}/chunks/{chunk.id}")
     assert r.status_code == 200
     assert r.json()["text"] == "hello chunk"
+
+
+def _insert_chunk(ctx, *, cid, sid, nb, ord_, speaker):
+    from core.storage.chunks_repo import ChunkRecord, insert_chunks
+
+    insert_chunks(
+        ctx.conn,
+        [
+            ChunkRecord(
+                id=cid, source_id=sid, notebook_id=nb,
+                ord=ord_, page=None, heading_path=None,
+                text=f"text {ord_}", token_count=2, speaker=speaker,
+            )
+        ],
+    )
+
+
+def test_rename_speaker_updates_all_chunks_of_label(client):
+    """同一話者ラベルの全チャンクを一括更新し件数を返す。"""
+    nb = _create_nb(client)
+    sid = _create_recording(client, nb)
+    ctx = client.app.state.ctx
+    _insert_chunk(ctx, cid="c0", sid=sid, nb=nb, ord_=0, speaker="相手1")
+    _insert_chunk(ctx, cid="c1", sid=sid, nb=nb, ord_=1, speaker="相手1")
+    _insert_chunk(ctx, cid="c2", sid=sid, nb=nb, ord_=2, speaker="相手1")
+
+    r = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "相手1", "to_label": "田中さん"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["updated"] == 3
+
+    rows = ctx.conn.execute(
+        "SELECT speaker FROM chunks WHERE source_id = ? ORDER BY ord", (sid,)
+    ).fetchall()
+    assert [row["speaker"] for row in rows] == ["田中さん", "田中さん", "田中さん"]
+
+
+def test_rename_speaker_leaves_other_speakers_untouched(client):
+    """同 source 内の別話者は変更しない。"""
+    nb = _create_nb(client)
+    sid = _create_recording(client, nb)
+    ctx = client.app.state.ctx
+    _insert_chunk(ctx, cid="c0", sid=sid, nb=nb, ord_=0, speaker="相手1")
+    _insert_chunk(ctx, cid="c1", sid=sid, nb=nb, ord_=1, speaker="あなた")
+
+    r = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "相手1", "to_label": "田中さん"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["updated"] == 1
+
+    rows = ctx.conn.execute(
+        "SELECT speaker FROM chunks WHERE source_id = ? ORDER BY ord", (sid,)
+    ).fetchall()
+    assert [row["speaker"] for row in rows] == ["田中さん", "あなた"]
+
+
+def test_rename_speaker_scoped_within_source(client):
+    """別 source の同名ラベルは変更しない(スコープ = source 内)。"""
+    nb = _create_nb(client)
+    sid = _create_recording(client, nb)
+    other = _create_recording(client, nb)
+    ctx = client.app.state.ctx
+    _insert_chunk(ctx, cid="a0", sid=sid, nb=nb, ord_=0, speaker="相手1")
+    _insert_chunk(ctx, cid="b0", sid=other, nb=nb, ord_=0, speaker="相手1")
+
+    r = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "相手1", "to_label": "田中さん"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["updated"] == 1
+
+    other_speaker = ctx.conn.execute(
+        "SELECT speaker FROM chunks WHERE source_id = ?", (other,)
+    ).fetchone()["speaker"]
+    assert other_speaker == "相手1"
+
+
+def test_rename_speaker_empty_to_label_returns_400(client):
+    nb = _create_nb(client)
+    sid = _create_recording(client, nb)
+    r = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "相手1", "to_label": "   "},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "input.invalid"
+
+
+def test_rename_speaker_rejects_mic_label_you(client):
+    """話者「あなた」(mic)は from/to いずれでもリネーム禁止(チャンネル identity 保護)。"""
+    nb = _create_nb(client)
+    sid = _create_recording(client, nb)
+    ctx = client.app.state.ctx
+    _insert_chunk(ctx, cid="c0", sid=sid, nb=nb, ord_=0, speaker="あなた")
+    # from_label が「あなた」-> 400
+    r = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "あなた", "to_label": "自分"},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "input.invalid"
+    # to_label が「あなた」-> 400(別話者を mic ラベルに化けさせない)
+    r2 = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "相手1", "to_label": "あなた"},
+    )
+    assert r2.status_code == 400, r2.text
+    # 「あなた」チャンクは変更されていない
+    row = ctx.conn.execute(
+        "SELECT speaker FROM chunks WHERE id='c0'"
+    ).fetchone()
+    assert row["speaker"] == "あなた"
+
+
+def test_rename_speaker_unknown_from_label_returns_zero(client):
+    nb = _create_nb(client)
+    sid = _create_recording(client, nb)
+    ctx = client.app.state.ctx
+    _insert_chunk(ctx, cid="c0", sid=sid, nb=nb, ord_=0, speaker="相手1")
+    r = client.patch(
+        f"/api/notebooks/{nb}/sources/{sid}/speaker",
+        json={"from_label": "存在しない", "to_label": "田中さん"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["updated"] == 0
+
+
+def test_rename_speaker_cross_notebook_returns_404(client):
+    nb_a = _create_nb(client, "A")
+    nb_b = _create_nb(client, "B")
+    sid = _create_recording(client, nb_a)
+    r = client.patch(
+        f"/api/notebooks/{nb_b}/sources/{sid}/speaker",
+        json={"from_label": "相手1", "to_label": "田中さん"},
+    )
+    assert r.status_code == 404, r.text
+    assert r.json()["error"]["code"] == "storage.not_found"
 
 
 def test_delete_recording_source_removes_audio_dir(client):

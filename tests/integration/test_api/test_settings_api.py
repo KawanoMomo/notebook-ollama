@@ -26,3 +26,13 @@ def test_get_stats(client):
     body = r.json()
     assert "notebook_count" in body
     assert "source_count" in body
+
+
+def test_get_settings_exposes_embedding_dim(client):
+    # 既定 collection は 1024 次元(bge-m3)で作成される
+    r = client.get("/api/settings")
+    assert r.status_code == 200
+    ollama = r.json()["ollama"]
+    assert "embedding_dim" in ollama
+    # build_context が ensure_collection 済みのため現行次元が返る
+    assert ollama["embedding_dim"] == 1024

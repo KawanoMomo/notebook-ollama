@@ -1,0 +1,17 @@
+chunk_count=1
+--- ord=0 speaker=相手1 [0..31490]
+    おはようございます。 今日はとてもいい天気で、空が晴れています。 これから会議を始めます。 それでは会議を終わります。 本日は活発な議論をありがとうございました。 また次回お会いしましょう。 さようなら。
+=== ASSERTIONS ===
+  [MUTED->absent] パイナップル: absent OK
+  [MUTED->absent] 秘密: absent OK
+  [MUTED->absent] 黄色: absent OK
+  [MUTED->absent] 果物: absent OK
+  [MUTED->absent] 言わないで: absent OK
+  [UNMUTED->present] 天気: present OK
+  [UNMUTED->present] 会議: present OK
+  [UNMUTED->present] ありがとう: present OK
+  [UNMUTED->present] さようなら: present OK
+  [UNMUTED->present] 議論: present OK
+  [UNMUTED->present] 終わり: present OK
+
+VERDICT muted_leak=False  any_unmuted_present=True

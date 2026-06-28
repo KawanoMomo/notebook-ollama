@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Mic } from '@lucide/svelte';
+  import { Plus, Mic, Check, Minus } from '@lucide/svelte';
   import SourceCard from './SourceCard.svelte';
   import SourceUploadModal from './SourceUploadModal.svelte';
   import RecordingControls from './RecordingControls.svelte';
@@ -8,6 +8,7 @@
   import { recordingStore } from '$lib/stores/recording.svelte';
   import { sourcesApi } from '$lib/api/sources';
   import { pushToast } from './Toast.svelte';
+  import { computeBulkState } from './SourcesPanel.bulk';
   import type { Source } from '$lib/api/types';
 
   interface Props {
@@ -30,6 +31,31 @@
         : true,
     ),
   );
+
+  // 仕様 §2.2: フィルタ中は表示中ソースのみを対象にしたトライステート/カウントを出す。
+  const bulk = $derived(
+    computeBulkState({
+      visibleIds: filteredSources.map((s) => s.id),
+      selectedIds: currentNotebookStore.selectedSourceIds,
+    }),
+  );
+
+  function onBulkToggle() {
+    if (bulk.state === 'none') {
+      // 全選択(フィルタ中なら表示中ソースだけ)
+      currentNotebookStore.selectAll(filteredSources.map((s) => s.id));
+    } else {
+      // 全/一部選択 → 全解除(表示中ソースだけ)
+      const visible = new Set(filteredSources.map((s) => s.id));
+      // 表示外のソースの選択状態は保持する: 一度全部消してから、表示外で
+      // 元々選択されていたものだけ復元する。
+      const survivors = Array.from(currentNotebookStore.selectedSourceIds).filter(
+        (id) => !visible.has(id),
+      );
+      currentNotebookStore.clearSelection();
+      if (survivors.length > 0) currentNotebookStore.selectAll(survivors);
+    }
+  }
 
   function isSupported(name: string): boolean {
     const n = name.toLowerCase();
@@ -86,7 +112,38 @@
     await uploadFiles(list);
   }
 
+  async function onReembed(s: Source) {
+    try {
+      await sourcesApi.recordingRetry(notebookId, s.id);
+      // retry は {source_id,status} を返すため Source 全体を取り直して反映する。
+      const fresh = await sourcesApi.list(notebookId);
+      const updated = fresh.find((x) => x.id === s.id);
+      if (updated) currentNotebookStore.upsertSource(updated);
+      pushToast('再生成を開始しました', 'info');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function onStopConversion(s: Source) {
+    // 進行中の録音変換を停止。BE は即座に error("変換を停止しました") へ落とすので、
+    // 最新 Source を取り直してカードに反映する(SSE でも追従するが即時性のため)。
+    try {
+      await sourcesApi.cancelConversion(notebookId, s.id);
+      const fresh = await sourcesApi.list(notebookId);
+      const updated = fresh.find((x) => x.id === s.id);
+      if (updated) currentNotebookStore.upsertSource(updated);
+      pushToast('変換を停止しました', 'info');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function onRetry(s: Source) {
+    if (s.kind === 'recording') {
+      await onReembed(s);
+      return;
+    }
     try {
       const updated = await sourcesApi.retry(notebookId, s.id);
       currentNotebookStore.upsertSource(updated);
@@ -111,6 +168,59 @@
       await sourcesApi.delete(notebookId, s.id);
       currentNotebookStore.removeSource(s.id);
       pushToast('削除しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  // ガイド開閉状態。クリックで開閉、ソース選択時に自動展開(§4.1)。
+  let guideOpen = $state<Set<string>>(new Set());
+
+  function toggleGuide(id: string) {
+    const next = new Set(guideOpen);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    guideOpen = next;
+  }
+
+  function toggleGuideAndSelect(s: Source) {
+    // タイトルクリック = ガイドの開閉トグル + 右パネルの原文表示。
+    // 既存 ▶ キャレットでの開閉と挙動を統一する(2回目クリックで閉じる)。
+    // 右パネル表示は閉じても維持する(別ソースに切り替えるときだけ変わる)。
+    toggleGuide(s.id);
+    onSourceSelect(s.id);
+  }
+
+  async function onSummarize(s: Source) {
+    try {
+      const updated = await sourcesApi.summarize(notebookId, s.id);
+      currentNotebookStore.upsertSource(updated);
+      pushToast('要約を再生成しています', 'info');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function onGenerateAdr(s: Source) {
+    try {
+      const updated = await sourcesApi.generateAdr(notebookId, s.id);
+      currentNotebookStore.upsertSource(updated);
+      // ADR は決定があれば ready、無ければ skipped。toast は中立に。
+      pushToast('ADR 抽出を開始しました', 'info');
+      // ガイドも自動で開く(結果が見えるように)
+      if (!guideOpen.has(s.id)) {
+        guideOpen = new Set([...guideOpen, s.id]);
+      }
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function onRename(s: Source, title: string) {
+    try {
+      const updated = await sourcesApi.rename(notebookId, s.id, title);
+      currentNotebookStore.upsertSource(updated);
+      pushToast('名前を変更しました', 'success');
     } catch (e) {
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
@@ -148,15 +258,38 @@
     </button>
   </div>
   <RecordingControls {notebookId} />
+  <button
+    class="bulk-row"
+    data-state={bulk.state}
+    onclick={onBulkToggle}
+    aria-label="すべてのソースを選択切替"
+  >
+    <span class="bulk-box" data-state={bulk.state}>
+      {#if bulk.state === 'all'}
+        <Check size="11" color="#fff" strokeWidth={3} />
+      {:else if bulk.state === 'some'}
+        <Minus size="11" color="#fff" strokeWidth={3} />
+      {/if}
+    </span>
+    <span class="bulk-label">すべてのソース</span>
+    <span class="bulk-count">{bulk.label}</span>
+  </button>
   <div class="list">
     {#each filteredSources as s (s.id)}
       <SourceCard
         source={s}
         selected={currentNotebookStore.selectedSourceIds.has(s.id)}
         onToggle={() => currentNotebookStore.toggleSelected(s.id)}
-        onSelect={() => onSourceSelect(s.id)}
+        onSelect={() => toggleGuideAndSelect(s)}
         onRetry={() => onRetry(s)}
+        onReembed={() => onReembed(s)}
+        onStopConversion={() => onStopConversion(s)}
         onDelete={() => onDelete(s)}
+        onRename={(id, title) => onRename(s, title)}
+        guideExpanded={guideOpen.has(s.id)}
+        onGuideToggle={() => toggleGuide(s.id)}
+        onSummarize={() => onSummarize(s)}
+        onGenerateAdr={() => onGenerateAdr(s)}
       />
     {/each}
     {#if filteredSources.length === 0}
@@ -264,5 +397,44 @@
     color: var(--color-fg-muted);
     text-align: center;
     font-size: 13px;
+  }
+  .bulk-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg);
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+  }
+  .bulk-row:hover {
+    background: var(--color-bg-elevated);
+  }
+  .bulk-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1.5px solid var(--color-border);
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+  .bulk-box[data-state='all'],
+  .bulk-box[data-state='some'] {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+  .bulk-label {
+    flex: 1;
+    color: var(--color-fg);
+    font-weight: 500;
+  }
+  .bulk-count {
+    color: var(--color-fg-muted);
+    font-variant-numeric: tabular-nums;
   }
 </style>

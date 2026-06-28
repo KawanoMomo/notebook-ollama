@@ -76,11 +76,15 @@ def update_notebook(
     name: str | None = None,
     description: str | None = None,
     default_model: str | None = None,
+    clear_default_model: bool = False,
 ) -> NotebookRecord:
     existing = get_notebook(conn, notebook_id)
     new_name = name if name is not None else existing.name
     new_desc = description if description is not None else existing.description
-    new_model = default_model if default_model is not None else existing.default_model
+    if clear_default_model:
+        new_model = None
+    else:
+        new_model = default_model if default_model is not None else existing.default_model
     now = _now()
     conn.execute(
         "UPDATE notebooks SET name=?, description=?, default_model=?, updated_at=? WHERE id=?",

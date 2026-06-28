@@ -10,7 +10,11 @@ class OllamaSettings(BaseModel):
     endpoint: str = "http://localhost:11434"
     default_model: str = "qwen2.5:14b"
     embedding_model: str = "bge-m3"
+    embedding_dim: int = 1024
     request_timeout_seconds: float = 120.0
+    # chat_stream の read タイムアウト(秒)。connect は httpx 既定のまま。
+    # 詰まった Ollama が無限ハングせず例外→error イベントで表面化させる。
+    chat_read_timeout_seconds: float = 120.0
     # Workaround for llama.cpp GPU bug that emits NaN embeddings for some
     # multilingual inputs (esp. Japanese) under bge-m3. num_gpu=0 forces CPU
     # inference for embeddings. Set to None or {} to use Ollama defaults.
@@ -59,6 +63,7 @@ class AudioSettings(BaseModel):
     storage_format: str = "aac"         # aac | opus | mp3 | wav
     storage_bitrate_kbps: int = 64
     keep_audio: bool = True
+    auto_title: bool = True             # 停止後パイプラインで LLM がタイトル自動命名
 
 
 def _default_data_dir() -> Path:

@@ -6,11 +6,24 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, File, Path, Request, UploadFile
 from fastapi.responses import Response
 
-from apps.api.schemas.source import Source, SourceUrlCreate
+from apps.api.routers.audio import _AUDIO_EXT_PRIORITY, _resolve_audio_path
+from apps.api.schemas.source import Source, SourceRename, SourceUrlCreate
+from apps.api.schemas.source_content import (
+    DocumentContent,
+    DocumentSection,
+    RecordingContent,
+    RecordingSegment,
+    SpeakerRename,
+)
 from core.exceptions import AppError, ErrorCode
+from core.ingestion.parsers import get_parser
 from core.ingestion.hashing import sha256_bytes
 from core.storage import notebooks_repo, sources_repo
-from core.storage.chunks_repo import delete_chunks_for_source
+from core.storage.chunks_repo import (
+    delete_chunks_for_source,
+    list_chunks_for_source,
+    rename_speaker_in_source,
+)
 
 router = APIRouter(prefix="/api/notebooks", tags=["sources"])
 
@@ -35,6 +48,10 @@ _EXT_BY_KIND = {
     "web": ".html",
 }
 
+# Document-kind sources store a flat original file (sources_dir/<id><ext>) and
+# are re-parsed on demand. "recording" stores per-channel audio + chunks instead.
+_DOCUMENT_KINDS = frozenset(_EXT_BY_KIND.keys())
+
 
 def _kind_from_filename(name: str) -> str:
     name_lower = name.lower()
@@ -47,7 +64,18 @@ def _kind_from_filename(name: str) -> str:
     )
 
 
-def _to_schema(rec) -> Source:
+def _has_recording_audio(rec, sources_dir) -> bool:
+    if rec.kind != "recording":
+        return False
+    base = sources_dir / rec.id
+    if not base.is_dir():
+        return False
+    return any(
+        _resolve_audio_path(base, ch) is not None for ch in ("mic", "system")
+    )
+
+
+def _to_schema(rec, sources_dir) -> Source:
     return Source(
         id=rec.id,
         notebook_id=rec.notebook_id,
@@ -59,6 +87,18 @@ def _to_schema(rec) -> Source:
         bytes=rec.bytes,
         page_count=rec.page_count,
         chunk_count=rec.chunk_count,
+        has_audio=_has_recording_audio(rec, sources_dir),
+        summary=rec.summary,
+        summary_status=(
+            rec.summary_status.value if rec.summary_status is not None else None
+        ),
+        adr_draft=rec.adr_draft,
+        adr_status=(
+            rec.adr_status.value if rec.adr_status is not None else None
+        ),
+        adr_template=rec.adr_template,
+        adr_confidence=rec.adr_confidence,
+        adr_generated_at=rec.adr_generated_at,
         created_at=rec.created_at,
         updated_at=rec.updated_at,
     )
@@ -89,7 +129,7 @@ async def upload_file(
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
-    return _to_schema(rec)
+    return _to_schema(rec, ctx.config.sources_dir)
 
 
 _CONTENT_TYPE_KIND: dict[str, str] = {
@@ -156,14 +196,14 @@ async def upload_url(
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
-    return _to_schema(rec)
+    return _to_schema(rec, ctx.config.sources_dir)
 
 
 @router.get("/{notebook_id}/sources", response_model=list[Source])
 async def list_sources(request: Request, notebook_id: str) -> list[Source]:
     ctx = request.app.state.ctx
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
-    return [_to_schema(r) for r in sources_repo.list_sources(ctx.conn, notebook_id=notebook_id)]
+    return [_to_schema(r, ctx.config.sources_dir) for r in sources_repo.list_sources(ctx.conn, notebook_id=notebook_id)]
 
 
 @router.delete("/{notebook_id}/sources/{source_id}", status_code=204)
@@ -188,6 +228,59 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
     return Response(status_code=204)
 
 
+@router.patch("/{notebook_id}/sources/{source_id}", response_model=Source)
+async def rename_source(
+    request: Request,
+    notebook_id: str,
+    source_id: str,
+    body: SourceRename,
+) -> Source:
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    title = body.title.strip()
+    if not title:
+        raise AppError(ErrorCode.INPUT_INVALID, "title must not be empty")
+    updated = sources_repo.update_source_title(ctx.conn, source_id, title)
+    return _to_schema(updated, ctx.config.sources_dir)
+
+
+@router.patch("/{notebook_id}/sources/{source_id}/speaker")
+async def rename_speaker(
+    request: Request,
+    notebook_id: str,
+    source_id: str,
+    body: SpeakerRename,
+) -> dict:
+    """Bulk-rename one speaker label across all chunks of a source (within-source).
+
+    Updates both SQLite (source of truth) and the Qdrant payload (best-effort).
+    """
+    ctx = request.app.state.ctx
+    to_label = body.to_label.strip()
+    if not to_label:
+        raise AppError(ErrorCode.INPUT_INVALID, "to_label must not be empty")
+    # mic("あなた")は録音のチャンネル identity を兼ねる固定ラベル。リネームすると
+    # フロントの mic/system 判定(色・シーク・音声ファイル選択)が壊れるため禁止する。
+    # name_inference も "あなた" を自動改名から除外している(recording_pipeline._MIC_SPEAKER)。
+    _MIC_LABEL = "あなた"
+    if body.from_label == _MIC_LABEL or to_label == _MIC_LABEL:
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "話者「あなた」(自分/マイク)はリネームできません",
+        )
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    updated = rename_speaker_in_source(
+        ctx.conn, source_id, body.from_label, to_label
+    )
+    # Qdrant payload is display-only; keep it in sync but never fail the request on it.
+    ctx.vector_store.rename_speaker(source_id, body.from_label, to_label)
+    return {"updated": updated}
+
+
 @router.get("/{notebook_id}/sources/{source_id}/chunks/{chunk_id}")
 async def get_chunk(
     request: Request, notebook_id: str, source_id: str, chunk_id: str
@@ -209,6 +302,146 @@ async def get_chunk(
         "end_ms": rec["end_ms"],
         "speaker": rec["speaker"],
     }
+
+
+@router.get(
+    "/{notebook_id}/sources/{source_id}/content",
+    response_model=DocumentContent | RecordingContent,
+)
+async def get_source_content(
+    request: Request, notebook_id: str, source_id: str
+) -> DocumentContent | RecordingContent:
+    """Return faithful full content for a source.
+
+    Documents are re-parsed from their stored original bytes (cost is paid on
+    each view; cache later if measured). Recordings return their generated
+    transcript chunks ordered by ``ord``.
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+
+    if src.kind == "recording":
+        segments = [
+            RecordingSegment(
+                ord=c.ord,
+                text=c.text,
+                start_ms=c.start_ms,
+                end_ms=c.end_ms,
+                speaker=c.speaker,
+            )
+            for c in list_chunks_for_source(ctx.conn, source_id)
+        ]
+        return RecordingContent(segments=segments)
+
+    if src.kind not in _DOCUMENT_KINDS:
+        raise AppError(
+            ErrorCode.INGESTION_UNSUPPORTED_KIND,
+            f"no full-content view for kind={src.kind}",
+        )
+
+    ext = _EXT_BY_KIND.get(src.kind, ".bin")
+    source_path = ctx.config.sources_dir / f"{src.id}{ext}"
+    if not source_path.exists():
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "original source data not found on disk",
+            remediation="re-upload the file",
+        )
+    data = source_path.read_bytes()
+    parser = get_parser(src.kind)
+    doc = parser.parse_bytes(data, source_hint=src.origin)
+    sections = [
+        DocumentSection(
+            heading_path=" > ".join(s.heading_path) if s.heading_path else None,
+            page=s.page,
+            text=s.text,
+        )
+        for s in doc.sections
+    ]
+    return DocumentContent(sections=sections)
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/summarize",
+    status_code=202,
+    response_model=Source,
+)
+async def summarize_source(
+    request: Request,
+    background: BackgroundTasks,
+    notebook_id: str,
+    source_id: str,
+) -> Source:
+    """summary_status を generating にリセットして SummaryJob を再起動する。
+
+    要約が ready/error/未生成 のいずれの状態からでも呼べる(手動再生成用)。
+    アプリ層に summary_runner が無い構成では status だけ反映して終了する。
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    sources_repo.update_source_summary_status(
+        ctx.conn,
+        source_id,
+        status=sources_repo.SummaryStatus.GENERATING,
+    )
+    summary_runner = getattr(ctx, "summary_runner", None)
+    if summary_runner is not None:
+        background.add_task(summary_runner, source_id)
+    return _to_schema(sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir)
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/adr",
+    status_code=202,
+    response_model=Source,
+)
+async def generate_adr(
+    request: Request,
+    background: BackgroundTasks,
+    notebook_id: str,
+    source_id: str,
+) -> Source:
+    """ADR 抽出ジョブを起動する。
+
+    Decision Gate が yes なら Markdown ADR を生成、no なら skipped。
+    既に generating でも上書き起動(MVP)。adr_runner が無い構成では status
+    だけ generating に反映して終了する。
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    sources_repo.update_source_adr_status(
+        ctx.conn,
+        source_id,
+        status=sources_repo.AdrStatus.GENERATING,
+    )
+    adr_runner = getattr(ctx, "adr_runner", None)
+    if adr_runner is not None:
+        background.add_task(adr_runner, source_id)
+    return _to_schema(
+        sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir
+    )
+
+
+@router.delete(
+    "/{notebook_id}/sources/{source_id}/adr",
+    status_code=204,
+)
+async def delete_adr(
+    request: Request, notebook_id: str, source_id: str
+) -> Response:
+    """adr_* 列を全て NULL に戻す。"""
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    sources_repo.clear_source_adr(ctx.conn, source_id)
+    return Response(status_code=204)
 
 
 @router.post("/{notebook_id}/sources/{source_id}/retry", response_model=Source)
@@ -241,4 +474,4 @@ async def retry_source(
         error_msg=None,
     )
     background.add_task(ctx.pipeline.run, source_id=src.id, kind=src.kind, data=data)
-    return _to_schema(sources_repo.get_source(ctx.conn, source_id))
+    return _to_schema(sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir)

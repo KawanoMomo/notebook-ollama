@@ -5,7 +5,12 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from core.ollama.client import OllamaClient
-from core.ollama.models_info import classify_recommendation, parse_context_window
+from core.ollama.gateway import probe_embedding_dim
+from core.ollama.models_info import (
+    classify_kind,
+    classify_recommendation,
+    parse_context_window,
+)
 from core.storage import notebooks_repo
 
 router = APIRouter(prefix="/api", tags=["models"])
@@ -26,12 +31,22 @@ async def list_models(request: Request) -> dict[str, Any]:
         show = await client.show(name)
         params_str = show.get("parameters", "")
         ctx_window = parse_context_window(params_str)
+        capabilities = show.get("capabilities", []) or []
+        kind = classify_kind(capabilities=capabilities, name=name)
+        embedding_dim: int | None = None
+        if kind in ("embedding", "both"):
+            try:
+                embedding_dim = await probe_embedding_dim(ctx.ollama, name)
+            except Exception:
+                embedding_dim = None
         models.append(
             {
                 "name": name,
                 "size_bytes": tag.get("size"),
                 "context_window": ctx_window,
                 "modified_at": tag.get("modified_at"),
+                "kind": kind,
+                "embedding_dim": embedding_dim,
                 "recommended_for": classify_recommendation(
                     name=name,
                     family=details.get("family", ""),

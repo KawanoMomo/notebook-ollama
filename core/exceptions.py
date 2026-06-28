@@ -7,6 +7,11 @@ from typing import Any
 
 class ErrorCode(StrEnum):
     INPUT_INVALID = "input.invalid"
+    # Prompt icon upload: payload too large (413) と unsupported media (415)
+    # を AppError 体系で区別する。これにより main.py の status_map で正確な
+    # HTTP ステータスへ写像できる。
+    INPUT_PAYLOAD_TOO_LARGE = "input.payload_too_large"
+    INPUT_UNSUPPORTED_MEDIA = "input.unsupported_media"
     INGESTION_PARSE_FAILED = "ingestion.parse_failed"
     INGESTION_FETCH_FAILED = "ingestion.fetch_failed"
     INGESTION_UNSUPPORTED_KIND = "ingestion.unsupported_kind"

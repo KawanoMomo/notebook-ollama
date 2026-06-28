@@ -15,6 +15,15 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
+def test_ping_factory_emits_named_ping_event():
+    from apps.api.routers.chat import _ping_event
+
+    sse = _ping_event()
+    rendered = sse.encode()
+    assert b"event: ping" in rendered
+    assert b"data: {}" in rendered
+
+
 def test_chat_streaming_returns_sse(client):
     nb_id = client.post(
         "/api/notebooks", json={"name": "N", "default_model": "qwen2.5:14b"}
@@ -37,7 +46,8 @@ def test_chat_streaming_returns_sse(client):
         router.post("http://fake/api/chat").mock(return_value=httpx.Response(200, content=payloads))
         r = client.post(
             f"/api/notebooks/{nb_id}/conversations/{conv_id}/messages",
-            json={"content": "質問"},
+            # source_ids が空だと 400 (旧「空=全選択」廃止 §3) のため、ダミー1件を渡す
+            json={"content": "質問", "source_ids": ["SRC_DUMMY"]},
         )
         assert r.status_code == 200
         body = r.text

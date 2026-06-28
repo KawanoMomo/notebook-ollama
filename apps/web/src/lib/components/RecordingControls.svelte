@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Square } from '@lucide/svelte';
+  import { Square, Mic, MicOff, Volume2, VolumeX } from '@lucide/svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
   import { pushToast } from './Toast.svelte';
 
@@ -58,10 +58,32 @@
       </button>
     </div>
     <div class="minimeters">
-      <span aria-hidden="true">🎤</span>
-      <div class="mini"><i style="width:{Math.round(recordingStore.micLevel * 100)}%"></i></div>
-      <span aria-hidden="true">🔊</span>
-      <div class="mini"><i style="width:{Math.round(recordingStore.sysLevel * 100)}%"></i></div>
+      <button
+        class="muteicon"
+        class:on={recordingStore.micMuted}
+        aria-pressed={recordingStore.micMuted}
+        aria-label={recordingStore.micMuted ? 'マイクのミュートを解除' : 'マイクをミュート'}
+        title={recordingStore.micMuted ? 'マイクのミュートを解除' : 'マイクをミュート'}
+        onclick={() => recordingStore.toggleMute('mic')}
+      >
+        {#if recordingStore.micMuted}<MicOff size="14" />{:else}<Mic size="14" />{/if}
+      </button>
+      <div class="mini" class:muted={recordingStore.micMuted}>
+        <i style="width:{recordingStore.micMuted ? 0 : Math.round(recordingStore.micLevel * 100)}%"></i>
+      </div>
+      <button
+        class="muteicon"
+        class:on={recordingStore.systemMuted}
+        aria-pressed={recordingStore.systemMuted}
+        aria-label={recordingStore.systemMuted ? 'システム音のミュートを解除' : 'システム音をミュート'}
+        title={recordingStore.systemMuted ? 'システム音のミュートを解除' : 'システム音をミュート'}
+        onclick={() => recordingStore.toggleMute('system')}
+      >
+        {#if recordingStore.systemMuted}<VolumeX size="14" />{:else}<Volume2 size="14" />{/if}
+      </button>
+      <div class="mini" class:muted={recordingStore.systemMuted}>
+        <i style="width:{recordingStore.systemMuted ? 0 : Math.round(recordingStore.sysLevel * 100)}%"></i>
+      </div>
     </div>
   {:else}
     <div class="recrow">
@@ -164,6 +186,7 @@
     right: auto;
     left: 2px;
   }
+  /* マイク/システムを横並び1行に: [🎤ボタン][メータ][🔊ボタン][メータ] */
   .minimeters {
     display: grid;
     grid-template-columns: auto 1fr auto 1fr;
@@ -171,6 +194,29 @@
     align-items: center;
     font-size: 10px;
     color: var(--color-fg-muted);
+  }
+  /* 左のアイコン自体がミュートトグル(別ボタンを増やさない) */
+  .muteicon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--color-fg-muted);
+    cursor: pointer;
+    padding: 0;
+    flex: none;
+  }
+  .muteicon:hover {
+    background: var(--color-bg-elevated);
+    color: var(--color-fg);
+  }
+  .muteicon.on {
+    background: var(--color-error);
+    color: #fff;
   }
   .mini {
     height: 6px;
@@ -184,6 +230,13 @@
     background: linear-gradient(90deg, var(--color-success), var(--color-warning));
     border-radius: 999px;
     transition: width 0.1s linear;
+  }
+  /* ミュート中: 該当メータをグレーアウト */
+  .mini.muted {
+    opacity: 0.5;
+  }
+  .mini.muted i {
+    background: #c8c8cd;
   }
   .dot {
     width: 8px;

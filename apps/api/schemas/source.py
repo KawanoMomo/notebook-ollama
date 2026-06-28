@@ -14,9 +14,21 @@ class Source(BaseModel):
     bytes: int | None
     page_count: int | None
     chunk_count: int | None
+    has_audio: bool = False
+    summary: str | None = None
+    summary_status: str | None = None
+    adr_draft: str | None = None
+    adr_status: str | None = None
+    adr_template: str | None = None
+    adr_confidence: str | None = None
+    adr_generated_at: str | None = None
     created_at: str
     updated_at: str
 
 
 class SourceUrlCreate(BaseModel):
     url: HttpUrl
+
+
+class SourceRename(BaseModel):
+    title: str

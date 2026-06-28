@@ -114,6 +114,8 @@ def test_stop_dispatches_offline_pipeline_as_background_task(client):
     assert isinstance(call["diarization_enabled"], bool)
     assert call["diarization_enabled"] is False  # diarizer is None here
     assert isinstance(call["name_inference_enabled"], bool)
+    # auto_title flag is threaded from config (default True).
+    assert call["auto_title_enabled"] is True
 
     # 3. the source moved off "pending" (status set to parsing before dispatch).
     src = sources_repo.get_source(client.app.state.ctx.conn, src_id)
@@ -149,3 +151,63 @@ def test_stop_treats_zero_byte_wav_as_absent(client):
     call = fake_pipeline.calls[0]
     assert call["mic_wav"] is None  # <=64 byte wav -> absent
     assert call["system_wav"] is None
+
+
+def test_stop_does_not_write_mute_intervals_json(client):
+    """ミュートは録音側で無音書き込み方式のため、stop でサイドカー JSON は書かない。
+
+    (旧: mute_intervals.json を書きオフラインで除外していたが、ループバックの無音
+    ドロップで WAV 時間軸が圧縮され写像が破綻するため廃止。録音側で無音化する。)
+    """
+    nb = _create_nb(client)
+    fake_pipeline = _FakePipeline()
+    client.app.state.ctx.recording_pipeline = fake_pipeline
+
+    r = client.post(f"/api/notebooks/{nb}/recordings", json={"live_caption": False})
+    assert r.status_code == 200, r.text
+    rid = r.json()["recording_id"]
+    src_id = r.json()["source_id"]
+
+    # ミュート操作(録音側で無音化されるだけ。状態は真偽値のみ)。
+    sess = client.app.state.ctx.recordings.get(rid)
+    ms = sess.extras["mute_state"]
+    ms.set_muted("mic", True)
+    ms.set_muted("mic", False)
+    ms.set_muted("system", True)
+
+    session_dir = client.app.state.ctx.config.sources_dir / src_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "mic.wav").write_bytes(b"RIFF" + b"\x00" * 200)
+
+    r_stop = client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
+    assert r_stop.status_code == 200, r_stop.text
+
+    out = session_dir / "mute_intervals.json"
+    assert not out.exists(), "mute_intervals.json should no longer be written"
+
+
+def test_retry_threads_auto_title_flag(client):
+    nb = _create_nb(client)
+    fake_pipeline = _FakePipeline()
+    client.app.state.ctx.recording_pipeline = fake_pipeline
+    # auto_title を OFF にしておく(in-memory config を直接いじる)。
+    client.app.state.ctx.config.audio.auto_title = False
+
+    # 録音ソースを直接作成(start/stop は経由しない)+ 再処理用の圧縮音源を置く。
+    from core.storage import sources_repo
+
+    src = sources_repo.create_source(
+        client.app.state.ctx.conn,
+        notebook_id=nb,
+        kind="recording",
+        title=None,
+        origin="録音",
+    )
+    session_dir = client.app.state.ctx.config.sources_dir / src.id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "mic.m4a").write_bytes(b"\x00" * 256)
+
+    r_retry = client.post(f"/api/notebooks/{nb}/recordings/{src.id}/retry")
+    assert r_retry.status_code == 200, r_retry.text
+    assert len(fake_pipeline.calls) == 1
+    assert fake_pipeline.calls[0]["auto_title_enabled"] is False

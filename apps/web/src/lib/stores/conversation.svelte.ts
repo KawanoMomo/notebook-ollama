@@ -14,10 +14,13 @@ export interface ConversationStore {
   readonly streamingText: string;
   readonly streamingHits: RetrievalHit[];
   readonly error: string | null;
+  readonly warning: string | null;
+  readonly lastBeatAt: number | null;
   load(notebookId: string, conversationId: string): Promise<void>;
   ensureConversation(notebookId: string): Promise<Conversation>;
-  send(notebookId: string, content: string): Promise<void>;
+  send(notebookId: string, content: string, sourceIds?: string[]): Promise<void>;
   cancel(): void;
+  renameSpeakerInSource(sourceId: string, fromLabel: string, toLabel: string): void;
 }
 
 export function createConversationStore(api = chatApi): ConversationStore {
@@ -27,6 +30,33 @@ export function createConversationStore(api = chatApi): ConversationStore {
   let streamingText = $state("");
   let streamingHits = $state<RetrievalHit[]>([]);
   let error = $state<string | null>(null);
+  let warning = $state<string | null>(null);
+  let lastBeatAt = $state<number | null>(null);
+  let beatTimer: ReturnType<typeof setInterval> | null = null;
+  const NO_BEAT_WARNING_MS = 60_000;
+
+  function beat() {
+    lastBeatAt = Date.now();
+    if (warning) warning = null;
+  }
+
+  function startBeatWatch() {
+    stopBeatWatch();
+    beat();
+    beatTimer = setInterval(() => {
+      if (lastBeatAt !== null && Date.now() - lastBeatAt >= NO_BEAT_WARNING_MS) {
+        warning = 'Ollamaが応答していない可能性があります';
+      }
+    }, 5_000);
+  }
+
+  function stopBeatWatch() {
+    if (beatTimer !== null) {
+      clearInterval(beatTimer);
+      beatTimer = null;
+    }
+  }
+
   let abortController: AbortController | null = null;
 
   return {
@@ -48,6 +78,12 @@ export function createConversationStore(api = chatApi): ConversationStore {
     get error() {
       return error;
     },
+    get warning() {
+      return warning;
+    },
+    get lastBeatAt() {
+      return lastBeatAt;
+    },
     async load(notebookId, conversationId) {
       const items = await api.listMessages(notebookId, conversationId);
       messages = items;
@@ -59,7 +95,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
       messages = [];
       return conversation;
     },
-    async send(notebookId, content) {
+    async send(notebookId, content, sourceIds) {
       void requestPermissionOnce();
       const conv = await this.ensureConversation(notebookId);
       // optimistically add user message
@@ -77,7 +113,9 @@ export function createConversationStore(api = chatApi): ConversationStore {
       streamingText = "";
       streamingHits = [];
       error = null;
+      warning = null;
       abortController = new AbortController();
+      startBeatWatch();
       const questionPreview = content.slice(0, 40);
       try {
         let citations: Citation[] = [];
@@ -86,9 +124,13 @@ export function createConversationStore(api = chatApi): ConversationStore {
           notebookId,
           conv.id,
           content,
+          sourceIds,
           abortController.signal,
         ) as AsyncGenerator<ChatEvent>) {
-          if (ev.kind === "retrieval") {
+          beat();
+          if (ev.kind === "ping") {
+            // beat() 済み。接続生存のみ確認
+          } else if (ev.kind === "retrieval") {
             streamingHits = ev.hits;
           } else if (ev.kind === "token") {
             streamingText += ev.text;
@@ -116,17 +158,56 @@ export function createConversationStore(api = chatApi): ConversationStore {
           notify({ title: "回答完了", body: questionPreview, tag: "chat-done" });
         }
       } catch (e) {
-        error = e instanceof Error ? e.message : String(e);
-        notify({ title: "回答エラー", body: error.slice(0, 80), tag: "chat-error" });
+        // ユーザーが「停止」した場合(signal.aborted)は中断であってエラーではないので
+        // エラーバナー/通知を出さない。それ以外の例外のみ error として表面化する。
+        if (!abortController?.signal.aborted) {
+          error = e instanceof Error ? e.message : String(e);
+          notify({ title: "回答エラー", body: error.slice(0, 80), tag: "chat-error" });
+        }
       } finally {
         streaming = false;
         streamingText = "";
         streamingHits = [];
         abortController = null;
+        stopBeatWatch();
+        lastBeatAt = null;
+        warning = null;
       }
     },
     cancel() {
       abortController?.abort();
+      stopBeatWatch();
+    },
+    renameSpeakerInSource(sourceId, fromLabel, toLabel) {
+      // 話者リネーム成功時、チャット内に既に描画済みの引用カードの表示も更新する
+      // (spec §3.2「右パネル・チャット内の引用とも新名称に更新」)。録音引用の
+      // location は "<話者> <HH:MM:SS>"(locations.format_location)なので、先頭の
+      // 話者ラベルだけを置換する。完全一致(話者のみ)/ "ラベル " 前方一致のみ対象に
+      // して、部分語の誤マッチを避ける。
+      if (!fromLabel || fromLabel === toLabel) return;
+      const prefix = `${fromLabel} `;
+      let changed = false;
+      const next = messages.map((m) => {
+        if (!m.citations?.length) return m;
+        let touched = false;
+        const cites = m.citations.map((c) => {
+          if (c.source_id !== sourceId) return c;
+          let loc = c.location;
+          if (loc === fromLabel) {
+            loc = toLabel;
+          } else if (loc.startsWith(prefix)) {
+            loc = toLabel + loc.slice(fromLabel.length);
+          } else {
+            return c;
+          }
+          touched = true;
+          return { ...c, location: loc };
+        });
+        if (!touched) return m;
+        changed = true;
+        return { ...m, citations: cites };
+      });
+      if (changed) messages = next;
     },
   };
 }

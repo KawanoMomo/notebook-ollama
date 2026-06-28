@@ -28,7 +28,8 @@ export interface NotebookCreate {
 export interface NotebookUpdate {
   name?: string;
   description?: string;
-  default_model?: string;
+  /** null を明示送信するとノート既定をクリアし全体既定にフォールバックする。 */
+  default_model?: string | null;
 }
 
 export type SourceStatus =
@@ -49,6 +50,9 @@ export type SourceKind =
   | "txt"
   | "recording";
 
+export type SummaryStatus = 'generating' | 'ready' | 'error';
+export type AdrStatus = 'generating' | 'ready' | 'error' | 'skipped';
+
 export interface Source {
   id: string;
   notebook_id: string;
@@ -60,9 +64,17 @@ export interface Source {
   bytes: number | null;
   page_count: number | null;
   chunk_count: number | null;
+  has_audio?: boolean;
   /** Transient field populated from SSE during the embedding phase. */
   embedded?: number | null;
   duration_ms?: number | null;
+  summary?: string | null;
+  summary_status?: SummaryStatus | null;
+  adr_draft?: string | null;
+  adr_status?: AdrStatus | null;
+  adr_template?: string | null;
+  adr_confidence?: string | null;
+  adr_generated_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -103,7 +115,9 @@ export interface ModelInfo {
   size_bytes: number | null;
   context_window: number | null;
   modified_at: string;
+  kind: "chat" | "embedding" | "both" | "unknown";
   recommended_for: string[];
+  embedding_dim: number | null;
 }
 
 export interface NotebookDefault {
@@ -121,6 +135,11 @@ export interface OllamaSettings {
   endpoint: string;
   default_model: string;
   embedding_model: string;
+  embedding_dim: number | null;
+}
+
+export interface OllamaSettingsUpdate {
+  default_model: string;
 }
 
 export interface GenerationSettings {
@@ -150,6 +169,7 @@ export interface AudioSettings {
   storage_format: "aac" | "opus" | "mp3" | "wav";
   storage_bitrate_kbps: number;
   keep_audio: boolean;
+  auto_title: boolean;
 }
 
 export interface AppSettings {
@@ -166,9 +186,41 @@ export interface Stats {
   data_dir: string;
 }
 
+/** プロンプト挿入機能 (docs/specs/2026-06-26-prompt-injection-design.md) */
+export interface FixedPromptSlotOut {
+  title: string;
+  body: string;
+  icon_url: string | null;
+}
+
+export interface DropdownPromptOut {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export interface PromptsOut {
+  fixed: FixedPromptSlotOut[]; // 常に長さ 3
+  dropdown: DropdownPromptOut[];
+}
+
 export interface RetrievalHit {
   chunk_id: string;
   source_title: string;
   location: string;
   score: number;
+}
+
+export interface ReindexProgress {
+  done: number;
+  total: number;
+}
+
+export interface ReindexComplete {
+  model: string;
+  dim: number;
+}
+
+export interface ReindexError {
+  message: string;
 }

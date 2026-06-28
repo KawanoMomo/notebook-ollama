@@ -22,5 +22,11 @@ def connect(db_path: Path) -> sqlite3.Connection:
 def migrate(conn: sqlite3.Connection) -> None:
     sql = _SCHEMA_PATH.read_text(encoding="utf-8")
     conn.executescript(sql)
-    from core.storage.migrations import run_chunk_timecode_migration
+    from core.storage.migrations import (
+        run_adr_migration,
+        run_chunk_timecode_migration,
+        run_summary_migration,
+    )
     run_chunk_timecode_migration(conn)
+    run_summary_migration(conn)
+    run_adr_migration(conn)

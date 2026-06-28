@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class MessageInput(BaseModel):
     content: str = Field(min_length=1)
+    source_ids: list[str] | None = None
 
 
 class Message(BaseModel):

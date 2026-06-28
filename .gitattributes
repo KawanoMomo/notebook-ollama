@@ -1,0 +1,11 @@
+# Shell scripts MUST keep LF endings. With CRLF the shebang becomes
+# "#!/usr/bin/env bash\r" and Linux/macOS fail with "bash\r: No such file or
+# directory"; heredoc terminators also stop matching. Force LF on checkout.
+*.sh text eol=lf
+
+# PowerShell scripts are Windows-targeted; keep CRLF (PowerShell reads both,
+# but CRLF is the native convention and avoids churn on Windows checkouts).
+*.ps1 text eol=crlf
+
+# Let Git normalize line endings for everything else by content detection.
+* text=auto

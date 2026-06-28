@@ -20,6 +20,11 @@ class OllamaSettingsSchema(BaseModel):
     endpoint: str
     default_model: str
     embedding_model: str
+    embedding_dim: int | None = None
+
+
+class OllamaSettingsUpdate(BaseModel):
+    default_model: str
 
 
 class AudioSettingsSchema(BaseModel):
@@ -38,6 +43,7 @@ class AudioSettingsSchema(BaseModel):
     storage_format: Literal["aac", "opus", "mp3", "wav"]
     storage_bitrate_kbps: int
     keep_audio: bool
+    auto_title: bool
 
 
 class AppSettingsSchema(BaseModel):
@@ -45,3 +51,7 @@ class AppSettingsSchema(BaseModel):
     generation: GenerationSettingsSchema
     retrieval: RetrievalSettingsSchema
     audio: AudioSettingsSchema
+
+
+class EmbeddingSwitchRequest(BaseModel):
+    model: str

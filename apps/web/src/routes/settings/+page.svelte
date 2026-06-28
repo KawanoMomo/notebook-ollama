@@ -1,21 +1,148 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { ArrowLeft } from '@lucide/svelte';
+  import { navMemoryStore } from '$lib/stores/navMemory.svelte';
   import { settingsStore } from '$lib/stores/settings.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { formatBytes } from '$lib/utils/format';
+  import { settingsApi } from '$lib/api/settings';
+  import { openReindexEvents } from '$lib/api/reindexEvents';
   import Spinner from '$lib/components/Spinner.svelte';
   import AudioSettingsSection from '$lib/components/settings/AudioSettingsSection.svelte';
+  import PromptsSection from '$lib/components/settings/PromptsSection.svelte';
+  import { pushToast } from '$lib/components/Toast.svelte';
+  import type { ModelInfo } from '$lib/api/types';
 
-  let section = $state<'models' | 'gen' | 'audio' | 'storage' | 'modelsList'>('audio');
+  let section = $state<'models' | 'gen' | 'prompts' | 'audio' | 'storage' | 'modelsList'>('audio');
+
+  // --- 埋め込みモデル切替 (section==='models') の state ---
+  // <select> の選択値。'' = 未選択(=現行と同じ。切替なし)。
+  // finding 15: <option value={null}> は HTML で文字列化してぶれるため、Task 3/4 と
+  // 統一して value="" を「現行/未選択」に割り当て、'' を切替なしとして正規化する。
+  let pendingEmbedding = $state('');
+  // 再インデックス進行状況。null = 走っていない。
+  let reindex = $state<{ done: number; total: number } | null>(null);
+  let switching = $state(false);
+  let closeReindex: (() => void) | null = null;
+
+  // 現行の埋め込みモデル名・次元(settings 由来)。
+  const curEmbeddingModel = $derived(settingsStore.settings?.ollama.embedding_model ?? null);
+  const curDim = $derived(settingsStore.settings?.ollama.embedding_dim ?? null);
+
+  // 埋め込み用途に使えるモデル(kind が embedding | both)。
+  const embeddingModels = $derived(
+    modelsStore.models.filter((m) => m.kind === 'embedding' || m.kind === 'both'),
+  );
+
+  // 切替対象。'' (未選択) または現行と同じなら null(警告/ボタンを出さない)。
+  const switchTarget = $derived(
+    pendingEmbedding !== '' && pendingEmbedding !== curEmbeddingModel
+      ? pendingEmbedding
+      : null,
+  );
+
+  // 選択中(= switchTarget、未選択なら現行)のモデル情報。
+  const selectedEmbedding = $derived<ModelInfo | null>(
+    embeddingModels.find((m) => m.name === (switchTarget ?? curEmbeddingModel)) ?? null,
+  );
+
+  // 警告判定。
+  // - 次元が現行と異なる → dim 警告。
+  // - 次元は同じだが別モデル → 「再インデックス推奨」注記。
+  const newDim = $derived(selectedEmbedding?.embedding_dim ?? null);
+  const dimWarning = $derived(
+    switchTarget !== null && newDim !== null && curDim !== null && newDim !== curDim,
+  );
+  const sameDimNotice = $derived(switchTarget !== null && newDim !== null && !dimWarning);
 
   onMount(() => {
     settingsStore.load();
     modelsStore.load();
   });
+
+  function goBack() {
+    goto(navMemoryStore.lastPath || '/');
+  }
+
+  function chatModelNames(): string[] {
+    return modelsStore.models
+      .filter((m) => m.kind === 'chat' || m.kind === 'both')
+      .map((m) => m.name);
+  }
+
+  async function onDefaultModelChange(e: Event) {
+    const select = e.currentTarget as HTMLSelectElement;
+    const next = select.value;
+    const prev = settingsStore.settings?.ollama.default_model ?? '';
+    if (next === prev) return;
+    try {
+      await settingsStore.putOllama(next);
+      pushToast(`既定モデルを ${next} に変更しました`, 'success');
+    } catch (err) {
+      select.value = prev; // 失敗時は選択を元に戻す
+      const msg = err instanceof Error ? err.message : String(err);
+      pushToast(`既定モデルの変更に失敗しました: ${msg}`, 'error');
+    }
+  }
+
+  onDestroy(() => {
+    closeReindex?.();
+  });
+
+  async function confirmSwitch() {
+    if (!switchTarget) return;
+    const target = switchTarget;
+    const ok = window.confirm(
+      `埋め込みモデルを「${target}」に切り替えます。全ソースを再インデックスします(数分かかる場合があります)。続行しますか?`,
+    );
+    if (!ok) return;
+
+    switching = true;
+    reindex = { done: 0, total: 0 };
+    // 進捗 SSE を購読してから switch を投げる(取りこぼし防止)。
+    closeReindex?.();
+    closeReindex = openReindexEvents({
+      onProgress: (ev) => {
+        reindex = { done: ev.done, total: ev.total };
+      },
+      onComplete: async () => {
+        reindex = null;
+        switching = false;
+        pendingEmbedding = ''; // 未選択へ戻す('' 正規化)
+        closeReindex?.();
+        closeReindex = null;
+        await settingsStore.load();
+        pushToast(`埋め込みモデルを「${target}」に切り替えました`, 'success');
+      },
+      onError: (ev) => {
+        reindex = null;
+        switching = false;
+        closeReindex?.();
+        closeReindex = null;
+        pushToast(`再インデックスに失敗しました: ${ev.message}`, 'error');
+      },
+    });
+
+    try {
+      await settingsApi.switchEmbedding(target);
+    } catch (e) {
+      reindex = null;
+      switching = false;
+      closeReindex?.();
+      closeReindex = null;
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
 </script>
 
 <div class="container">
-  <h1>設定</h1>
+  <div class="topbar">
+    <button class="back" onclick={goBack} aria-label="戻る">
+      <ArrowLeft size="16" />
+    </button>
+    <h1>設定</h1>
+  </div>
 
   <div class="settings">
     <!-- left nav -->
@@ -41,6 +168,17 @@
           <path d="M4 6h16M4 12h16M4 18h10" />
         </svg>
         生成・検索
+      </button>
+      <button
+        class="nitem"
+        class:active={section === 'prompts'}
+        onclick={() => (section = 'prompts')}
+      >
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="M7 10h10M7 14h6" />
+        </svg>
+        プロンプト
       </button>
 
       <div class="grp" style="margin-top:6px">入力 / 取り込み</div>
@@ -84,6 +222,8 @@
     <div class="scontent">
       {#if section === 'audio'}
         <AudioSettingsSection />
+      {:else if section === 'prompts'}
+        <PromptsSection />
       {:else if settingsStore.loading || modelsStore.loading}
         <div class="state"><Spinner /> 読み込み中…</div>
       {:else if settingsStore.error || modelsStore.error}
@@ -97,10 +237,80 @@
             <dt>エンドポイント</dt>
             <dd><code>{settingsStore.settings.ollama.endpoint}</code></dd>
             <dt>既定モデル</dt>
-            <dd><code>{settingsStore.settings.ollama.default_model}</code></dd>
+            <dd>
+              <select
+                class="model-select"
+                value={settingsStore.settings.ollama.default_model}
+                onchange={onDefaultModelChange}
+              >
+                {#each chatModelNames() as name (name)}
+                  <option value={name}>{name}</option>
+                {/each}
+                {#if !chatModelNames().includes(settingsStore.settings.ollama.default_model)}
+                  <option value={settingsStore.settings.ollama.default_model}>
+                    {settingsStore.settings.ollama.default_model}(未検出)
+                  </option>
+                {/if}
+              </select>
+            </dd>
             <dt>埋め込みモデル</dt>
-            <dd><code>{settingsStore.settings.ollama.embedding_model}</code></dd>
+            <dd>
+              <select
+                class="emb-select"
+                bind:value={pendingEmbedding}
+                disabled={switching}
+                aria-label="埋め込みモデル"
+              >
+                <option value="">{curEmbeddingModel ?? '(未設定)'}(現在)</option>
+                {#each embeddingModels as m (m.name)}
+                  {#if m.name !== curEmbeddingModel}
+                    <option value={m.name}>
+                      {m.name}{m.embedding_dim ? ` (${m.embedding_dim}次元)` : ''}
+                    </option>
+                  {/if}
+                {/each}
+              </select>
+            </dd>
           </dl>
+
+          {#if dimWarning}
+            <div class="emb-warn" role="alert">
+              選択したモデルは {newDim} 次元です。現在のインデックスは {curDim} 次元(既存チャンクは
+              {curEmbeddingModel})。切り替えると<strong>全ソースを再インデックス</strong>します(数分かかる場合があります)。
+            </div>
+          {:else if sameDimNotice}
+            <div class="emb-notice" role="note">
+              次元は同じですが埋め込み空間が変わるため<strong>再インデックス推奨</strong>です。切り替えると全ソースを再インデックスします。
+            </div>
+          {/if}
+
+          {#if switchTarget && !switching}
+            <div class="emb-actions">
+              <button class="emb-btn primary" onclick={confirmSwitch}>
+                再インデックスして切替
+              </button>
+            </div>
+          {/if}
+
+          {#if switching}
+            <div class="emb-progress">
+              <div class="emb-bar">
+                <div
+                  class="emb-bar-fill"
+                  style:width={reindex && reindex.total > 0
+                    ? `${Math.round((reindex.done / reindex.total) * 100)}%`
+                    : '8%'}
+                ></div>
+              </div>
+              <span class="emb-progress-text">
+                {#if reindex && reindex.total > 0}
+                  再インデックス中… {reindex.done} / {reindex.total}
+                {:else}
+                  再インデックスを準備中…
+                {/if}
+              </span>
+            </div>
+          {/if}
         {:else if section === 'gen'}
           <h3>生成</h3>
           <dl>
@@ -172,6 +382,29 @@
   h1 {
     margin: 0 0 var(--space-4);
     font-size: 20px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-4);
+  }
+  .topbar h1 {
+    margin: 0;
+  }
+  .back {
+    background: none;
+    border: none;
+    color: var(--color-fg-muted);
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
+    display: inline-flex;
+    cursor: pointer;
+  }
+  .back:hover {
+    background: var(--color-bg-elevated);
+    color: var(--color-fg);
   }
 
   .settings {
@@ -267,6 +500,17 @@
     font-size: 13px;
   }
 
+  .model-select {
+    font-size: 13px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    min-width: 240px;
+    font-family: var(--font-mono);
+  }
+
   code {
     font-family: var(--font-mono);
     font-size: 12px;
@@ -310,5 +554,83 @@
 
   .err {
     color: var(--color-error);
+  }
+
+  .emb-select {
+    font: inherit;
+    font-size: 13px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 5px 9px;
+    background: var(--color-bg);
+    min-width: 240px;
+  }
+
+  .emb-warn,
+  .emb-notice {
+    margin-top: var(--space-3);
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .emb-warn {
+    background: #fff4e5;
+    border: 1px solid #f0c27a;
+    color: #8a5300;
+  }
+
+  .emb-notice {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    color: var(--color-fg-muted);
+  }
+
+  .emb-actions {
+    margin-top: var(--space-3);
+  }
+
+  .emb-btn {
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    border-radius: var(--radius-md);
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .emb-btn.primary {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+  }
+
+  .emb-progress {
+    margin-top: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-width: 360px;
+  }
+
+  .emb-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--color-bg-elevated);
+    overflow: hidden;
+  }
+
+  .emb-bar-fill {
+    height: 100%;
+    background: var(--color-accent);
+    transition: width 0.2s ease;
+  }
+
+  .emb-progress-text {
+    font-size: 12px;
+    color: var(--color-fg-muted);
   }
 </style>

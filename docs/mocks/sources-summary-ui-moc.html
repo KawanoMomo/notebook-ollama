@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ソースガイド（左パネル展開）UIモック v3 — Notebook Ollama</title>
+<style>
+  :root{
+    --color-bg:#ffffff;--color-bg-elevated:#fafafa;--color-bg-sidebar:#f5f5f7;
+    --color-fg:#1a1a1a;--color-fg-muted:#6b6b6b;--color-border:#e0e0e0;
+    --color-accent:#3563e9;--color-accent-hover:#2a4fb8;
+    --color-success:#2e7d32;--color-warning:#ed6c02;--color-error:#d32f2f;
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;
+    --radius-sm:4px;--radius-md:8px;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --font-mono:"SFMono-Regular",Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font-sans);font-size:14px;color:var(--color-fg);background:#e6e6ea;-webkit-font-smoothing:antialiased}
+  .page{max-width:1300px;margin:0 auto;padding:20px}
+  h1{font-size:19px;margin-bottom:4px}
+  .desc{color:#444;font-size:13px;line-height:1.7;margin-bottom:6px}
+  .legend{font-size:11px;color:#666;margin-bottom:20px}
+  .newtag{display:inline-block;background:var(--color-accent);color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:1px 7px;vertical-align:middle;margin-left:4px}
+  h2{font-size:14px;font-weight:700;margin:26px 0 6px;padding-bottom:6px;border-bottom:2px solid #d0d0d4}
+  .note{font-size:12px;color:#444;background:#fff;border:1px solid var(--color-border);border-left:3px solid var(--color-accent);border-radius:6px;padding:10px 14px;margin-bottom:14px;line-height:1.75}
+  .note b{color:var(--color-accent)}
+
+  /* ─── App frame ─── */
+  .app{background:var(--color-bg);border:1px solid #c4c4c8;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08)}
+  .topbar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--color-border)}
+  .nb-title{font-weight:600;font-size:14px}
+  .tb-space{flex:1}
+  .tb-btn{width:28px;height:28px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-elevated);display:grid;place-items:center;font-size:13px;color:var(--color-fg-muted)}
+  .cols{display:grid;grid-template-columns:300px 1fr 340px;height:660px}
+
+  /* ─── Left panel ─── */
+  .left{border-right:1px solid var(--color-border);display:flex;flex-direction:column;background:var(--color-bg)}
+  .lhead{display:flex;align-items:center;gap:6px;padding:10px;border-bottom:1px solid var(--color-border)}
+  .lsearch{flex:1;border:1px solid var(--color-border);border-radius:7px;padding:5px 8px;font-size:12px;color:#aaa}
+  .ladd{border:none;background:var(--color-accent);color:#fff;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:600}
+  .lmic{width:28px;height:28px;border:1px solid var(--color-border);border-radius:7px;background:#fff;color:#c43c3c;display:grid;place-items:center;font-size:13px}
+
+  /* tri-state all-select */
+  .allrow{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--color-border);background:var(--color-bg-elevated)}
+  .allab{font-size:12px;font-weight:600;color:#333}
+  .alcnt{margin-left:auto;font-size:11px;color:var(--color-fg-muted)}
+
+  /* checkbox */
+  .cb{appearance:none;-webkit-appearance:none;width:15px;height:15px;border:1.5px solid #b2b2bc;border-radius:3px;flex:none;background:#fff;cursor:pointer;position:relative}
+  .cb.on{background:var(--color-accent);border-color:var(--color-accent)}
+  .cb.on::after{content:"";position:absolute;left:3.5px;top:1px;width:5px;height:8px;border:solid #fff;border-width:0 1.8px 1.8px 0;transform:rotate(45deg)}
+  .cb.dash{background:var(--color-accent);border-color:var(--color-accent)}
+  .cb.dash::after{content:"";position:absolute;left:2px;top:5.5px;width:9px;height:1.8px;background:#fff;border-radius:1px}
+
+  .srclist{flex:1;overflow-y:auto}
+
+  /* ─── Source card ─── */
+  .srccard{border-bottom:1px solid var(--color-border)}
+  /* card header row */
+  .srcrow{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:8px 10px;cursor:pointer}
+  .srcrow:hover .srctitle{color:var(--color-accent)}
+  .srccard.active>.srcrow{background:#eef2ff}
+  .srccard.dim{opacity:.42}
+  .srcbody{min-width:0}
+  .srctitle{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-fg)}
+  .srcmeta{font-size:10px;color:var(--color-fg-muted);display:flex;gap:6px;align-items:center;margin-top:2px}
+  .kd{background:var(--color-bg-elevated);padding:0 5px;border-radius:3px;text-transform:uppercase;font-size:9px}
+  .ok{color:var(--color-success)}
+  .srcactions{display:flex;align-items:center;gap:4px}
+  .icon-btn{background:none;border:none;color:#ccc;font-size:13px;width:22px;height:22px;display:grid;place-items:center;border-radius:4px;cursor:pointer}
+  .icon-btn:hover{color:#888;background:var(--color-bg-elevated)}
+
+  /* ─── Expanded guide area ─── */
+  .guide{overflow:hidden;background:#f8f9ff;border-top:1px solid #dce3f8}
+
+  /* guide inner: toggle header + collapsible body */
+  .guide-toggle{display:flex;align-items:center;gap:7px;padding:8px 12px 6px;cursor:pointer;user-select:none}
+  .guide-toggle:hover{background:#eef1fb}
+  .guide-icon{font-size:11px;color:var(--color-accent);transition:transform .18s;flex:none}
+  .guide-icon.open{transform:rotate(90deg)}
+  .guide-tlabel{font-size:11px;font-weight:700;color:var(--color-accent);letter-spacing:.02em}
+  .guide-regen{margin-left:auto;border:1px solid #c8d3f5;background:#fff;border-radius:5px;padding:2px 8px;font-size:10px;color:#555;font-weight:600;cursor:pointer}
+
+  /* collapsible body */
+  .guide-body{padding:0 12px 10px}
+  .guide-body.hidden{display:none}
+
+  /* summary text */
+  .sum-text{font-size:12px;line-height:1.8;color:#222}
+  .sum-gen{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-fg-muted);padding:4px 0}
+  .sum-err{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-error);padding:4px 0}
+  .retry-btn{border:1px solid var(--color-error);background:#fff;color:var(--color-error);border-radius:5px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer}
+
+  /* skeleton */
+  .skel{background:linear-gradient(90deg,#e8eaf8 25%,#dde0f5 50%,#e8eaf8 75%);background-size:200% 100%;animation:sh 1.4s infinite;border-radius:4px;height:11px;margin-bottom:5px}
+  @keyframes sh{from{background-position:200% 0}to{background-position:-200% 0}}
+
+  /* spinner */
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid #d0d8f8;border-top-color:var(--color-accent);border-radius:50%;animation:rot .7s linear infinite;flex:none}
+  @keyframes rot{to{transform:rotate(360deg)}}
+
+  /* ─── Middle: chat ─── */
+  .mid{display:flex;flex-direction:column;border-right:1px solid var(--color-border)}
+  .chat-msgs{flex:1;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:13px}
+  .warn-bar{margin:0 12px 8px;padding:8px 12px;background:#fff7ed;border:1px solid #fcd9b0;border-radius:8px;color:#9a4500;font-size:12px;display:flex;align-items:center;gap:8px}
+  .chat-foot{display:flex;gap:8px;padding:10px;border-top:1px solid var(--color-border);align-items:center}
+  .chat-field{flex:1;border:1px solid var(--color-border);border-radius:8px;padding:8px 10px;font-size:13px}
+  .send{width:32px;height:32px;border-radius:8px;border:none;display:grid;place-items:center;font-size:14px;color:#fff}
+  .send.on{background:var(--color-accent)}
+  .send.off{background:#c7c7cc}
+
+  /* ─── Right: document viewer ─── */
+  .right{display:flex;flex-direction:column;overflow:hidden;background:var(--color-bg)}
+  .vhead{padding:12px 14px;border-bottom:1px solid var(--color-border)}
+  .vhead h3{font-size:13px;font-weight:600;margin-bottom:4px}
+  .vmeta{display:flex;gap:6px;font-size:10px;color:var(--color-fg-muted)}
+  .vmeta span{background:var(--color-bg-elevated);padding:1px 6px;border-radius:3px}
+  .vscroll{flex:1;overflow-y:auto;padding:12px 14px}
+  .full-label{font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+  .chunk{margin-bottom:10px}
+  .chunk .path{font-size:10px;color:var(--color-fg-muted);margin-bottom:3px}
+  .chunk pre{font-family:inherit;font-size:12px;line-height:1.7;color:#333;white-space:pre-wrap;background:var(--color-bg-elevated);border-left:2px solid var(--color-border);border-radius:4px;padding:8px 10px}
+  .vempty{color:#bbb;font-size:12px;text-align:center;padding:40px 20px}
+
+  /* ─── Section: state cards ─── */
+  .state-cards{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:4px}
+  .scard{flex:1;min-width:260px;background:var(--color-bg);border:1px solid #c4c4c8;border-radius:9px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+  .scard-label{font-size:11px;font-weight:700;padding:6px 12px;background:#f2f2f5;border-bottom:1px solid var(--color-border);color:#444}
+  .scard-label span{display:inline-block;font-size:10px;border-radius:999px;padding:1px 8px;font-weight:700;margin-left:6px}
+  .badge-new{background:var(--color-accent);color:#fff}
+  .badge-ok{background:var(--color-success);color:#fff}
+  .badge-warn{background:var(--color-warning);color:#fff}
+
+  /* ─── Pipeline ─── */
+  .pipeline{display:flex;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;margin-bottom:6px}
+  .step{flex:1;padding:10px 12px;border-right:1px solid var(--color-border);font-size:12px}
+  .step:last-child{border-right:none}
+  .step.done .sn{color:var(--color-success)}
+  .step.active .sn{color:var(--color-accent)}
+  .step.new-s{background:#eef2ff}
+  .sn{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
+  .st{font-size:12px;color:#444}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>ソースガイド（左パネル展開） UIモック v3</h1>
+  <p class="desc">
+    <b>変更点の核心</b>：要約は右パネルではなく<b>左ソースパネルのカード内で展開・折りたたみ</b>。
+    右パネルは原文表示専用のまま。ソースをクリックするとカードがその場で縦に伸び、下のアイテムが押し下げられる。
+  </p>
+  <p class="legend">★ = 新規追加・変更箇所</p>
+
+  <!-- ═══════ Section 1: 全体レイアウト ═══════ -->
+  <h2>① 全体レイアウト — ソースが展開された状態（要約 表示中）</h2>
+  <div class="note">
+    「仕様書_v3.pdf」をクリック → 左カードが展開し要約エリアが出現 → 右パネルに原文が表示。<br>
+    要約エリアには <b>▶ ソースガイド</b> トグルがあり、クリックで本文が折りたためる。★がついている箇所が今回の追加。
+  </div>
+
+  <div class="app">
+    <div class="topbar">
+      <span class="nb-title">📔 プロジェクト仕様書ノート</span>
+      <span class="tb-space"></span>
+      <span class="tb-btn">⚙</span>
+    </div>
+    <div class="cols">
+
+      <!-- LEFT -->
+      <div class="left">
+        <div class="lhead">
+          <span class="lsearch">ソースを検索</span>
+          <span class="ladd">＋</span>
+          <span class="lmic">🎙</span>
+        </div>
+        <!-- ★ tri-state row -->
+        <div class="allrow">
+          <span class="cb on"></span>
+          <span class="allab">すべてのソース <span class="newtag">★</span></span>
+          <span class="alcnt">3 / 3</span>
+        </div>
+        <div class="srclist">
+
+          <!-- ★ EXPANDED card: summary visible & folded-open -->
+          <div class="srccard active">
+            <div class="srcrow">
+              <span class="cb on"></span>
+              <div class="srcbody">
+                <div class="srctitle">仕様書_v3.pdf</div>
+                <div class="srcmeta"><span class="kd">pdf</span><span>24p</span><span class="ok">✓ ready</span></div>
+              </div>
+              <div class="srcactions">
+                <span class="icon-btn" title="名前変更">✏</span>
+                <span class="icon-btn" title="削除">🗑</span>
+              </div>
+            </div>
+            <!-- ★ guide area — expanded, summary open -->
+            <div class="guide">
+              <div class="guide-toggle">
+                <span class="guide-icon open">▶</span>
+                <span class="guide-tlabel">ソースガイド</span>
+                <button class="guide-regen">↻ 再生成</button>
+              </div>
+              <div class="guide-body">
+                <div class="sum-text">
+                  本書は状態遷移コード自動生成ツールの v3 仕様を定義する。Excel 設計書を入力に、Jinja2 テンプレートで C コードを出力。v2 差分はガード条件と階層ステートの追加。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- collapsed cards below (pushed down) -->
+          <div class="srccard">
+            <div class="srcrow">
+              <span class="cb on"></span>
+              <div class="srcbody">
+                <div class="srctitle">議事録 2026-06-20.wav</div>
+                <div class="srcmeta"><span class="kd">rec</span><span>32:10</span><span class="ok">✓ ready</span></div>
+              </div>
+              <div class="srcactions">
+                <span class="icon-btn">✏</span><span class="icon-btn">🗑</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="srccard">
+            <div class="srcrow">
+              <span class="cb on"></span>
+              <div class="srcbody">
+                <div class="srctitle">参考資料.md</div>
+                <div class="srcmeta"><span class="kd">md</span><span class="ok">✓ ready</span></div>
+              </div>
+              <div class="srcactions">
+                <span class="icon-btn">✏</span><span class="icon-btn">🗑</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- MIDDLE: chat (normal) -->
+      <div class="mid">
+        <div class="chat-msgs">メッセージはまだありません</div>
+        <div class="chat-foot">
+          <span class="chat-field" style="color:#aaa;background:#f6f6f8">質問を入力…</span>
+          <span class="send on">➤</span>
+        </div>
+      </div>
+
+      <!-- RIGHT: document viewer (unchanged) -->
+      <div class="right">
+        <div class="vhead">
+          <h3>仕様書_v3.pdf</h3>
+          <div class="vmeta"><span>pdf</span><span>24p</span><span>1.2 MB</span></div>
+        </div>
+        <div class="vscroll">
+          <div class="full-label">原文</div>
+          <div class="chunk">
+            <div class="path">1. 概要 › 1.1 目的</div>
+            <pre>本ツールは、Excel で記述した状態遷移設計をレビュー可能な形式のまま実装コードへ落とし込むことを目的とする。</pre>
+          </div>
+          <div class="chunk">
+            <div class="path">1. 概要 › 1.2 対象読者</div>
+            <pre>組み込みソフトウェア設計者、コードレビュア、プロジェクトマネージャー。</pre>
+          </div>
+          <div class="chunk">
+            <div class="path">2. 入力スキーマ › 2.1 シート構成</div>
+            <pre>状態一覧・遷移テーブル・イベント定義の3シートで構成。…</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ Section 2: 折りたたみ状態の比較 ═══════ -->
+  <h2>② 「ソースガイド」の開閉状態 比較</h2>
+  <div class="note">
+    トグルをクリックするたびに本文が開閉。▶ が 90° 回転して開閉を示す。ヘッダ行は常に残り、タイトルと「再生成」ボタンにアクセスできる。
+  </div>
+
+  <div class="state-cards">
+    <!-- open -->
+    <div class="scard">
+      <div class="scard-label">展開中（▶ が開いている）<span class="badge-ok">デフォルト（クリック直後）</span></div>
+      <div class="srccard active" style="border:none">
+        <div class="srcrow" style="background:#eef2ff">
+          <span class="cb on"></span>
+          <div class="srcbody"><div class="srctitle">仕様書_v3.pdf</div><div class="srcmeta"><span class="kd">pdf</span><span class="ok">✓</span></div></div>
+          <div class="srcactions"><span class="icon-btn">✏</span><span class="icon-btn">🗑</span></div>
+        </div>
+        <div class="guide">
+          <div class="guide-toggle">
+            <span class="guide-icon open">▶</span>
+            <span class="guide-tlabel">ソースガイド</span>
+            <button class="guide-regen">↻ 再生成</button>
+          </div>
+          <div class="guide-body">
+            <div class="sum-text">本書は状態遷移コード自動生成ツールの v3 仕様を定義する。Excel 設計書を入力に Jinja2 で C コードを出力。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- folded -->
+    <div class="scard">
+      <div class="scard-label">折りたたみ中（▶ が閉じている）<span class="badge-new">トグルで切替</span></div>
+      <div class="srccard active" style="border:none">
+        <div class="srcrow" style="background:#eef2ff">
+          <span class="cb on"></span>
+          <div class="srcbody"><div class="srctitle">仕様書_v3.pdf</div><div class="srcmeta"><span class="kd">pdf</span><span class="ok">✓</span></div></div>
+          <div class="srcactions"><span class="icon-btn">✏</span><span class="icon-btn">🗑</span></div>
+        </div>
+        <div class="guide">
+          <div class="guide-toggle">
+            <span class="guide-icon">▶</span>
+            <span class="guide-tlabel">ソースガイド</span>
+            <button class="guide-regen">↻ 再生成</button>
+          </div>
+          <!-- body hidden -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ Section 3: 生成中・エラー状態 ═══════ -->
+  <h2>③ 要約の生成中・失敗状態（展開エリア内）</h2>
+
+  <div class="state-cards">
+    <!-- generating -->
+    <div class="scard">
+      <div class="scard-label">生成中（スケルトン）<span class="badge-warn">非同期ジョブ実行中</span></div>
+      <div class="guide" style="background:#f8f9ff;border-top:1px solid #dce3f8">
+        <div class="guide-toggle">
+          <span class="guide-icon open">▶</span>
+          <span class="guide-tlabel">ソースガイド</span>
+        </div>
+        <div class="guide-body">
+          <div class="sum-gen"><span class="spin"></span>要約を生成中…</div>
+          <div class="skel" style="width:100%;margin-top:6px"></div>
+          <div class="skel" style="width:85%"></div>
+          <div class="skel" style="width:60%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- error -->
+    <div class="scard">
+      <div class="scard-label">3回リトライ後に失敗<span class="badge-warn">手動再試行可</span></div>
+      <div class="guide" style="background:#f8f9ff;border-top:1px solid #dce3f8">
+        <div class="guide-toggle">
+          <span class="guide-icon open">▶</span>
+          <span class="guide-tlabel">ソースガイド</span>
+        </div>
+        <div class="guide-body">
+          <div class="sum-err">⚠ 生成に失敗しました（3回）<button class="retry-btn">↻ 再試行</button></div>
+          <div style="font-size:11px;color:var(--color-fg-muted);margin-top:5px">内部で3回自動リトライ済み。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ Section 4: 0件選択 ═══════ -->
+  <h2>④ 0件選択時 — チャット送信ブロック</h2>
+  <div class="state-cards">
+    <div class="scard">
+      <div class="scard-label">0件選択（確定済み）<span class="badge-warn">変更</span></div>
+      <div style="background:#fff;display:flex;flex-direction:column">
+        <div class="chat-msgs" style="min-height:80px">メッセージはまだありません</div>
+        <div class="warn-bar">⚠ ソースが選択されていません。1つ以上選んでください。</div>
+        <div class="chat-foot">
+          <span class="chat-field" style="color:#aaa;background:#f6f6f8">ソースを選択すると送信できます…</span>
+          <span class="send off">➤</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ Section 5: 録音パイプライン ═══════ -->
+  <h2>⑤ 録音変換パイプライン — Step 5「要約生成」追加</h2>
+  <div class="note">既存の RecordingConvStatus の末尾に要約ジョブを追加。失敗時は内部3回リトライ後にのみユーザーへ通知。</div>
+  <div class="pipeline">
+    <div class="step done"><div class="sn">Step 1 ✓</div><div class="st">STT</div></div>
+    <div class="step done"><div class="sn">Step 2 ✓</div><div class="st">話者分離</div></div>
+    <div class="step done"><div class="sn">Step 3 ✓</div><div class="st">タイトル生成</div></div>
+    <div class="step done"><div class="sn">Step 4 ✓</div><div class="st">Embedding</div></div>
+    <div class="step active new-s"><div class="sn">Step 5 ★</div><div class="st">要約生成（LLM）</div></div>
+  </div>
+
+  <!-- ═══════ 確認事項 ═══════ -->
+  <div class="note" style="margin-top:20px">
+    <b>確認事項（このモックで合意したい点）：</b><br>
+    1. 要約は<b>右パネルではなく左パネルのカード内展開</b>でよいか。<br>
+    2. <b>▶ ソースガイド トグル</b>で折りたたみ/展開。デフォルトは<b>クリック直後に展開</b>（open状態）でよいか。<br>
+    3. トグルヘッダーに<b>「再生成」ボタン</b>を置く配置でよいか。<br>
+    4. 生成中はスケルトン表示、3回失敗後に手動再試行ボタン — でよいか。<br>
+    5. 録音パイプラインの<b>Step 5</b>として追加する形でよいか。
+  </div>
+</div>
+</body>
+</html>

@@ -16,7 +16,7 @@ Write-Host "[uninstall] Task name: $TaskName"
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if (-not $existing) {
-    Write-Host "[uninstall] Task '$TaskName' not found — nothing to remove." -ForegroundColor Yellow
+    Write-Host "[uninstall] Task '$TaskName' not found - nothing to remove." -ForegroundColor Yellow
     exit 0
 }
 

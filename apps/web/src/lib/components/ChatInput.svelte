@@ -1,15 +1,37 @@
 <script lang="ts">
   import Button from './Button.svelte';
-  import { Send } from '@lucide/svelte';
+  import PromptToolbar from './PromptToolbar.svelte';
+  import { Send, Square, AlertCircle } from '@lucide/svelte';
+  import { promptsStore } from '$lib/stores/prompts.svelte';
+  import { onMount } from 'svelte';
 
   interface Props {
-    disabled: boolean;
+    streaming: boolean;
     hint?: string | null;
+    /** 現在チェック済みのソース数(0 の場合は送信不可+警告)。 */
+    sourcesSelected?: number;
     onSend: (text: string) => void;
+    onCancel: () => void;
   }
-  let { disabled, hint = null, onSend }: Props = $props();
+  let {
+    streaming,
+    hint = null,
+    sourcesSelected = 1,
+    onSend,
+    onCancel,
+  }: Props = $props();
+
+  onMount(() => {
+    if (!promptsStore.prompts) {
+      promptsStore.load().catch(() => {
+        /* degraded: ツールバー非表示で続行(設計 §6.2) */
+      });
+    }
+  });
 
   let value = $state('');
+
+  const noSourcesSelected = $derived(sourcesSelected <= 0);
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -19,6 +41,8 @@
   }
 
   function submit() {
+    if (streaming) return;
+    if (noSourcesSelected) return;
     const t = value.trim();
     if (!t) return;
     onSend(t);
@@ -26,19 +50,39 @@
   }
 </script>
 
+{#if noSourcesSelected}
+  <div class="warn" role="alert">
+    <AlertCircle size="14" />
+    <span>ソースが選択されていません。1 つ以上選んでください。</span>
+  </div>
+{/if}
+<PromptToolbar
+  prompts={promptsStore.prompts}
+  {streaming}
+  {sourcesSelected}
+  onSend={(body) => {
+    if (streaming || noSourcesSelected) return;
+    onSend(body);
+  }}
+/>
 <form class="input" onsubmit={(e) => { e.preventDefault(); submit(); }}>
   <textarea
     bind:value
     placeholder="質問を入力（Cmd/Ctrl+Enter で送信）"
     rows="3"
     onkeydown={onKey}
-    {disabled}
   ></textarea>
   <div class="row">
     <span class="hint">{hint ?? ''}</span>
-    <Button type="submit" disabled={disabled || !value.trim()}>
-      <Send size={14} /> 送信
-    </Button>
+    {#if streaming}
+      <Button type="button" variant="danger" onclick={onCancel}>
+        <Square size={14} /> 停止
+      </Button>
+    {:else}
+      <Button type="submit" disabled={noSourcesSelected}>
+        <Send size={14} /> 送信
+      </Button>
+    {/if}
   </div>
 </form>
 
@@ -70,5 +114,16 @@
   .hint {
     font-size: 11px;
     color: var(--color-fg-muted);
+  }
+  .warn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: #fff7ed;
+    color: #c2410c;
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid #fed7aa;
+    border-bottom: 1px solid #fed7aa;
+    font-size: 12px;
   }
 </style>

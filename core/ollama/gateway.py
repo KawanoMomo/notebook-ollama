@@ -66,3 +66,30 @@ class OllamaGateway:
         async for tok in self.chat_stream(model=model, messages=messages, options=options):
             parts.append(tok)
         return "".join(parts)
+
+
+class _GatewayLike(Protocol):
+    async def embed(self, *, model: str, text: str) -> list[float]: ...
+
+
+_EMBEDDING_DIM_CACHE: dict[str, int] = {}
+
+
+def reset_embedding_dim_cache() -> None:
+    """テスト用: プロセス内キャッシュをクリアする。"""
+    _EMBEDDING_DIM_CACHE.clear()
+
+
+async def probe_embedding_dim(gateway: _GatewayLike, model: str) -> int:
+    """短文を埋め込み、返りベクトルの長さ(次元)を返す。
+
+    結果はプロセス内 dict にモデル名でキャッシュする。同一モデルの
+    2 回目以降は Ollama を叩かずキャッシュ値を返す。
+    """
+    cached = _EMBEDDING_DIM_CACHE.get(model)
+    if cached is not None:
+        return cached
+    vector = await gateway.embed(model=model, text="x")
+    dim = len(vector)
+    _EMBEDDING_DIM_CACHE[model] = dim
+    return dim
