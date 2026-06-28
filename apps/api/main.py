@@ -21,7 +21,9 @@ from apps.api.dependencies import build_context
 from apps.api.routers import (
     audio,
     chat,
+    crash,
     events,
+    feedback_hub,
     health,
     notebooks,
     prompts,
@@ -133,6 +135,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(settings_router.router)
     app.include_router(prompts.router)
     app.include_router(events.router)
+    app.include_router(feedback_hub.router)
+    app.include_router(crash.router)
     app.mount("/mcp", _McpAsgiProxy())
 
     from pathlib import Path
