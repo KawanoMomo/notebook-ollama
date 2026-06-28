@@ -9,7 +9,9 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
   import ChatPanel from '$lib/components/ChatPanel.svelte';
+  import LiveCaptionView from '$lib/components/LiveCaptionView.svelte';
   import SourceViewer from '$lib/components/SourceViewer.svelte';
+  import { recordingStore } from '$lib/stores/recording.svelte';
 
   let { data } = $props<{ data: { notebookId: string } }>();
 
@@ -78,11 +80,27 @@
       <aside class="sources">
         <SourcesPanel
           notebookId={data.notebookId}
-          onSourceSelect={(id) => (selectedSourceId = id)}
+          onSourceSelect={(id) => {
+            // ソース選択と引用選択は排他。引用の選択を消さないと、
+            // SourceViewer が古い selectedSourceId を優先してしまう。
+            selectedSourceId = id;
+            selectedChunkId = null;
+          }}
         />
       </aside>
       <section class="chat">
-        <ChatPanel notebookId={data.notebookId} onCitationClick={(cid) => (selectedChunkId = cid)} />
+        {#if recordingStore.recording}
+          <LiveCaptionView />
+        {:else}
+          <ChatPanel
+            notebookId={data.notebookId}
+            onCitationClick={(cid) => {
+              // 引用クリック時は古いソース選択を消し、引用の source_id を解決させる。
+              selectedChunkId = cid;
+              selectedSourceId = null;
+            }}
+          />
+        {/if}
       </section>
       {#if viewerOpen}
         <aside class="viewer">

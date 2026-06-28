@@ -15,9 +15,13 @@ class ChunkRecord:
     heading_path: str | None
     text: str
     token_count: int
+    start_ms: int | None = None
+    end_ms: int | None = None
+    speaker: str | None = None
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> ChunkRecord:
+    def from_row(cls, row: sqlite3.Row) -> "ChunkRecord":
+        keys = row.keys()
         return cls(
             id=row["id"],
             source_id=row["source_id"],
@@ -27,17 +31,22 @@ class ChunkRecord:
             heading_path=row["heading_path"],
             text=row["text"],
             token_count=row["token_count"],
+            start_ms=row["start_ms"] if "start_ms" in keys else None,
+            end_ms=row["end_ms"] if "end_ms" in keys else None,
+            speaker=row["speaker"] if "speaker" in keys else None,
         )
 
 
 def insert_chunks(conn: sqlite3.Connection, chunks: Iterable[ChunkRecord]) -> None:
     rows = [
-        (c.id, c.source_id, c.notebook_id, c.ord, c.page, c.heading_path, c.text, c.token_count)
+        (c.id, c.source_id, c.notebook_id, c.ord, c.page, c.heading_path,
+         c.text, c.token_count, c.start_ms, c.end_ms, c.speaker)
         for c in chunks
     ]
     conn.executemany(
-        "INSERT INTO chunks(id, source_id, notebook_id, ord, page, heading_path, text, token_count) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO chunks(id, source_id, notebook_id, ord, page, heading_path, "
+        "text, token_count, start_ms, end_ms, speaker) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
 

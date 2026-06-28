@@ -6,6 +6,9 @@ export interface ChunkDetail {
   page: number | null;
   heading_path: string | null;
   text: string;
+  start_ms: number | null;
+  end_ms: number | null;
+  speaker: string | null;
 }
 
 export const sourceDetailApi = {

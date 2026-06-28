@@ -19,10 +19,13 @@ from starlette.types import Receive, Scope, Send
 
 from apps.api.dependencies import build_context
 from apps.api.routers import (
+    audio,
     chat,
     events,
     health,
     notebooks,
+    recording_ws,
+    recordings,
     sources,
 )
 from apps.api.routers import (
@@ -86,10 +89,14 @@ class _McpAsgiProxy:
 async def lifespan(app: FastAPI):
     configure_logging()
     config = AppConfig()
+    from core.settings_store import apply_overrides
+    apply_overrides(config)
     app.state.ctx = build_context(config)
     from apps.api import _mcp_state
     _mcp_state.ctx = app.state.ctx
     yield
+    app.state.ctx.vector_store.close()
+    app.state.ctx.conn.close()
 
 
 def create_app(config: AppConfig | None = None) -> FastAPI:
@@ -115,6 +122,9 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(notebooks.router)
     app.include_router(sources.router)
+    app.include_router(recordings.router)
+    app.include_router(recording_ws.router)
+    app.include_router(audio.router)
     app.include_router(chat.router)
     app.include_router(models_router.router)
     app.include_router(settings_router.router)

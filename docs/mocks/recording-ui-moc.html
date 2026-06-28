@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>録音ソース機能 UIモック v2 — Notebook Ollama</title>
+<style>
+  :root{
+    --color-bg:#ffffff; --color-bg-elevated:#fafafa; --color-bg-sidebar:#f5f5f7;
+    --color-fg:#1a1a1a; --color-fg-muted:#6b6b6b; --color-border:#e0e0e0;
+    --color-accent:#3563e9; --color-accent-hover:#2a4fb8;
+    --color-success:#2e7d32; --color-warning:#ed6c02; --color-error:#d32f2f;
+    --color-citation-bg:#fff8c4; --color-citation-border:#d4a017;
+    --you:#3563e9; --them:#16a34a; --them2:#9333ea;
+    --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px;
+    --radius-sm:4px; --radius-md:8px; --radius-lg:12px;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans JP",sans-serif;
+    --font-mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);font-size:14px;color:var(--color-fg);background:#ececed;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px}
+  h1{font-size:20px;margin:0 0 4px}
+  .lead{color:#444;margin:0 0 16px;line-height:1.7}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:22px;font-size:13px}
+  .newtag{display:inline-block;background:var(--color-accent);color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 7px;letter-spacing:.04em;vertical-align:middle}
+  .new{position:relative;outline:2px dashed var(--color-accent);outline-offset:2px;border-radius:6px}
+  .new::after{content:"NEW";position:absolute;top:-9px;right:-6px;background:var(--color-accent);color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:1px 6px;z-index:6}
+  .screen{margin:0 0 34px}
+  .screen > .cap{font-size:13px;font-weight:600;color:#333;margin:0 0 8px;display:flex;gap:8px;align-items:center}
+  .screen > .cap .num{background:#333;color:#fff;border-radius:999px;width:20px;height:20px;display:inline-grid;place-items:center;font-size:11px;flex:none}
+  .frame{background:var(--color-bg);border:1px solid #cfcfd3;border-radius:10px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.07)}
+
+  .topbar{display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--color-border);background:var(--color-bg)}
+  .topbar .back{width:26px;height:26px;border:none;background:none;color:var(--color-fg-muted);border-radius:4px;display:grid;place-items:center}
+  .topbar h2{margin:0;font-size:16px}
+  .cols{display:grid;grid-template-columns:280px 1fr 360px;height:540px}
+  .sources{border-right:1px solid var(--color-border);background:var(--color-bg-sidebar);display:flex;flex-direction:column;min-height:0}
+  .chat{display:flex;flex-direction:column;min-height:0;background:#fff}
+  .viewer{border-left:1px solid var(--color-border);background:var(--color-bg-elevated);overflow-y:auto}
+
+  /* sidebar header */
+  .s-header{display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid var(--color-border);background:var(--color-bg)}
+  .search{flex:1;min-width:0;border:1px solid var(--color-border);border-radius:8px;padding:5px 8px;font-size:13px;color:#999}
+  .btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--color-accent);background:var(--color-accent);color:#fff;border-radius:8px;padding:5px 10px;font-size:13px;font-weight:500;white-space:nowrap}
+  .btn.sm{padding:4px 9px;font-size:12px}
+  .btn.ghost{background:#fff;color:var(--color-fg);border-color:var(--color-border)}
+  .btn.danger{background:var(--color-error);border-color:var(--color-error);color:#fff}
+  .iconbtn{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--color-border);background:#fff;display:grid;place-items:center;color:var(--color-error);position:relative}
+  .iconbtn svg{width:16px;height:16px}
+  /* tooltip */
+  .tt{position:relative}
+  .tt .bub{position:absolute;top:36px;left:50%;transform:translateX(-50%);background:#222;color:#fff;font-size:11px;padding:3px 7px;border-radius:5px;white-space:nowrap;z-index:7}
+  .tt .bub::before{content:"";position:absolute;top:-4px;left:50%;transform:translateX(-50%);border:4px solid transparent;border-bottom-color:#222;border-top:none}
+
+  /* recording control strip in sidebar (below record icon) */
+  .recstrip{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-bottom:1px solid var(--color-border);background:var(--color-bg)}
+  .recrow{display:flex;align-items:center;gap:8px;font-size:12px}
+  .switch{width:38px;height:22px;border-radius:999px;background:var(--color-accent);position:relative;flex:none}
+  .switch.off{background:#c8c8cd}
+  .switch i{position:absolute;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);right:2px}
+  .switch.off i{right:auto;left:2px}
+  .live-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--color-fg);font-weight:500}
+  .rectimer{font-family:var(--font-mono);font-size:15px;font-weight:600}
+  .recnow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-error);font-weight:600}
+  .stopbtn{margin-left:auto;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--color-error);background:var(--color-error);color:#fff;border-radius:7px;padding:3px 9px;font-size:12px;font-weight:600}
+  .minimeters{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:5px 7px;align-items:center;font-size:10px;color:var(--color-fg-muted)}
+  .mini{height:6px;background:#e4e4e8;border-radius:999px;overflow:hidden}
+  .mini i{display:block;height:100%;background:linear-gradient(90deg,var(--color-success),var(--color-warning));border-radius:999px}
+
+  /* source list */
+  .s-list{flex:1;overflow-y:auto}
+  .card{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-border)}
+  .card input{margin:0}
+  .card .title{font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
+  .card .meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--color-fg-muted);margin-top:3px}
+  .kind{background:var(--color-bg-elevated);border:1px solid var(--color-border);padding:0 6px;border-radius:4px;text-transform:uppercase;font-size:10px}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .pulse{background:var(--color-error);animation:pulse 1.1s infinite}
+  @keyframes pulse{0%{opacity:1}50%{opacity:.25}100%{opacity:1}}
+
+  /* expanded conversion status in sidebar card */
+  .conv{padding:6px 12px 12px 34px;border-bottom:1px solid var(--color-border);background:#fbfbfd}
+  .conv .ct{font-size:11px;color:var(--color-fg-muted);margin:0 0 6px}
+  .cstep{display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0}
+  .cstep.done{color:var(--color-success)}
+  .cstep.cur{color:var(--color-fg);font-weight:600}
+  .cstep.todo{color:var(--color-fg-muted)}
+  .cdot{width:15px;height:15px;border-radius:50%;display:grid;place-items:center;font-size:10px;flex:none}
+  .cstep.done .cdot{background:var(--color-success);color:#fff}
+  .cstep.cur .cdot{border:2px solid var(--color-accent)}
+  .cstep.todo .cdot{border:2px solid #d4d4d8}
+  .pbar{height:6px;background:#e4e4e8;border-radius:999px;overflow:hidden;margin-top:8px}
+  .pbar i{display:block;height:100%;width:62%;background:var(--color-accent);border-radius:999px}
+
+  /* chat */
+  .msgs{flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:16px}
+  .bubble{max-width:85%}
+  .bubble.u{align-self:flex-end;background:var(--color-accent);color:#fff;border-radius:12px 12px 2px 12px;padding:8px 12px}
+  .bubble.a{align-self:flex-start;color:var(--color-fg);line-height:1.7}
+  .cite{background:var(--color-citation-bg);border:1px solid var(--color-citation-border);border-radius:4px;padding:0 5px;font-size:11px;font-weight:600;color:#7a5b00;white-space:nowrap}
+  .cite .spk{color:var(--them);font-weight:700}
+  .composer{border-top:1px solid var(--color-border);padding:12px 16px;display:flex;gap:8px}
+  .composer .ta{flex:1;border:1px solid var(--color-border);border-radius:8px;padding:8px 10px;color:#999}
+
+  /* center live caption view (replaces chat while recording) */
+  .live{display:flex;flex-direction:column;height:100%;background:#fff}
+  .live-head{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid var(--color-border);background:var(--color-bg-elevated)}
+  .live-head .lh-t{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .live-head .lh-note{margin-left:auto;font-size:11px;color:var(--color-fg-muted)}
+  .live-body{flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:12px}
+  .capline{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.6}
+  .capline .t{font-family:var(--font-mono);font-size:10px;color:var(--color-fg-muted);padding-top:4px;flex:none;width:38px}
+  .spk-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:999px;padding:2px 9px;color:#fff;flex:none}
+  .capline.interim{opacity:.55;font-style:italic}
+  .live-foot{padding:9px 20px;border-top:1px solid var(--color-border);background:var(--color-bg-elevated);font-size:11px;color:var(--color-fg-muted);display:flex;align-items:center;gap:8px}
+
+  /* viewer */
+  .v-pad{padding:14px}
+  .v-pad h3{margin:0 0 6px;font-size:14px}
+  .v-meta{display:flex;gap:8px;font-size:12px;color:var(--color-fg-muted);margin-bottom:12px;flex-wrap:wrap}
+  .v-meta span{background:var(--color-bg-elevated);border:1px solid var(--color-border);padding:1px 6px;border-radius:4px}
+  .player{border:1px solid var(--color-border);border-radius:8px;padding:10px;background:#fff;margin-bottom:12px}
+  .player .row1{display:flex;align-items:center;gap:10px}
+  .play{width:34px;height:34px;border-radius:50%;border:none;background:var(--color-accent);color:#fff;display:grid;place-items:center;flex:none}
+  .track{flex:1;height:6px;background:#e4e4e8;border-radius:999px;position:relative}
+  .track .fill{position:absolute;left:0;top:0;bottom:0;background:var(--color-accent);border-radius:999px}
+  .track .head{position:absolute;top:50%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--color-accent)}
+  .ttime{font-size:11px;color:var(--color-fg-muted);font-family:var(--font-mono)}
+  .chunktext{background:var(--color-citation-bg);border-left:3px solid var(--color-citation-border);padding:12px;border-radius:4px;white-space:pre-wrap;font-size:13px;line-height:1.7;margin:10px 0 0}
+  .seg-jump{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--color-accent);margin-top:8px}
+  .small{font-size:11px;color:var(--color-fg-muted);margin-top:6px}
+  svg{display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>録音ソース機能 — UIモック v2(合意用)</h1>
+  <p class="lead">録音はモーダルを使わず、<b>センターのチャット領域がライブ字幕ビューに切り替わる</b>方式。録音操作(停止・ライブ字幕トグル)とデバイス設定の所在を見直しました。追加要素は <span class="newtag">NEW</span> と青破線で表示。</p>
+  <div class="legend">
+    <span><span class="newtag">NEW</span> 追加要素</span>
+    <span><span class="dot" style="background:var(--you)"></span> あなた(マイク)</span>
+    <span><span class="dot" style="background:var(--them)"></span> 相手1</span>
+    <span><span class="dot" style="background:var(--them2)"></span> 相手2</span>
+    <span><span class="dot pulse"></span> 録音中</span>
+  </div>
+
+  <!-- ============ SCREEN 1 : 待機 ============ -->
+  <div class="screen">
+    <p class="cap"><span class="num">1</span> メイン(待機) — 録音はアイコンのみ(ホバーで「録音」)。はみ出さないヘッダー。ライブ字幕トグルはアイコン直下に小さく常設</p>
+    <div class="frame">
+      <div class="topbar"><button class="back">‹</button><h2>2026Q2 製品ロードマップ会議</h2></div>
+      <div class="cols">
+        <aside class="sources">
+          <div class="s-header">
+            <input class="search" value="ソースを検索" />
+            <button class="btn sm">＋ 追加</button>
+            <span class="new"><button class="iconbtn tt" aria-label="録音">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>
+              <span class="bub">録音</span>
+            </button></span>
+          </div>
+          <!-- live caption toggle strip, just under the record icon -->
+          <div class="new"><div class="recstrip">
+            <div class="recrow">
+              <span class="live-pill">ライブ字幕</span>
+              <span style="margin-left:auto;font-size:11px;color:var(--color-fg-muted)">録音中に字幕表示</span>
+              <span class="switch"><i></i></span>
+            </div>
+          </div></div>
+          <div class="s-list">
+            <div class="card">
+              <input type="checkbox" checked />
+              <div><div class="title">🎙 録音 2026-06-17 14:30</div>
+                <div class="meta"><span class="kind">recording</span><span>12:34</span><span style="color:var(--color-success)">● ready</span></div></div>
+              <div style="color:var(--color-fg-muted)">⋯</div>
+            </div>
+            <div class="card">
+              <input type="checkbox" checked />
+              <div><div class="title">📄 製品要求仕様 v3.pdf</div>
+                <div class="meta"><span class="kind">pdf</span><span>24p</span><span style="color:var(--color-success)">● ready</span></div></div>
+              <div style="color:var(--color-fg-muted)">⋯</div>
+            </div>
+            <div class="card">
+              <input type="checkbox" checked />
+              <div><div class="title">🌐 競合分析 (社内Wiki)</div>
+                <div class="meta"><span class="kind">web</span><span style="color:var(--color-success)">● ready</span></div></div>
+              <div style="color:var(--color-fg-muted)">⋯</div>
+            </div>
+          </div>
+        </aside>
+        <section class="chat">
+          <div class="msgs">
+            <div class="bubble u">先週の会議で、UIリニューアルの担当は誰に決まった?</div>
+            <div class="bubble a">UIリニューアルの担当は<b>田中さん</b>に決定しました
+              <span class="cite">[1] <span class="spk">相手1・田中</span> 00:12:34</span>。
+              スケジュールは要求仕様 v3 に沿います <span class="cite">[2] p.8</span>。</div>
+          </div>
+          <div class="composer"><div class="ta">メッセージを入力…</div><button class="btn">送信</button></div>
+        </section>
+        <aside class="viewer">
+          <div class="v-pad" style="color:var(--color-fg-muted);text-align:center;padding-top:60px;font-size:13px">ソースまたは引用を選択してください</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SCREEN 2 : 録音中 ============ -->
+  <div class="screen">
+    <p class="cap"><span class="num">2</span> 録音中 — センターがライブ字幕ビューに切替。停止ボタン・トグル・メータはサイドバーの録音ストリップに集約(モーダルなし)</p>
+    <div class="frame">
+      <div class="topbar"><button class="back">‹</button><h2>2026Q2 製品ロードマップ会議</h2></div>
+      <div class="cols">
+        <aside class="sources">
+          <div class="s-header">
+            <input class="search" value="ソースを検索" />
+            <button class="btn sm">＋ 追加</button>
+            <span class="new"><button class="iconbtn" aria-label="録音中" style="border-color:#f0c4c4;background:#fff5f5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>
+            </button></span>
+          </div>
+          <!-- recording active strip NEW -->
+          <div class="new"><div class="recstrip">
+            <div class="recrow">
+              <span class="recnow"><span class="dot pulse"></span> 録音中</span>
+              <span class="rectimer" style="margin-left:6px">00:03:18</span>
+              <button class="stopbtn">■ 停止</button>
+            </div>
+            <div class="recrow">
+              <span class="live-pill">ライブ字幕</span>
+              <span class="switch" style="margin-left:auto"><i></i></span>
+            </div>
+            <div class="minimeters">
+              <span>🎤</span><div class="mini"><i style="width:64%"></i></div>
+              <span>🔊</span><div class="mini"><i style="width:42%"></i></div>
+            </div>
+          </div></div>
+          <div class="s-list">
+            <div class="card" style="opacity:.6">
+              <input type="checkbox" checked /><div><div class="title">📄 製品要求仕様 v3.pdf</div>
+              <div class="meta"><span class="kind">pdf</span><span>24p</span></div></div><div></div>
+            </div>
+          </div>
+        </aside>
+        <!-- center = live caption view NEW -->
+        <section class="new" style="display:block"><div class="live">
+          <div class="live-head">
+            <span class="lh-t"><span class="dot pulse"></span> ライブ字幕</span>
+            <span class="lh-note">プレビュー専用 — RAGソースは停止後に高精度生成</span>
+          </div>
+          <div class="live-body">
+            <div class="capline"><span class="t">02:48</span><span class="spk-chip" style="background:var(--you)">あなた</span><span>では次の議題、UIリニューアルの担当を決めましょう。</span></div>
+            <div class="capline"><span class="t">03:02</span><span class="spk-chip" style="background:var(--them)">相手</span><span>田中さん、その辺り得意ですよね。お願いできますか。</span></div>
+            <div class="capline"><span class="t">03:09</span><span class="spk-chip" style="background:var(--you)">あなた</span><span>レビュー体制も決めたいです。</span></div>
+            <div class="capline"><span class="t">03:14</span><span class="spk-chip" style="background:var(--them)">相手</span><span>はい、承知しました。デザイン案を来週までに出します。</span></div>
+            <div class="capline interim"><span class="t">03:18</span><span class="spk-chip" style="background:var(--them)">相手</span><span>レビューは隔週で…</span></div>
+          </div>
+          <div class="live-foot"><span class="dot" style="background:var(--color-success)"></span> 文字起こし中(faster-whisper)・話者は「あなた / 相手」の2値表示</div>
+        </div></section>
+        <aside class="viewer">
+          <div class="v-pad" style="color:var(--color-fg-muted);text-align:center;padding-top:60px;font-size:13px">録音中…<br>停止後に変換結果がここで参照できます</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SCREEN 3 : 停止後の変換(サイドバー完結) ============ -->
+  <div class="screen">
+    <p class="cap"><span class="num">3</span> 停止後 — 既存の取り込みと同様にサイドバー内で完結。録音カード直下に詳細ステップ(チェックマーク式)で変換進捗。センターは通常のチャットに復帰</p>
+    <div class="frame">
+      <div class="topbar"><button class="back">‹</button><h2>2026Q2 製品ロードマップ会議</h2></div>
+      <div class="cols">
+        <aside class="sources">
+          <div class="s-header">
+            <input class="search" value="ソースを検索" />
+            <button class="btn sm">＋ 追加</button>
+            <span class="new"><button class="iconbtn tt" aria-label="録音">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>
+            </button></span>
+          </div>
+          <div class="recstrip">
+            <div class="recrow"><span class="live-pill">ライブ字幕</span><span style="margin-left:auto;font-size:11px;color:var(--color-fg-muted)">録音中に字幕表示</span><span class="switch"><i></i></span></div>
+          </div>
+          <div class="s-list">
+            <!-- new recording source, processing -->
+            <div class="card" style="border-bottom:none">
+              <input type="checkbox" disabled /><div><div class="title">🎙 録音 2026-06-17 14:30</div>
+              <div class="meta"><span class="kind">recording</span><span>03:18</span><span style="color:var(--color-accent)">変換中…</span></div></div><div></div>
+            </div>
+            <!-- expanded conversion steps in sidebar NEW -->
+            <div class="new"><div class="conv">
+              <p class="ct">RAGソースに変換中(PC リソースを使用)</p>
+              <div class="cstep done"><span class="cdot">✓</span> 文字起こし</div>
+              <div class="cstep done"><span class="cdot">✓</span> 話者分離(3 話者)</div>
+              <div class="cstep cur"><span class="cdot"></span> 名前予想(相手1 → 田中?)</div>
+              <div class="cstep todo"><span class="cdot"></span> LLM補正(RAG整形)</div>
+              <div class="cstep todo"><span class="cdot"></span> チャンク化 + 埋め込み</div>
+              <div class="pbar"><i></i></div>
+            </div></div>
+            <div class="card">
+              <input type="checkbox" checked /><div><div class="title">📄 製品要求仕様 v3.pdf</div>
+              <div class="meta"><span class="kind">pdf</span><span>24p</span><span style="color:var(--color-success)">● ready</span></div></div><div style="color:var(--color-fg-muted)">⋯</div>
+            </div>
+          </div>
+        </aside>
+        <section class="chat">
+          <div class="msgs">
+            <div class="bubble a" style="color:var(--color-fg-muted)">録音を変換しています。完了すると、この会議内容について質問でき、引用から音声の該当箇所を再生できます。</div>
+          </div>
+          <div class="composer"><div class="ta">メッセージを入力…</div><button class="btn">送信</button></div>
+        </section>
+        <aside class="viewer">
+          <div class="v-pad" style="color:var(--color-fg-muted);text-align:center;padding-top:60px;font-size:13px">ソースまたは引用を選択してください</div>
+        </aside>
+      </div>
+    </div>
+    <p class="small">※ この詳細ステップ表示は、既存の文書取り込みステータス(現状は粒度が粗い)にも適用して改善します。</p>
+  </div>
+
+  <!-- ============ SCREEN 4 : 引用→再生(据え置き) ============ -->
+  <div class="screen">
+    <p class="cap"><span class="num">4</span> 引用 → 音声再生(ビューア) — 今回は据え置き(後で調整可)</p>
+    <div class="frame" style="max-width:420px">
+      <div class="viewer">
+        <div class="v-pad">
+          <h3>録音 2026-06-17 14:30</h3>
+          <div class="v-meta"><span>recording</span><span>12:34</span><span>あなた / 相手1・田中 / 相手2</span></div>
+          <div class="player">
+            <div class="row1"><button class="play">⏸</button>
+              <div class="track"><div class="fill" style="width:54%"></div><div class="head" style="left:54%"></div></div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+              <span class="spk-chip" style="background:var(--them)">● 相手1・田中?</span>
+              <span class="ttime">00:12:48 / 12:34</span></div>
+          </div>
+          <div style="display:flex;gap:6px;margin:10px 0 0;flex-wrap:wrap">
+            <span class="spk-chip" style="background:var(--you)">あなた</span>
+            <span class="spk-chip" style="background:var(--them)">相手1・田中?</span>
+            <span class="spk-chip" style="background:var(--them2)">相手2</span></div>
+          <div class="chunktext">田中さん、UIリニューアルの件お願いできますか。
+— はい、承知しました。デザイン案を来週までに出します。レビューは隔週でよろしいでしょうか。</div>
+          <div class="seg-jump">↻ この引用箇所(00:12:34〜00:12:58)を再生</div>
+          <p class="small">※ 話者名は推定(声紋一致 or 会話内容)。クリックで修正可能。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="lead" style="margin-top:8px;font-size:12px;color:#777">静的な合意用モック。実装は SvelteKit + 既存デザイントークン。デバイス/マイク/システム選択は<b>設定タブ</b>に集約(この画面には出さない)。</p>
+</div>
+</body>
+</html>

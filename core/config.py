@@ -37,6 +37,30 @@ class McpSettings(BaseModel):
     enabled: bool = True
 
 
+class AudioSettings(BaseModel):
+    whisper_model: str = "large-v3"
+    device: str = "cuda"            # cuda | cpu
+    compute_type: str = "float16"   # float16 | int8_float16 | int8
+    language: str = "ja"
+    sample_rate: int = 16000
+    mic_device_index: int | None = None
+    system_device_index: int | None = None
+    live_caption_default: bool = True
+    agc_enabled: bool = True
+    manual_boost_max_db: float = 18.0
+    diarization_enabled: bool = True
+    max_speakers: int | None = None     # None = auto
+    diarizer_segmentation_model: str | None = None  # None -> <data_dir>/models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx
+    diarizer_embedding_model: str | None = None      # None -> <data_dir>/models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx
+    diarizer_threshold: float = 0.5
+    voiceprint_naming: bool = True
+    name_inference_llm: bool = True
+    name_threshold: float = 0.65
+    storage_format: str = "aac"         # aac | opus | mp3 | wav
+    storage_bitrate_kbps: int = 64
+    keep_audio: bool = True
+
+
 def _default_data_dir() -> Path:
     return Path.home() / ".notebook-ollama"
 
@@ -54,6 +78,7 @@ class AppConfig(BaseSettings):
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
+    audio: AudioSettings = Field(default_factory=AudioSettings)
 
     @property
     def metadata_db_path(self) -> Path:

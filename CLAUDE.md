@@ -3,8 +3,8 @@
 Local personal NotebookLM clone over Ollama with MCP exposure.
 
 ## Spec & Plan
-- Spec: `../docs/superpowers/specs/2026-05-19-notebook-ollama-design.md`
-- Plan: `../docs/superpowers/plans/2026-05-19-notebook-ollama-backend.md`
+- Spec: `./docs/specs/notebook-ollama-design.md`
+- Plans (local-only, not tracked): `../docs/superpowers/plans/2026-05-19-notebook-ollama-backend.md` etc.
 
 ## Run
 ```

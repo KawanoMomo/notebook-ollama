@@ -3,7 +3,15 @@
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
   import Spinner from './Spinner.svelte';
+  import AudioCitationPlayer from './AudioCitationPlayer.svelte';
   import { formatBytes } from '$lib/utils/format';
+
+  function formatTimecode(ms: number): string {
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
 
   interface Props {
     notebookId: string;
@@ -75,11 +83,24 @@
     <div class="state err">エラー: {error}</div>
   {:else if chunk}
     <div class="chunk">
-      {#if chunk.heading_path}
-        <div class="path">{chunk.heading_path}</div>
-      {/if}
-      {#if chunk.page}
-        <div class="page">p.{chunk.page}</div>
+      {#if sourceMeta?.kind === 'recording' && chunk.start_ms != null}
+        <AudioCitationPlayer
+          notebookId={notebookId}
+          sourceId={resolvedSourceId!}
+          startMs={chunk.start_ms}
+          endMs={chunk.end_ms}
+          speaker={chunk.speaker}
+        />
+        <div class="path">
+          {#if chunk.speaker}{chunk.speaker} · {/if}{formatTimecode(chunk.start_ms)}{#if chunk.end_ms != null}–{formatTimecode(chunk.end_ms)}{/if}
+        </div>
+      {:else}
+        {#if chunk.heading_path}
+          <div class="path">{chunk.heading_path}</div>
+        {/if}
+        {#if chunk.page}
+          <div class="page">p.{chunk.page}</div>
+        {/if}
       {/if}
       <pre class="text">{chunk.text}</pre>
     </div>

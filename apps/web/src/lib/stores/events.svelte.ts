@@ -2,20 +2,44 @@ import { openNotebookEvents, type SourceStatusEvent } from "$lib/api/events";
 import { currentNotebookStore } from "./currentNotebook.svelte";
 import { notify } from "$lib/utils/notifications";
 
+export interface ConvStep {
+  step: string;
+  step_label: string;
+  progress: number;
+}
+
 export interface EventsStore {
   start(notebookId: string): void;
   stop(): void;
+  convStepFor(sourceId: string): ConvStep | undefined;
 }
 
 export function createEventsStore(): EventsStore {
   let close: (() => void) | null = null;
   const lastStatus = new Map<string, string>();
+  // Latest pipeline step per source_id, driven by SSE payloads that carry `step`.
+  let convSteps = $state<Record<string, ConvStep>>({});
 
   return {
+    convStepFor(sourceId) {
+      return convSteps[sourceId];
+    },
     start(notebookId) {
       close?.();
       lastStatus.clear();
+      convSteps = {};
       close = openNotebookEvents(notebookId, (ev: SourceStatusEvent) => {
+        // Record the latest pipeline step for this source (if the payload carries one).
+        if (typeof ev.step === "string") {
+          convSteps = {
+            ...convSteps,
+            [ev.source_id]: {
+              step: ev.step,
+              step_label: typeof ev.step_label === "string" ? ev.step_label : "",
+              progress: typeof ev.progress === "number" ? ev.progress : 0,
+            },
+          };
+        }
         // patch the source in currentNotebookStore
         const existing = currentNotebookStore.sources.find(
           (s) => s.id === ev.source_id,
@@ -56,6 +80,7 @@ export function createEventsStore(): EventsStore {
     stop() {
       close?.();
       lastStatus.clear();
+      convSteps = {};
       close = null;
     },
   };

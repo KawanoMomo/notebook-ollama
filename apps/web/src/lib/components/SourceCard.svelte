@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
-  import { FileText, Globe, CheckCircle, AlertCircle, RefreshCw, Trash2 } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2 } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
+  import RecordingConvStatus from './RecordingConvStatus.svelte';
 
   interface Props {
     source: Source;
@@ -21,9 +22,32 @@
     pptx: FileText,
     xlsx: FileText,
     web: Globe,
+    recording: Mic,
   };
+
+  function formatDuration(ms: number): string {
+    const totalSec = Math.floor(ms / 1000);
+    const mm = Math.floor(totalSec / 60);
+    const ss = totalSec % 60;
+    return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  }
+
+  const durationLabel = $derived(
+    typeof source.duration_ms === 'number' && source.duration_ms > 0
+      ? formatDuration(source.duration_ms)
+      : null,
+  );
+
+  // Recording sources that are still being converted (not ready / not error) get the
+  // detailed step panel rendered below the card body.
+  const showConvStatus = $derived(
+    source.kind === 'recording' &&
+      source.status !== 'ready' &&
+      source.status !== 'error',
+  );
 </script>
 
+<div class="card-wrap" class:converting={showConvStatus}>
 <div class="card" class:err={source.status === 'error'}>
   <input
     type="checkbox"
@@ -42,6 +66,7 @@
     <div class="meta">
       <span class="kind">{source.kind}</span>
       {#if source.page_count}<span>{source.page_count}p</span>{/if}
+      {#if durationLabel}<span>{durationLabel}</span>{/if}
       <span class="status">
         {#if source.status === 'ready'}
           <CheckCircle size="12" color="var(--color-success)" /> ready
@@ -66,8 +91,15 @@
     </button>
   </div>
 </div>
+{#if showConvStatus}
+  <RecordingConvStatus sourceId={source.id} />
+{/if}
+</div>
 
 <style>
+  .card-wrap.converting > .card {
+    border-bottom: none;
+  }
   .card {
     display: grid;
     grid-template-columns: auto 1fr auto;

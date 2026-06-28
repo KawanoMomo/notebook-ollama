@@ -24,6 +24,9 @@ class CitationSpec:
     location: str
     url_or_path: str | None
     snippet: str
+    audio_source_id: str | None = None
+    audio_start_ms: int | None = None
+    audio_channel: str | None = None
 
 
 def build_citations(*, answer: str, specs: dict[int, CitationSpec]) -> list[dict[str, Any]]:
@@ -41,6 +44,9 @@ def build_citations(*, answer: str, specs: dict[int, CitationSpec]) -> list[dict
                 "location": spec.location,
                 "url_or_path": spec.url_or_path,
                 "snippet": spec.snippet,
+                "audio_source_id": spec.audio_source_id,
+                "audio_start_ms": spec.audio_start_ms,
+                "audio_channel": spec.audio_channel,
             }
         )
     return out
