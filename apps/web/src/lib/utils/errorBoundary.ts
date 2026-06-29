@@ -29,7 +29,8 @@
 import { ApiError } from '$lib/api/client';
 import { crashApi, type CrashReportInput } from '$lib/api/crash';
 import { crashReportsStore } from '$lib/stores/crashReports.svelte';
-import type { PendingCrash } from '$lib/api/types';
+import { settingsStore } from '$lib/stores/settings.svelte';
+import type { AppSettings, CrashReportSettings, PendingCrash } from '$lib/api/types';
 
 /**
  * Minimal API surface the boundary needs. Lets tests inject a mock without
@@ -55,15 +56,74 @@ export interface ErrorBoundaryStore {
   showImmediate: (crash: PendingCrash) => void;
 }
 
+/**
+ * Minimal settings surface — only the snapshots the gate needs.
+ *
+ * Exposed as `readonly` getters so the boundary always sees the latest
+ * snapshot at the moment `reportOnce()` runs (mirroring `settingsStore`'s
+ * `$derived` accessor — the user can toggle opt-in mid-session and we MUST
+ * respect the live value, not a value captured at `initErrorBoundary()` time).
+ *
+ * `settings` is the raw AppSettings or `null` while the store is still
+ * loading. The boundary needs to distinguish "still loading" from "user is
+ * undecided" — both surface as `crashReport.enabled === null` (because the
+ * derived `crashReport` falls back to DEFAULT_CRASH_REPORT when settings is
+ * null), but they require opposite responses:
+ *
+ *   - still loading → silent drop. We genuinely don't know the user's
+ *     preference. An uncaught error is generally repeatable; it will fire
+ *     again once settings has loaded.
+ *   - undecided     → route through `onOptInPending` so the layout can show
+ *     OptInDialog (spec §5.9).
+ *
+ * Optional for backward compat with tests that pre-date this gate (where the
+ * mock only stubbed `crashReport`). In production `settingsStore` always
+ * satisfies it.
+ */
+export interface ErrorBoundarySettings {
+  readonly crashReport: CrashReportSettings;
+  readonly settings?: AppSettings | null;
+}
+
 export interface ErrorBoundaryOptions {
   /** API client (default: real `crashApi`). DI hook for tests. */
   api?: ErrorBoundaryApi;
   /** Crash-reports store (default: real singleton). DI hook for tests. */
   store?: ErrorBoundaryStore;
+  /**
+   * Settings store (default: real singleton). DI hook for tests.
+   *
+   * The boundary reads `crashReport.enabled` to gate the POST (mirroring the
+   * backend's `403 crash.opt_in_required` rule — see `apps/api/routers/crash.py`)
+   * and `crashReport.auto_prompt` to gate `store.showImmediate(...)` (spec §7.3:
+   * collect-but-don't-popup mode).
+   */
+  settings?: ErrorBoundarySettings;
   /** Max reports per page-load. Default 5. Set 0 to disable. */
   maxReports?: number;
   /** Coalesce identical `message` within this many ms. Default 5000. */
   throttleMs?: number;
+  /**
+   * Spec §5.9 "Error-first OptInDialog" sink (verify-7.3 fix).
+   *
+   * When `crashReport.enabled === null` (未決定) AND this callback is provided,
+   * the boundary skips the POST and hands the would-be `CrashReportInput`
+   * payload to the callback instead. The layout uses this to queue the
+   * payload and immediately show OptInDialog (without waiting for the 1500ms
+   * initial-arm timer). On 「有効にする」 it drains the queue (POST →
+   * showImmediate); on 「後で決める」 it drops it.
+   *
+   * Without this callback (Sprint 5/6 default) the gate falls back to silent
+   * drop — the existing `errorBoundary.gate.test.ts` behaviour.
+   *
+   * Throws are caught and `console.warn`-logged so a buggy callback cannot
+   * cascade back into `window.error`.
+   *
+   * NOTE: `enabled === false` (explicit opt-out) does NOT trigger this
+   * callback — the user already said no, nagging them with the OptInDialog
+   * again would be hostile. They can flip the toggle in 設定 → クラッシュレポート.
+   */
+  onOptInPending?: (payload: CrashReportInput) => void;
 }
 
 const DEFAULT_MAX_REPORTS = 5;
@@ -105,8 +165,10 @@ function stringifyReason(reason: unknown): string {
 export function initErrorBoundary(options: ErrorBoundaryOptions = {}): () => void {
   const api = options.api ?? crashApi;
   const store = options.store ?? crashReportsStore;
+  const settings = options.settings ?? settingsStore;
   const maxReports = options.maxReports ?? DEFAULT_MAX_REPORTS;
   const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
+  const onOptInPending = options.onOptInPending;
 
   // ------- per-init state (a fresh init() does NOT share with prior calls) --
   /** How many reports we've already sent (counts only after the cap check). */
@@ -128,7 +190,68 @@ export function initErrorBoundary(options: ErrorBoundaryOptions = {}): () => voi
     // (2) bounded queue
     if (reportCount >= maxReports) return;
 
-    // (3) same-message throttle
+    // (3) settings gate — read live (see ErrorBoundarySettings docstring).
+    //
+    //   enabled !== true → user hasn't opted in (null = undecided / false =
+    //   explicit opt-out). Skipping the POST mirrors the backend's
+    //   `crash.opt_in_required` 403 rule (apps/api/routers/crash.py) so we
+    //   don't burn a network round-trip + console.warn per uncaught exception
+    //   while the OptInDialog is still pending. We DO NOT count this against
+    //   `reportCount` or `lastSeen` for the silent-drop branches because the
+    //   gate is a precondition, not a successful report — once the user opts
+    //   in mid-session the very next crash should still go through.
+    //
+    //   Exception: when `enabled === null` AND `onOptInPending` is wired, we
+    //   short-circuit through the callback so the layout can queue + show
+    //   OptInDialog (spec §5.9, verify-7.3). This branch DOES tick the
+    //   throttle so a runaway error loop can't open the dialog 1000×/sec.
+    //
+    //   IMPORTANT (S7 home-route fix): we must distinguish "settings still
+    //   loading" (`settings.settings === null`) from "user is undecided"
+    //   (`settings.settings !== null && crashReport.enabled === null`). Both
+    //   surface as `crashReport.enabled === null` through the derived
+    //   accessor, but only the latter should trigger `onOptInPending`. The
+    //   former is a transient race window between layout mount and load
+    //   resolution — we silent-drop the crash here (it'll fire again once
+    //   settings loads, since uncaught exceptions are generally repeatable)
+    //   rather than (a) hammer the backend with a POST whose preference we
+    //   don't know or (b) incorrectly re-prompt an already opted-in user
+    //   with OptInDialog. The production cure for this race is the eager
+    //   `void settingsStore.load()` in `+layout.svelte`'s `onMount`; this
+    //   gate is defense-in-depth in case that load is ever regressed.
+    if (settings.settings === null) {
+      return;
+    }
+    const crashSettings = settings.crashReport;
+    if (crashSettings.enabled === null && onOptInPending) {
+      // same-message throttle (only for this branch — silent drops below
+      // intentionally bypass it so an opted-out user can re-enable later
+      // without "the first 5s of identical errors are eaten").
+      if (throttleMs > 0) {
+        const now = Date.now();
+        const prev = lastSeen.get(message);
+        if (prev !== undefined && now - prev < throttleMs) return;
+        lastSeen.set(message, now);
+      }
+      const payload: CrashReportInput = {
+        message: message || UNKNOWN_MESSAGE,
+        source: 'frontend',
+        hardware: {
+          ua: typeof navigator !== 'undefined' ? navigator.userAgent : '<unavailable>',
+        },
+      };
+      if (stack) payload.stack = stack;
+      try {
+        onOptInPending(payload);
+      } catch (cbErr) {
+        // eslint-disable-next-line no-console
+        console.warn('[errorBoundary] onOptInPending threw', cbErr);
+      }
+      return;
+    }
+    if (crashSettings.enabled !== true) return;
+
+    // (4) same-message throttle
     if (throttleMs > 0) {
       const now = Date.now();
       const prev = lastSeen.get(message);
@@ -183,6 +306,12 @@ export function initErrorBoundary(options: ErrorBoundaryOptions = {}): () => voi
     Promise.resolve(pending)
       .then(
         (created) => {
+          // Re-read settings — the user may have toggled `auto_prompt` while
+          // the POST was in flight. Spec §7.3: `auto_prompt === false` means
+          // "collect crashes silently; I'll review them from the 不具合 tab"
+          // — the POST still lands so the row appears in the feedback hub,
+          // but `CrashDetectionModal` must stay dark.
+          if (settings.crashReport.auto_prompt !== true) return;
           try {
             store.showImmediate(created);
           } catch (storeErr) {

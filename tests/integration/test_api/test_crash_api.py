@@ -35,13 +35,24 @@ from core.crash_reporter.pending_store import (
     save,
 )
 from core.crash_reporter.reported_store import is_reported
+from core.crash_reporter.settings import CrashReportSettings
+from core.settings_store import save_crash_report
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    """Fresh app rooted at ``tmp_path`` (isolates pending / reported stores)."""
+    """Fresh app rooted at ``tmp_path`` (isolates pending / reported stores).
+
+    POST /api/crash/report は ``crash_report.enabled is True`` でないと 403 を返す
+    (spec §5.9 オプトイン必須)。既存の振る舞いテスト群を opt-in 済み環境で
+    走らせるため、TestClient 起動前に settings.json へ ``enabled=True`` を
+    永続化する (apply_overrides → in-memory cfg.crash_report に反映される)。
+    オプトイン未決定状態の 403 ゲート自体は ``test_crash_opt_in_gate`` 等で別途
+    検証する。
+    """
     monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("NOTEBOOK_OLLAMA_OLLAMA__ENDPOINT", "http://fake")
+    save_crash_report(tmp_path, CrashReportSettings(enabled=True))
     with TestClient(create_app()) as c:
         c._tmp_path = tmp_path  # type: ignore[attr-defined]
         yield c

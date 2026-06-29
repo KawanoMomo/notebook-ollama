@@ -41,6 +41,37 @@ vi.mock('$app/navigation', () => ({
   afterNavigate: vi.fn(),
 }));
 
+// Settings gate (Sprint 7): `initErrorBoundary` now reads
+// `settingsStore.crashReport.enabled` and skips POST when it isn't `true`.
+// The assertions below pin the pre-gate listener wiring (fetch hits
+// `/api/crash/report`, modal handoff) so they need an opted-in singleton.
+// The gate's own truth table is pinned in
+// `tests/unit/utils/errorBoundary.gate.test.ts`.
+vi.mock('$lib/stores/settings.svelte', () => ({
+  settingsStore: {
+    get settings() {
+      // Must be non-null so the boundary's S7 loading gate (which silent-drops
+      // when `settings === null` to avoid mis-routing crashes during the
+      // mount→load race window) doesn't swallow the synthetic error we
+      // dispatch in the wiring assertion below. The exact shape doesn't
+      // matter — the gate only checks `!== null` — but we use a minimal
+      // truthy object so a future strict type-check on the field doesn't trip.
+      return {} as never;
+    },
+    get crashReport() {
+      return {
+        enabled: true,
+        auto_prompt: true,
+        opted_in_at: '2026-06-29T00:00:00Z',
+      };
+    },
+    async load() {
+      // no-op for layout-wiring (this test pins the boundary side of the
+      // pipeline, not the settings-driven OptInDialog flow).
+    },
+  },
+}));
+
 // Real init/teardown lives in errorBoundary.ts. We spy on it (instead
 // of fully replacing) so the test still exercises the real listener
 // registration code path against window.

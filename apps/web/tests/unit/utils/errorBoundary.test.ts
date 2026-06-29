@@ -20,6 +20,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '$lib/api/client';
 import type { CrashReportInput } from '$lib/api/crash';
 import type { PendingCrash } from '$lib/api/types';
+
+// Settings gate (Sprint 7): `initErrorBoundary` now reads `settingsStore.crashReport`
+// and skips the POST when `enabled !== true`. The tests in THIS file assert
+// the pre-gate behaviour (registration / payload shape / throttle / bounded
+// queue / re-entrancy / 403 handling) so they need an opted-in singleton.
+// The gate's own truth table is pinned in `errorBoundary.gate.test.ts`.
+vi.mock('$lib/stores/settings.svelte', () => ({
+  settingsStore: {
+    get crashReport() {
+      return {
+        enabled: true,
+        auto_prompt: true,
+        opted_in_at: '2026-06-29T00:00:00Z',
+      };
+    },
+  },
+}));
+
 import { initErrorBoundary } from '$lib/utils/errorBoundary';
 
 // `reportFrontendCrash` resolves with the persisted `PendingCrash` so the

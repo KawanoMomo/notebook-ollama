@@ -172,11 +172,39 @@ export interface AudioSettings {
   auto_title: boolean;
 }
 
+/**
+ * クラッシュレポート機能のユーザ設定 (spec §7.3)。
+ *
+ * backend: `core/crash_reporter/settings.py::CrashReportSettings`
+ * (settings.json の `crash_report` セクションに永続化)。
+ *
+ * - `enabled`     : `true` = 送信オプトイン済 / `false` = 明示的オプトアウト /
+ *                   `null` = 未決定 (初回オプトインダイアログをまだ出していない)。
+ * - `auto_prompt` : クラッシュ検知時に自動でオプトインダイアログを出すかどうか。
+ *                   `false` でも未送信レポートはローカルに溜まり、設定画面や
+ *                   フィードバックハブの「不具合」タブから手動で確認できる。
+ * - `opted_in_at` : オプトイン (または明示的オプトアウト) を記録した時刻
+ *                   (ISO 8601 文字列、未決定なら `null`)。
+ */
+export interface CrashReportSettings {
+  enabled: boolean | null;
+  auto_prompt: boolean;
+  opted_in_at: string | null;
+}
+
 export interface AppSettings {
   ollama: OllamaSettings;
   generation: GenerationSettings;
   retrieval: RetrievalSettings;
   audio: AudioSettings;
+  /**
+   * クラッシュレポート設定。
+   *
+   * NOTE (Sprint 7 Task 7.2): backend `GET /api/settings` レスポンスへの追加は
+   * 別タスク。現状の backend ではこのフィールドは含まれないため optional とし、
+   * settings store 側で `?? DEFAULT_CRASH_REPORT` でフォールバックする。
+   */
+  crash_report?: CrashReportSettings;
 }
 
 export interface Stats {

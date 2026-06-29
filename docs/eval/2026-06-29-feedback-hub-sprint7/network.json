@@ -1,0 +1,7 @@
+28. [GET] http://127.0.0.1:8765/api/settings => [200] OK
+31. [PUT] http://127.0.0.1:8765/api/settings/crash-report => [405] Method Not Allowed
+32. [PUT] http://127.0.0.1:8765/api/settings/crash-report => [405] Method Not Allowed
+33. [POST] http://127.0.0.1:8765/api/crash/report => [201] Created
+34. [POST] http://127.0.0.1:8765/api/crash/report => [201] Created
+
+Note: 26 static requests not shown, run with "static" option to see them.

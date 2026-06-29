@@ -152,7 +152,10 @@
       {#if hub.activeTab === 'notices'}
         <NoticesTab store={notices} />
       {:else if hub.activeTab === 'bugs'}
-        <BugReportTab />
+        <!-- Sprint 7: NoticesTab と同じ DI 流儀で crashes ストアを prop で注入する。
+             これにより drawer 側で createCrashReportsStore(mockApi) を作って
+             BugReportTab の挙動を完全制御できる (global singleton への副作用なし)。 -->
+        <BugReportTab store={crashes} />
       {:else if hub.activeTab === 'feedback'}
         <FeedbackTab />
       {/if}

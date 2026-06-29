@@ -73,7 +73,28 @@
 
   let newLabel = $state('');
 
+  /**
+   * BugReportTab.handleNewManual() で生成される手動レポートは backend DB に
+   * 存在しないため、prefill URL の GET は 404 になる。
+   * id プレフィックス `manual-` で判定して backend 往復をスキップし、
+   * 空の編集可能フォームを即時描画する (visual eval S4 回帰対策)。
+   *
+   * Svelte 5 では $props() の crash は reactive proxy なので、
+   * `const isManual = crash.id.startsWith(...)` のような top-level 参照は
+   * "captures only the initial value" 警告が出る。$derived で囲むことで
+   * 警告を消しつつ、将来 crash prop が差し替わってもリアクティブに追随できる。
+   *
+   * spec: docs/specs/2026-06-28-crash-report-feedback-hub-design.md §5.7
+   */
+  const isManual = $derived(crash.id.startsWith('manual-'));
+
   onMount(async () => {
+    if (isManual) {
+      // 空のフォームをそのまま提示。title/body/labels は初期値 ('' / '' / [])
+      // のまま、baseEndpoint も module-level の既定値 (issues/new) を使う。
+      loading = false;
+      return;
+    }
     try {
       const res = await crashApi.getPrefillUrl(crash.id);
       const u = new URL(res.url);
@@ -87,6 +108,11 @@
       baseEndpoint = `${u.origin}${u.pathname}`;
       loading = false;
     } catch (e) {
+      // err は Error / ApiError / 文字列 / null / 任意オブジェクトいずれも
+      // ありうる。`e.code` 等の任意プロパティに触れて crash しないよう
+      // instanceof Error で分岐し、それ以外は String() で安全に文字列化する。
+      // (null → "null", {foo:1} → "[object Object]" の方が undefined を
+      // UI に漏らすより遥かにマシ)
       loadError = e instanceof Error ? e.message : String(e);
       loading = false;
     }

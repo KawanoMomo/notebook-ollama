@@ -228,6 +228,14 @@ async def report_crash(
     - それ以外 → atomic write で保存し 201 で返す。
     """
     ctx = request.app.state.ctx
+    # オプトイン未決定 / 明示拒否時は受け付けない (spec §5.9 / §7.3)。
+    # 403 + detail="crash.opt_in_required" を返し、FE が「オプトインダイアログを
+    # 表示すべき」と判断できるシグナルとして扱う。
+    if ctx.config.crash_report.enabled is not True:
+        raise HTTPException(
+            status_code=403,
+            detail="crash.opt_in_required",
+        )
     data_dir: Path = ctx.config.data_dir
     # app_root: redact_traceback が「ここ配下の行は debug 用に保持」を判定
     # するためのヒント。CWD = 実行プロジェクトのルートで足りる。

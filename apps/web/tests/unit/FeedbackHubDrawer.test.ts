@@ -179,7 +179,7 @@ describe('FeedbackHubDrawer — 3 タブ (全網羅)', () => {
   );
 });
 
-describe('FeedbackHubDrawer — タブ内容 (Sprint 6: NoticesTab 実装後 / 7-8 プレースホルダ)', () => {
+describe('FeedbackHubDrawer — タブ内容 (Sprint 6: NoticesTab / Sprint 7: BugReportTab / Sprint 8: FeedbackTab placeholder)', () => {
   // Sprint 6 で NoticesTab は実装完了。空配列の API を注入すると
   // 「お知らせはありません」 (empty state) が表示される。
   it('default activeTab=notices shows the real NoticesTab (empty state)', async () => {
@@ -188,28 +188,75 @@ describe('FeedbackHubDrawer — タブ内容 (Sprint 6: NoticesTab 実装後 / 7
     await waitFor(() => expect(screen.getByText('お知らせはありません')).toBeDefined());
   });
 
-  // bugs / feedback はまだ placeholder。notices だけ別経路で確認する。
+  // Sprint 7 で BugReportTab は実装完了。feedback タブだけがまだ Sprint 8 placeholder。
+  //
+  // bugs 行のアサーションは BugReportTab 固有の説明文 (常に DOM にある冒頭
+  // <p class="description">) をマーカに使う。これは loading/error/empty/non-empty
+  // すべての状態で出るので、Drawer→BugReportTab の結線確認には最も安定。
+  //
+  // 同時並行で動いている fix-bug-report-tab-empty agent は BugReportTab に
+  // 明示的な empty-state テキスト (NoticesTab の「お知らせはありません」相当) を
+  // 追加する予定。Drawer が `crashes` prop を BugReportTab へ伝播するよう
+  // 修正されたら、このマーカをその empty-state 文言に置き換えられる。
+  // (現状 Drawer は BugReportTab に store prop を渡しておらず、singleton 経由で
+  //  実 API を叩くため jsdom では error 状態に落ちて空状態が出ない。)
   it.each([
-    { id: 'bugs' as const, label: '不具合', marker: '未実装' },
-    { id: 'feedback' as const, label: 'ご意見', marker: '未実装' },
+    {
+      id: 'bugs' as const,
+      label: '不具合',
+      assertContent: () =>
+        expect(
+          screen.getByText(/アプリで発生したエラーを開発者に報告できます/),
+        ).toBeDefined(),
+    },
+    {
+      id: 'feedback' as const,
+      label: 'ご意見',
+      // FeedbackTab は Sprint 8 で実装予定。現状は '未実装' placeholder。
+      assertContent: () => expect(screen.getAllByText('未実装')).toHaveLength(1),
+    },
   ])(
-    'when activeTab="$id" only that tab\'s placeholder is in the DOM',
-    ({ id, marker }) => {
+    'when activeTab="$id" the corresponding tab content is in the DOM',
+    ({ id, assertContent }) => {
       const { hub, crashes, notices } = makeStores();
       hub.setTab(id);
       render(FeedbackHubDrawer, { hub, crashes, notices });
-      const panels = screen.getAllByText(marker);
-      expect(panels).toHaveLength(1);
+      assertContent();
     },
   );
 
-  it('when activeTab="notices" only NoticesTab is in the DOM (empty state, no placeholder)', async () => {
+  it('when activeTab="notices" only NoticesTab is in the DOM (empty state, no bugs/feedback placeholder text)', async () => {
     const { hub, crashes, notices } = makeStores();
     hub.setTab('notices');
     render(FeedbackHubDrawer, { hub, crashes, notices });
     await waitFor(() => expect(screen.getByText('お知らせはありません')).toBeDefined());
-    // 他タブの placeholder「未実装」は notices アクティブ時には現れない
+    // BugReportTab / FeedbackTab の固有テキストは notices アクティブ時には現れない
+    expect(screen.queryByText(/アプリで発生したエラーを開発者に報告できます/)).toBeNull();
     expect(screen.queryByText('未実装')).toBeNull();
+  });
+
+  // Sprint 7 task 7.x: BugReportTab は NoticesTab と同じ流儀で `store` prop を
+  // 受け取る。Drawer は自分が DI で受け取った `crashes` ストアをそのまま
+  // BugReportTab に渡さなければならない (= singleton への副作用を作らない)。
+  //
+  // 検証: モック API を持つ crashes ストアにあらかじめ 1 件ロードした状態で
+  // bugs タブを開くと、その例外型名が描画される。Drawer が prop を伝播
+  // していなければ BugReportTab は global singleton 経由で実 API を叩こうとし、
+  // jsdom では fetch 失敗 → error 状態に落ちて 'TypeError-DI' は出ない。
+  it('bugs タブは Drawer の `crashes` DI prop を BugReportTab に伝播する', async () => {
+    const di = makeCrash({
+      id: 'di-crash',
+      exception_type: 'TypeError-DI',
+      exception_message: 'di test message',
+    });
+    const { hub, crashes, notices } = makeStores([di]);
+    await crashes.load(); // mock API の中身を pending に反映
+    hub.setTab('bugs');
+    render(FeedbackHubDrawer, { hub, crashes, notices });
+    await waitFor(() => {
+      expect(screen.getByText('TypeError-DI')).toBeDefined();
+    });
+    expect(screen.getByText(/di test message/)).toBeDefined();
   });
 });
 

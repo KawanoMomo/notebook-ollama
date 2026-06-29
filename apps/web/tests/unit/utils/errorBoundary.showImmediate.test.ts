@@ -23,6 +23,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '$lib/api/client';
 import type { CrashReportInput } from '$lib/api/crash';
 import type { CrashHardware, PendingCrash } from '$lib/api/types';
+
+// Settings gate (Sprint 7): the showImmediate handoff is only exercised
+// when the user is opted in AND `auto_prompt === true`. These tests pin the
+// async handoff itself (PendingCrash → store.showImmediate), so we mock the
+// singleton to that "both flags on" state. The gate's own truth table lives
+// in `errorBoundary.gate.test.ts`.
+vi.mock('$lib/stores/settings.svelte', () => ({
+  settingsStore: {
+    get crashReport() {
+      return {
+        enabled: true,
+        auto_prompt: true,
+        opted_in_at: '2026-06-29T00:00:00Z',
+      };
+    },
+  },
+}));
+
 import { initErrorBoundary } from '$lib/utils/errorBoundary';
 
 // ---------------------------------------------------------------------------

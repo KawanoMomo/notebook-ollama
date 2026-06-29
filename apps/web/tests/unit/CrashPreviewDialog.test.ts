@@ -446,3 +446,137 @@ describe('CrashPreviewDialog — Escape closes', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 「+ 新規報告を作成」(manual-<epoch>) — backend に存在しない手動レポート
+//
+// Visual eval S4 で見つけた回帰:
+//   - BugReportTab の handleNewManual() は `manual-<Date.now()>` という ID で
+//     PendingCrash を即時生成するが、この crash は backend DB には存在しない。
+//   - 旧実装ではダイアログが onMount で GET /api/crash/{id}/prefill-url を呼び、
+//     404 を受けて error 分岐に入る → 編集フォームが描画されない & タイトル/本文も
+//     空のままユーザが手入力できない。
+//
+// 対策:
+//   - id が "manual-" で始まる場合は backend 往復を完全スキップし、編集可能な
+//     空フォーム (title='', body='', labels=[]) を即時描画する。
+//   - エラー描画パスは ApiError であれ非 Error であれ「.code 等の任意プロパティに
+//     触れて crash しない」ことを保証する (defensive: instanceof Error 分岐)。
+// ---------------------------------------------------------------------------
+
+describe('CrashPreviewDialog — manual-<epoch> crash (no backend round-trip)', () => {
+  it('does NOT call getPrefillUrl when crash.id starts with "manual-"', async () => {
+    const manualCrash = makeCrash({
+      id: 'manual-1719600000000',
+      fingerprint: '',
+      exception_type: '',
+      exception_message: '',
+      trace: [],
+    });
+    render(CrashPreviewDialog, {
+      crash: manualCrash,
+      onClose: vi.fn(),
+    });
+    // Form should render synchronously without any backend call.
+    await screen.findByLabelText('タイトル');
+    expect(getPrefillUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('renders an empty editable form (title="", body="", no labels) for manual crashes', async () => {
+    const manualCrash = makeCrash({
+      id: 'manual-1719600000000',
+      fingerprint: '',
+      exception_type: '',
+      exception_message: '',
+      trace: [],
+    });
+    const { container } = render(CrashPreviewDialog, {
+      crash: manualCrash,
+      onClose: vi.fn(),
+    });
+
+    const titleInput = (await screen.findByLabelText('タイトル')) as HTMLInputElement;
+    expect(titleInput.value).toBe('');
+
+    const bodyTextarea = (await screen.findByLabelText('本文')) as HTMLTextAreaElement;
+    expect(bodyTextarea.value).toBe('');
+
+    const chips = container.querySelectorAll('[data-role="label-chip"]');
+    expect(chips.length).toBe(0);
+
+    // No truncation warning for a fresh manual form.
+    expect(screen.queryByText(/切り詰め|truncat/i)).toBeNull();
+    // No error label either — this is a clean form, not a failure state.
+    expect(screen.queryByText(/読み込みに失敗/)).toBeNull();
+  });
+
+  it('lets the user fill in a manual form and open GitHub with the typed values', async () => {
+    const manualCrash = makeCrash({
+      id: 'manual-1719600000000',
+      fingerprint: '',
+      exception_type: '',
+      exception_message: '',
+      trace: [],
+    });
+    const onClose = vi.fn();
+    render(CrashPreviewDialog, {
+      crash: manualCrash,
+      onClose,
+    });
+    const title = (await screen.findByLabelText('タイトル')) as HTMLInputElement;
+    const body = (await screen.findByLabelText('本文')) as HTMLTextAreaElement;
+
+    await fireEvent.input(title, { target: { value: '[bug] 文字入力が遅い' } });
+    await fireEvent.input(body, { target: { value: '## 再現手順\n1. 入力する\n2. 待つ' } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'GitHubで開く →' }));
+    await waitFor(() => expect(openMock).toHaveBeenCalledTimes(1));
+
+    const [openUrl] = openMock.mock.calls[0] as [string, string];
+    const u = new URL(openUrl);
+    expect(u.searchParams.get('title')).toBe('[bug] 文字入力が遅い');
+    expect(u.searchParams.get('body')).toBe('## 再現手順\n1. 入力する\n2. 待つ');
+    expect(u.searchParams.get('labels')).toBe('');
+  });
+});
+
+describe('CrashPreviewDialog — error render is defensive against arbitrary throwables', () => {
+  it('renders error UI when getPrefillUrl rejects with a non-Error (no .code/.message)', async () => {
+    // Simulate a thrown non-Error value (a bare object). Previously a naive
+    // implementation that read `err.code` or `err.message` blindly would
+    // produce "undefined" in the UI or throw "Cannot read properties of
+    // undefined (reading 'code')".
+    getPrefillUrlMock.mockRejectedValueOnce({ foo: 'bar' });
+    expect(() => renderDialog()).not.toThrow();
+    await waitFor(() => {
+      // We render *something* user-facing — pin the CJK header so the test
+      // doesn't care about exact stringify output.
+      expect(screen.getByText(/読み込みに失敗/)).toBeTruthy();
+    });
+    // Form did not render.
+    expect(screen.queryByLabelText('タイトル')).toBeNull();
+    // Crucially: no literal "undefined" leaked into the UI (which is the
+    // smoking gun for `${err.message}` against a missing property).
+    expect(screen.queryByText(/undefined/)).toBeNull();
+  });
+
+  it('renders error UI safely when getPrefillUrl rejects with a string', async () => {
+    getPrefillUrlMock.mockRejectedValueOnce('boom');
+    expect(() => renderDialog()).not.toThrow();
+    await waitFor(() => {
+      expect(screen.getByText(/読み込みに失敗/)).toBeTruthy();
+    });
+    // The string payload should be surfaced verbatim, not via undefined access.
+    expect(screen.getByText(/boom/)).toBeTruthy();
+  });
+
+  it('renders error UI when getPrefillUrl rejects with null', async () => {
+    getPrefillUrlMock.mockRejectedValueOnce(null);
+    expect(() => renderDialog()).not.toThrow();
+    await waitFor(() => {
+      expect(screen.getByText(/読み込みに失敗/)).toBeTruthy();
+    });
+    // Must not access `.code` / `.message` on null.
+    expect(screen.queryByLabelText('タイトル')).toBeNull();
+  });
+});
