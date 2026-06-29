@@ -284,6 +284,42 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace(tmp_path, path)
 
 
+# Regression ratios per fixture kind.
+#
+# A real-speech 30 s WAV runs ~3-6 s of wall time on a 2080 Ti, so a 10 %
+# threshold (1.10) is ~300-600 ms -- comfortably above the CUDA-stream / GC /
+# thermal noise floor on this hardware.
+#
+# A synthetic 440 Hz sine wave, however, produces only 1 segment / ~7 tokens,
+# and faster-whisper finishes the whole 30 s in ~250 ms wall time. The
+# first-chunk latency and the total wall time are essentially the SAME
+# measurement (segment_count = 1). A 10 % ratio of a 250 ms window is just
+# 25 ms -- below the natural variance of a single CUDA decode on a 2080 Ti
+# (tens of milliseconds of jitter from stream scheduling, GC, clock /
+# thermal fluctuations). The gate must therefore be looser for synthetic
+# fixtures or it will flag normal run-to-run noise as a regression.
+#
+# Drop a real-speech fixture at tests/fixtures/30s-jp.wav to get back to the
+# tighter 1.10 ratio.
+REGRESSION_RATIO_REAL_SPEECH = 1.10
+REGRESSION_RATIO_SYNTHETIC = 1.30
+
+
+def _regression_ratio_for(fixture_kind: str) -> float:
+    """Return the per-fixture-kind regression ratio.
+
+    Synthetic fixtures get a slacker ratio because their absolute timing
+    window (~250 ms) is dominated by CUDA / GC / thermal noise. See the
+    constants above for the full rationale.
+    """
+    if fixture_kind == "real_speech_wav":
+        return REGRESSION_RATIO_REAL_SPEECH
+    # Default to the synthetic (looser) ratio for any unknown fixture kind --
+    # safer to let an unfamiliar fixture pass than to flag normal noise as a
+    # regression on a baseline we know nothing about.
+    return REGRESSION_RATIO_SYNTHETIC
+
+
 def build_baseline_payload(
     metrics: CudaMetrics,
     fixture_kind: str,
@@ -303,6 +339,15 @@ def build_baseline_payload(
             "16 kHz mono float32 WAV at tests/fixtures/30s-jp.wav and "
             "re-run this script."
         )
+        notes.append(
+            "regression_ratio is 1.30 (not the default 1.10) because the "
+            "synthetic fixture decodes in ~250 ms wall time with 1 segment "
+            "/ ~7 tokens. A 10 % threshold (25 ms) sits below the natural "
+            "CUDA-stream / GC / thermal noise floor on a 2080 Ti, so a "
+            "1.10 gate flags run-to-run jitter as a regression. The 1.30 "
+            "ratio absorbs that jitter; a real-speech fixture would return "
+            "to the tighter 1.10."
+        )
     return {
         "placeholder": False,
         "captured_at_utc": _dt.datetime.now(_dt.UTC).isoformat(),
@@ -317,7 +362,7 @@ def build_baseline_payload(
         "beam_size": BEAM_SIZE,
         "hardware": _hardware_fingerprint(),
         "metrics": asdict(metrics),
-        "regression_ratio": 1.10,
+        "regression_ratio": _regression_ratio_for(fixture_kind),
         "notes": notes,
     }
 
@@ -348,7 +393,7 @@ def build_placeholder_payload(reason: str) -> dict[str, Any]:
             "total_tokens": None,
             "segment_count": None,
         },
-        "regression_ratio": 1.10,
+        "regression_ratio": REGRESSION_RATIO_REAL_SPEECH,
         "notes": [
             f"Placeholder baseline -- capture script could not run: {reason}",
             "Manual capture procedure:",

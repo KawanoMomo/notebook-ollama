@@ -1,5 +1,5 @@
+from core.recording.chunking import chunk_segments
 from core.recording.segment_correct import Segment
-from core.recording.chunking import chunk_segments, RecordingChunk
 
 
 def _wc(s):
@@ -36,6 +36,8 @@ def test_splits_when_token_budget_exceeded_same_speaker():
 
 
 def test_single_segment():
-    chunks = chunk_segments([Segment(500, 1500, "相手1", "hello")], max_tokens=100, token_counter=_wc)
+    chunks = chunk_segments(
+        [Segment(500, 1500, "相手1", "hello")], max_tokens=100, token_counter=_wc
+    )
     assert len(chunks) == 1
     assert chunks[0].start_ms == 500 and chunks[0].end_ms == 1500 and chunks[0].speaker == "相手1"

@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
 
 import pytest
 
@@ -13,7 +12,7 @@ from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import ChunkRecord, insert_chunks
 from core.storage.database import migrate
 from core.storage.sources_repo import SummaryStatus
-from core.summary.summarizer import SummaryJob, SummaryDeps
+from core.summary.summarizer import SummaryDeps, SummaryJob
 
 
 class _FakeLLM:

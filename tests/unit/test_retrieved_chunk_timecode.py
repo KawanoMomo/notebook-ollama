@@ -1,8 +1,9 @@
 import asyncio
 import sqlite3
-from core.storage.database import migrate
-from core.storage.chunks_repo import ChunkRecord, insert_chunks
+
 from core.retrieval.search import RetrievalService
+from core.storage.chunks_repo import ChunkRecord, insert_chunks
+from core.storage.database import migrate
 from core.storage.vector_store import SearchHit
 
 
@@ -19,7 +20,9 @@ class _FakeOllama:
 
 
 def _conn():
-    c = sqlite3.connect(":memory:"); c.row_factory = sqlite3.Row; migrate(c)
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    migrate(c)
     c.execute("INSERT INTO notebooks(id,name,created_at,updated_at) VALUES('nb','n','t','t')")
     c.execute("INSERT INTO sources(id,notebook_id,kind,title,status,created_at,updated_at) "
               "VALUES('src','nb','recording','録音1','ready','t','t')")

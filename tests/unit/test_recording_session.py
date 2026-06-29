@@ -1,6 +1,8 @@
 from pathlib import Path
+
 import pytest
-from core.recording.session import RecordingRegistry, RecordingBusyError
+
+from core.recording.session import RecordingBusyError, RecordingRegistry
 
 
 class _FakeRecorder:

@@ -5,8 +5,8 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Request, status
-from sse_starlette.sse import EventSourceResponse
 from sse_starlette.event import ServerSentEvent
+from sse_starlette.sse import EventSourceResponse
 
 from apps.api.schemas.chat import Conversation, Message, MessageInput
 from core.ollama.client import OllamaClient
@@ -22,7 +22,10 @@ router = APIRouter(prefix="/api/notebooks/{notebook_id}/conversations", tags=["c
 
 
 def _ping_event() -> ServerSentEvent:
-    """名前付き ping イベント。フロントが lastBeatAt 更新に使う(未知イベントは無視されるため後方互換)。"""
+    """名前付き ping イベント。
+
+    フロントが lastBeatAt 更新に使う(未知イベントは無視されるため後方互換)。
+    """
     return ServerSentEvent(data="{}", event="ping")
 
 
@@ -95,7 +98,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
             "ソースが選択されていません。1 つ以上選んでください。",
         )
 
-    user_msg = messages_repo.append_message(
+    messages_repo.append_message(
         ctx.conn, conversation_id=conv.id, role="user", content=body.content
     )
 

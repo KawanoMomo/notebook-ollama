@@ -9,14 +9,18 @@ from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 
 from apps.api.schemas.settings import (
+    AccelerationResponseSchema,
     AppSettingsSchema,
     AudioSettingsSchema,
+    BackendPlanSchema,
     EmbeddingSwitchRequest,
     GenerationSettingsSchema,
+    HwProfileSchema,
     OllamaSettingsSchema,
     OllamaSettingsUpdate,
     RetrievalSettingsSchema,
 )
+from core.accel.plan import is_phase1_implementable
 from core.exceptions import AppError, ErrorCode
 from core.ollama.client import OllamaClient
 from core.ollama.gateway import probe_embedding_dim
@@ -37,6 +41,8 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             default_model=cfg.ollama.default_model,
             embedding_model=cfg.ollama.embedding_model,
             embedding_dim=request.app.state.ctx.vector_store.collection_dim(),
+            runtime_backend=cfg.ollama.runtime_backend,
+            text_embed_backend=cfg.ollama.text_embed_backend,
         ),
         generation=GenerationSettingsSchema(
             context_budget_ratio=cfg.generation.context_budget_ratio,
@@ -64,6 +70,9 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             storage_bitrate_kbps=cfg.audio.storage_bitrate_kbps,
             keep_audio=cfg.audio.keep_audio,
             auto_title=cfg.audio.auto_title,
+            transcriber_backend=cfg.audio.transcriber_backend,
+            diarizer_backend=cfg.audio.diarizer_backend,
+            speaker_embed_backend=cfg.audio.speaker_embed_backend,
         ),
     )
 
@@ -285,6 +294,50 @@ async def settings_events(request: Request) -> EventSourceResponse:
             ctx.sse.unsubscribe(_REINDEX_TOPIC, queue)
 
     return EventSourceResponse(gen())
+
+
+@router.get("/settings/acceleration", response_model=AccelerationResponseSchema)
+async def get_acceleration(request: Request) -> AccelerationResponseSchema:
+    """Read-only view of the resolved hardware probe + backend plan.
+
+    Sprint 3 / Task 3.5. The response is a serialization of
+    ``ctx.hw_profile`` + ``ctx.backend_plan`` (set once during ``build_context``)
+    plus the Phase 1 implementability gate. No probe / planner work runs
+    per-request — re-probing requires a process restart in Phase 1.
+
+    Phase 1 is **read-only**: there is intentionally no companion
+    ``PUT /api/settings/acceleration`` and the AccelerationPanel.svelte tab
+    has no override <select> / [Apply] button. Per-role backend selection
+    via UI lands in Phase 2.
+    """
+    ctx = request.app.state.ctx
+    hw = ctx.hw_profile
+    plan = ctx.backend_plan
+    return AccelerationResponseSchema(
+        hw_profile=HwProfileSchema(
+            cpu_brand=hw.cpu_brand,
+            # Field rename: ``has_cuda`` -> ``cuda`` for the public API.
+            # The dataclass keeps the ``has_`` prefix so probe-internal code
+            # reads naturally; the UI talks about "CUDA available".
+            cuda=hw.has_cuda,
+            dgpu=hw.dgpu,
+            igpu=hw.igpu,
+            npu=hw.npu,
+            vram_mb=hw.vram_mb,
+            ryzen_ai_gen=hw.ryzen_ai_gen,
+            # tuple -> list for JSON-native serialization.
+            openvino_devices=list(hw.openvino_devices),
+            has_directml=hw.has_directml,
+        ),
+        backend_plan=BackendPlanSchema(
+            stt_id=plan.stt_id,
+            diarize_id=plan.diarize_id,
+            llm_id=plan.llm_id,
+            text_embed_id=plan.text_embed_id,
+            reason=plan.reason,
+        ),
+        is_phase1_implementable=is_phase1_implementable(plan),
+    )
 
 
 @router.get("/stats")

@@ -1,6 +1,16 @@
 from pathlib import Path
 
+import pytest
+
+from core.exceptions import AppError, ErrorCode
 from core.storage.database import connect, migrate
+from core.storage.notebooks_repo import (
+    create_notebook,
+    delete_notebook,
+    get_notebook,
+    list_notebooks,
+    update_notebook,
+)
 
 
 def test_migrate_creates_all_tables(tmp_path: Path):
@@ -22,18 +32,6 @@ def test_connect_enables_foreign_keys(tmp_path: Path):
     conn = connect(tmp_path / "x.db")
     migrate(conn)
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-
-
-import pytest
-
-from core.exceptions import AppError, ErrorCode
-from core.storage.notebooks_repo import (
-    create_notebook,
-    delete_notebook,
-    get_notebook,
-    list_notebooks,
-    update_notebook,
-)
 
 
 def _migrated(tmp_path):

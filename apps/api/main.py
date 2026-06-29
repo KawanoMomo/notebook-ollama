@@ -8,17 +8,16 @@ import truststore
 
 truststore.inject_into_ssl()
 
-import json  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
 
-from fastapi import FastAPI
-from fastapi.requests import Request
-from fastapi.responses import JSONResponse
-from starlette.responses import JSONResponse as StarletteJSONResponse
-from starlette.types import Receive, Scope, Send
+from fastapi import FastAPI  # noqa: E402
+from fastapi.requests import Request  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+from starlette.responses import JSONResponse as StarletteJSONResponse  # noqa: E402
+from starlette.types import Receive, Scope, Send  # noqa: E402
 
-from apps.api.dependencies import build_context
-from apps.api.routers import (
+from apps.api.dependencies import build_context  # noqa: E402
+from apps.api.routers import (  # noqa: E402
     audio,
     chat,
     events,
@@ -29,15 +28,15 @@ from apps.api.routers import (
     recordings,
     sources,
 )
-from apps.api.routers import (
+from apps.api.routers import (  # noqa: E402
     models as models_router,
 )
-from apps.api.routers import (
+from apps.api.routers import (  # noqa: E402
     settings as settings_router,
 )
-from core.config import AppConfig
-from core.exceptions import AppError
-from core.logging import configure_logging
+from core.config import AppConfig  # noqa: E402
+from core.exceptions import AppError  # noqa: E402
+from core.logging import configure_logging  # noqa: E402
 
 
 class _McpAsgiProxy:
@@ -93,6 +92,29 @@ async def lifespan(app: FastAPI):
     from core.settings_store import apply_overrides
     apply_overrides(config)
     app.state.ctx = build_context(config)
+    # --- Sprint 3 / Task 3.4: chosen-backend-plan startup banner ----------
+    # Logs the resolved BackendPlan ids (and the HwProfile that produced them)
+    # so the chosen acceleration path is visible in the startup log without
+    # having to hit /api/settings or scrape the Acceleration tab. The four
+    # backend ids land in the structured payload as ``stt_id`` /
+    # ``diarize_id`` / ``llm_id`` / ``text_embed_id`` — the
+    # ``test_lifespan_accel_wiring.py`` smoke test asserts on these keys.
+    from core.logging import get_logger
+    _banner_log = get_logger("apps.api.lifespan")
+    _ctx_for_banner = app.state.ctx
+    _plan_for_banner = _ctx_for_banner.backend_plan
+    _hw_for_banner = _ctx_for_banner.hw_profile
+    _banner_log.info(
+        "backend_plan_resolved",
+        stt_id=_plan_for_banner.stt_id,
+        diarize_id=_plan_for_banner.diarize_id,
+        llm_id=_plan_for_banner.llm_id,
+        text_embed_id=_plan_for_banner.text_embed_id,
+        vendor=_hw_for_banner.vendor,
+        dgpu=_hw_for_banner.dgpu,
+        cpu_brand=_hw_for_banner.cpu_brand,
+        reason=_plan_for_banner.reason,
+    )
     from apps.api import _mcp_state
     _mcp_state.ctx = app.state.ctx
     yield
@@ -136,6 +158,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.mount("/mcp", _McpAsgiProxy())
 
     from pathlib import Path
+
     from starlette.responses import FileResponse
     web_dist = Path(__file__).parents[1] / "web" / "dist"
     if web_dist.is_dir():
