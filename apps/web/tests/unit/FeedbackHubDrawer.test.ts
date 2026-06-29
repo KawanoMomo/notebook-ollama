@@ -212,8 +212,10 @@ describe('FeedbackHubDrawer — タブ内容 (Sprint 6: NoticesTab / Sprint 7: B
     {
       id: 'feedback' as const,
       label: 'ご意見',
-      // FeedbackTab は Sprint 8 で実装予定。現状は '未実装' placeholder。
-      assertContent: () => expect(screen.getAllByText('未実装')).toHaveLength(1),
+      // Sprint 8 で FeedbackTab を実装完了。マーカは frontend で常に DOM に出る
+      // 「送信内容をプレビュー →」フッタボタン (submit button) のラベル。
+      assertContent: () =>
+        expect(screen.getByText(/送信内容をプレビュー/)).toBeDefined(),
     },
   ])(
     'when activeTab="$id" the corresponding tab content is in the DOM',
@@ -232,7 +234,7 @@ describe('FeedbackHubDrawer — タブ内容 (Sprint 6: NoticesTab / Sprint 7: B
     await waitFor(() => expect(screen.getByText('お知らせはありません')).toBeDefined());
     // BugReportTab / FeedbackTab の固有テキストは notices アクティブ時には現れない
     expect(screen.queryByText(/アプリで発生したエラーを開発者に報告できます/)).toBeNull();
-    expect(screen.queryByText('未実装')).toBeNull();
+    expect(screen.queryByText(/送信内容をプレビュー/)).toBeNull();
   });
 
   // Sprint 7 task 7.x: BugReportTab は NoticesTab と同じ流儀で `store` prop を
@@ -317,6 +319,30 @@ describe('FeedbackHubDrawer — slide-in animation (spec §5.2)', () => {
 
   it('applies `transition:fly` on the drawer element (not just dead CSS)', () => {
     expect(drawerSource).toMatch(/transition:fly\b/);
+  });
+});
+
+describe('FeedbackHubDrawer — DI prop propagation to FeedbackTab', () => {
+  // Adversarial-review finding: Drawer rendered `<FeedbackTab />` with no props,
+  // so FeedbackTab fell back to the global singleton `feedbackHubStore`. The
+  // Cancel button inside FeedbackTab then called `singleton.close()` instead of
+  // the DI hub the drawer was actually constructed with — opening a real hole
+  // in tests/HMR where the drawer wouldn't close.
+  //
+  // Regression guard: render the drawer with a DI hub on the feedback tab,
+  // click cancel, and assert the **DI hub** received `close()`, not the
+  // singleton. If the prop is not threaded through, this test fails because
+  // `spy` (bound to the DI hub) never sees the call.
+  it('cancel inside FeedbackTab closes the SAME hub instance the drawer was given (not the singleton)', async () => {
+    const { hub, crashes, notices } = makeStores();
+    hub.setTab('feedback');
+    const spy = vi.spyOn(hub, 'close');
+    render(FeedbackHubDrawer, { hub, crashes, notices });
+    // Sanity: FeedbackTab is mounted
+    const cancelBtn = await screen.findByTestId('feedback-cancel');
+    await fireEvent.click(cancelBtn);
+    expect(spy).toHaveBeenCalled();
+    expect(hub.drawerOpen).toBe(false);
   });
 });
 

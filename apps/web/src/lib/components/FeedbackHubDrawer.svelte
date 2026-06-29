@@ -108,7 +108,7 @@
 <div class="backdrop" onclick={() => hub.close()} role="presentation">
   <div
     bind:this={drawerEl}
-    class="drawer"
+    class="drawer no-screenshot"
     role="dialog"
     aria-modal="true"
     aria-label={TITLE}
@@ -157,7 +157,11 @@
              BugReportTab の挙動を完全制御できる (global singleton への副作用なし)。 -->
         <BugReportTab store={crashes} />
       {:else if hub.activeTab === 'feedback'}
-        <FeedbackTab />
+        <!-- Sprint 8 / Adversarial-review fix: FeedbackTab の Cancel ボタンは
+             `hub.close()` を呼ぶため、ここで DI 中の `hub` を必ず伝播する。
+             以前は無 props 描画になっており、FeedbackTab が global singleton
+             を掴んで「テスト/HMR では別インスタンスを閉じる」ハマりになっていた。 -->
+        <FeedbackTab {hub} />
       {/if}
     </div>
   </div>
