@@ -343,3 +343,111 @@ nvidia = [
 - [DXCore enumeration APIs](https://learn.microsoft.com/en-us/windows/win32/dxcore/dxcore-enum-adapters)
 - [Ollama bge-m3 NaN bug](https://github.com/ollama/ollama/issues/13572)
 - [TechHara: Local LLM Benchmark on Intel Lunar Lake](https://medium.com/@techhara/local-llm-benchmark-on-intel-lunar-lake-133c39f10455)
+
+---
+
+## Update 2026-06-29 — Phase 1 split, scope reductions, and critical fixes
+
+本書 §1〜§12 は当初設計のまま保持する(歴史的記録)。実装は以下の addendum を **正** として扱う。本 addendum はユーザ決定と adversarial review 指摘を反映したスコープ縮小・実装順の確定・致命的バグ修正を記録する。
+
+### A. Phase 1 / Phase 2 への分割(ユーザ決定 1, 2)
+
+実装プランは `docs/superpowers/plans/2026-06-29-igpu-npu-acceleration.md` で **Phase 1(Sprint 1〜3 / ~14 タスク)** に圧縮された。
+
+**Phase 1 で出荷するもの**:
+
+- `HardwareProbe` + `HwProfile`(全ベンダ検出、モック parametrize 単体テスト完備)
+- `BackendPlanner` + `BackendPlan`(純関数、Intel/AMD 分岐も含む全 HW 表駆動テスト完備)
+- `BackendFactory` skeleton(Phase 1 builder は CUDA + CPU 系のみ。Phase 2 ID は `NotImplementedError` で明示エラー)
+- `core/recording/whisper_postprocess.py`(C2 fix の extract refactor。下記 D 参照)
+- `core/config.py` への backend override フィールド追加(`"auto"` 既定、後方互換)
+- `apps/api/main.py` lifespan で probe → planner を実行し `ctx.hw_profile` / `ctx.backend_plan` に格納(既存 `ctx.transcriber` 等の構築は Phase 1 では触らない)
+- `GET /api/settings/acceleration`(read-only、診断用)
+- フロント `AccelerationPanel.svelte`(**read-only、`<select>` も `[Apply]` も無し**。下記 E 参照)
+- `tests/perf/baseline.json` + `tests/perf/test_cuda_regression.py`(下記 F 参照)
+- `pyproject.toml` の `intel` / `amd` extras 空グループ(構造のみ、Phase 2 で充填)
+
+**Phase 2 で出荷する予定のもの(無期限延期)**:
+
+- `OpenVINOWhisperTranscriber`(Intel iGPU/NPU STT)
+- `TextEmbedder` Protocol + `OpenVINOTextEmbedder`
+- `RuntimeSupervisor`(IPEX-LLM Ollama Portable Zip 子プロセス起動)
+- Acceleration タブの override UI(`<select>` + `Apply`)
+- `PUT /api/settings/acceleration` と `BackendFactory.rebuild_in_place(ctx, plan, cfg)`
+- `scripts/install-intel-runtimes.ps1`(IPEX-LLM Ollama Portable Zip 取得・展開を含む)
+- `scripts/install-amd-runtimes.ps1`(**DirectML 経路のみ**。下記 B 参照)
+- `pyproject.toml` の `intel` / `amd` extras 中身を実パッケージで充填
+
+**Phase 2 着手前提条件**: 開発機が現状 NVIDIA RTX 2080 Ti のみ・Intel iGPU/NPU/AMD Ryzen AI 調達予定なしのため、Phase 2 は **事実上無期限延期**。実機(購入 / 借用 / 外部テスタ協力)が確保され次第着手する。
+
+### B. AMD Ryzen AI NPU 用 Whisper を v1 から完全削除(ユーザ決定 3)
+
+`amd-whispercpp-npu` は `BACKEND_IDS`・Planner・テスト・Phase 2 deferred の Sprint 4 タスク・インストールスクリプトのすべてから **削除** した(grep で 0 件)。AMD ユーザは Phase 2 着手後も DirectML 経路(`onnxruntime-directml`)のみで対応する。理由:
+
+- `pywhispercpp` + AMD `whisper.cpp` 公式 fork の継続性リスク
+- AMD NPU 実機が開発機に無く、モデル品質検証コストが見合わない
+- DirectML 経路があれば NPU 経路無しでも実用速度に到達する見込み
+
+### C. sherpa-onnx GPU/NPU provider 切替を v1+v2 共に descope(ユーザ決定 4)
+
+当初設計の §4.2(`sherpa-onnx-dml` / `sherpa-onnx-openvino-gpu` / `sherpa-onnx-openvino-npu`)は **`BACKEND_IDS` から完全削除** し、Phase 2 でも実装しない。話者分離 + 話者声紋 embedding は **全環境(NVIDIA / Intel / AMD)で CPU 固定** となる(既知制約)。
+
+理由:
+
+- `sherpa-onnx` の provider 切替 API が一部モデルで非対応 op を持ち、実機検証コストが高い
+- 話者分離 / 声紋 embedding は STT に比べて計算量が小さく、CPU でも体感への影響が限定的
+- リファクタの blast radius を下げて Phase 1 を確実にデリバリすることを優先
+
+`docs/testing/igpu-npu-acceptance.md` に「sherpa-onnx は全環境 CPU 固定」を **既知制約** として明記済み。
+
+### D. 致命的修正 C1 — `probe_cuda()` の DLL search path 注入順序
+
+**症状**: `uv` 経由で起動した clean Python から `core.accel.probe.probe_cuda()` を呼ぶと、`cudnn_ops_infer64_8.dll` が見つからず `ctranslate2.get_cuda_device_count()` が 0 を返し、Planner が **黙って CPU 経路を選ぶ**。ユーザ視点では「なぜか CUDA が効かない」状態に陥り、AC-CUDA-REGRESSION が silent fail する。
+
+**根本原因**: `core/recording/transcriber.py` 内には既存 `_register_cuda_dll_dirs()` ヘルパが存在するが、これは `Transcriber.__init__` で初めて呼ばれる。Probe 経路はこのヘルパを通らないため、CUDA が不可視のまま `import ctranslate2` してしまう。
+
+**Fix**: `probe_cuda()` は `import ctranslate2` の **前** に必ず `_register_cuda_dll_dirs()` を呼ぶ(Phase 1 Sprint 1 Task 1.3)。テストで呼び出し順序を `call_order` リストで担保。スモーク AC として、開発機の clean Python で `python -c "from core.accel.probe import probe_cuda; ok, n = probe_cuda(); assert ok and n >= 1"` が exit 0 になることを Sprint 1 受入条件に追加。
+
+### E. 致命的修正 C2 — Phase 1 で whisper postprocess を `whisper_postprocess.py` に抽出
+
+**症状(将来発生する想定)**: Phase 2 で `OpenVINOWhisperTranscriber` 等の Transcriber 実装を追加するとき、各実装が独自に postprocess を書く可能性がある。`core/recording/transcriber.py` に埋まっている幻覚抑制(`_HALLUCINATION_NORM` blocklist)・RMS floor・VAD・`no_speech_prob` フィルタが新実装に取りこぼされると、ライブ字幕の品質が壊れる(幻覚句が表示される、無音区間に空チャンクが出る等)。
+
+**Fix**: Phase 1 Sprint 3 Task 3.1 で `core/recording/whisper_postprocess.py` に **振る舞いを 100% 維持したまま** 抽出する extract refactor を行う。既存 `Transcriber.transcribe_array` はこれらをモジュールから import するだけに変更。Phase 2 で追加される Transcriber 実装は同モジュールを import すれば自動的に幻覚抑制を継承できる。
+
+Phase 1 では `Transcriber` Protocol 化は **行わない**(Phase 2 Sprint 4 に持ち越し)。理由: Protocol 化は実装が 2 つ揃わないと benefit が無く、Phase 1 で行うとリファクタ範囲が広くなる。
+
+### F. AC-CUDA-REGRESSION を **数値ゲート** 化(`tests/perf/baseline.json`)
+
+当初設計の §8.3 の AC-CUDA-REGRESSION は「現状と同等の RTF」と曖昧な目視ゲートだった。Phase 1 では以下の数値ゲートに置き換える:
+
+- Sprint 1 deliverable として、現状 `main`(または `feat/igpu-npu-accel` HEAD 直前)の baseline 数値を `tests/perf/baseline.json` に固定:
+  - `cuda_rtf`(30 秒音声の RTF)
+  - `cuda_first_chunk_latency_ms`(最初のチャンク到着までの実時間)
+  - `cuda_tokens_per_sec`
+- `tests/perf/test_cuda_regression.py` を追加。`@pytest.mark.cuda @pytest.mark.slow` でガード。CI ではデフォルト skip、開発機で `pytest -m "cuda and slow"` を Sprint 終わりに手動実行。
+- 許容劣化幅は **baseline × 1.10**(10% slack)。これを超えたら fail。
+- 以降の全 Sprint で AC-CUDA-REGRESSION は「数値ゲート PASS」を意味する。
+
+### G. テスト隔離用環境変数 `NOTEBOOK_OLLAMA_SKIP_ACCEL_PROBE`
+
+`TestClient(create_app())` が呼ばれる度に `pnputil` を shell-out したり `ctranslate2` を import したりすると、CI が遅くなる・環境差で fail する・並列テストで競合する等の問題が起きる。
+
+**Fix**: `HardwareProbe.run()` は環境変数 `NOTEBOOK_OLLAMA_SKIP_ACCEL_PROBE=1` が立っていたら固定 stub `HwProfile`(`cpu_brand="test-stub"`、全フィールド `None`/`False`/`0`)を返す。`tests/integration/test_api/test_settings_acceleration.py` の `autouse` fixture でこの env を設定する。
+
+### H. 後方互換ガード
+
+Phase 1 で `core.config.AppConfig.audio` に `transcriber_backend` / `diarizer_backend` / `speaker_embed_backend`、`core.config.AppConfig.ollama` に `runtime_backend` / `text_embed_backend` を追加するが、**すべて `"auto"` 既定**。既存ユーザの `settings.json` に新フィールドが無くてもクラッシュしない(`test_existing_settings_json_without_new_fields_still_loads` で担保)。RTX 2080 Ti ユーザの体験は **ゼロ変更**:auto → CUDA path で従来通り動作。
+
+### I. Read-only Settings UI(Phase 1)
+
+Phase 1 の `AccelerationPanel.svelte` は **診断表示のみ**。`<select>` ドロップダウンも `[Apply]` ボタンも存在せず、HW 検出結果と Planner の出力を表示するだけ。NVIDIA ユーザに対しても「今この環境で何が選ばれているか」が即可視化されるため、診断価値が高い。override 操作は Phase 2 Sprint 7 で UI を追加する。
+
+### J. `pyproject.toml` extras の骨格化
+
+Phase 1 では `[project.optional-dependencies]` に `intel = []` / `amd = []` を **空グループ** として追加する。これにより:
+
+- `uv sync --extra intel` が破壊なく走る(何もインストールしない)
+- Phase 2 でグループを埋めるとき、構造変更が要らない
+- ドキュメントとして将来の依存意図を main に残せる
+
+実パッケージ(`openvino`, `onnxruntime-directml` 等)の追加は Phase 2 Sprint 7。
