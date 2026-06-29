@@ -95,6 +95,8 @@ testpaths = ["tests"]
 markers = [
     "ollama: tests that require a running Ollama server",
     "qdrant: tests that require Qdrant local mode write access",
+    "cuda: tests that require an NVIDIA CUDA device",
+    "slow: tests that exercise real model inference (>5s wall clock)",
 ]
 
 [build-system]

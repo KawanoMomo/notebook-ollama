@@ -28,37 +28,12 @@ class TranscriptSegment:
 
 # --- vendored from meeting-transcriber (app._cuda_dll) ---
 # Upstream registered CUDA (cuBLAS/cuDNN) DLL search paths at `app` package import
-# time, *before* importing WhisperModel. There is no `app` package here, so the
-# stdlib-only registration is inlined and run at module import (see PROVENANCE.md).
-def _register_cuda_dll_dirs() -> list:
-    """nvidia の CUDA DLL を DLL 検索パスへ登録 (win32 のみ、無害な no-op fallback)。"""
-    if sys.platform != "win32" or not hasattr(os, "add_dll_directory"):
-        return []
-    try:
-        import importlib.util
-        spec = importlib.util.find_spec("nvidia")
-    except Exception:
-        return []
-    if spec is None or not spec.submodule_search_locations:
-        return []
-    base = list(spec.submodule_search_locations)[0]  # .../site-packages/nvidia
-    added = []
-    for sub in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc"):
-        d = os.path.join(base, sub, "bin")
-        if os.path.isdir(d):
-            try:
-                os.add_dll_directory(d)
-                added.append(d)
-            except OSError:
-                pass
-    if added:
-        # add_dll_directory alone is insufficient on this CUDA stack — ctranslate2
-        # cannot resolve cublas64_12.dll's dependencies without PATH. Mirror what
-        # meeting-transcriber's start-gpu.bat does, but in-process so a plain
-        # `uvicorn` launch gets GPU too.
-        os.environ["PATH"] = os.pathsep.join(added) + os.pathsep + os.environ.get("PATH", "")
-    return added
-
+# time, *before* importing WhisperModel. The implementation was moved to
+# `core.accel.cuda_dll` so `core.accel.probe.probe_cuda()` can call it without
+# pulling faster_whisper into the probe path (see plan Sprint 1 / Task 1.1).
+# Re-exported here for backward compatibility with existing callers / tests
+# that import `_register_cuda_dll_dirs` from this module.
+from core.accel.cuda_dll import _register_cuda_dll_dirs  # noqa: F401
 
 # モジュール import 時に一度だけ登録 (WhisperModel import 前)。
 _CUDA_DLL_REGISTERED = _register_cuda_dll_dirs()
