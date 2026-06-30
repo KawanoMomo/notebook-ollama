@@ -134,7 +134,7 @@ uv sync --extra recording
 - マイク + システム音声（ループバック）の**同時録音**と**ライブ字幕**
 - 停止後に**オフラインで** STT・話者分離・話者名推定・LLM 整形・チャンク化・埋め込み
 - 話者は「あなた」（マイク）/「相手1…」（システム）として記録され、チップから**リネーム**可能
-- NVIDIA GPU（CUDA）推奨。録音依存が未導入だと、録音 UI は表示されますが録音開始・文字起こしは失敗します（`uv sync --extra recording` を実行してください）。
+- NVIDIA GPU（CUDA）推奨。録音依存が未導入のままでも API サーバ・取り込み・チャットは通常通り起動しますが、録音系エンドポイント (`/api/notebooks/{id}/recordings*`) は HTTP 503 を返し、UI 側では録音ボタンが失敗します（`uv sync --extra recording` で解消）。
 
 ## Windows: PowerShell 実行ポリシーについて
 
