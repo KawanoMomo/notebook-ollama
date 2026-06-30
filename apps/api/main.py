@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+# ruff: noqa: E402
 # Use the OS-native trust store (Windows cert store, macOS Keychain,
 # Linux openssl path) instead of the certifi bundle. Required for sites
 # whose certificate chain is rooted at CAs not present in certifi
-# (e.g. autosar.org). Must run before any SSLContext is created.
+# (e.g. autosar.org). Must run before any SSLContext is created — so every
+# import below is deliberately placed AFTER inject_into_ssl(). E402 is
+# disabled file-wide for this reason.
 import truststore
 
 truststore.inject_into_ssl()
 
-import json  # noqa: E402
-from contextlib import asynccontextmanager  # noqa: E402
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.requests import Request
@@ -136,6 +138,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.mount("/mcp", _McpAsgiProxy())
 
     from pathlib import Path
+
     from starlette.responses import FileResponse
     web_dist = Path(__file__).parents[1] / "web" / "dist"
     if web_dist.is_dir():

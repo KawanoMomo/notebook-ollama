@@ -4,9 +4,10 @@
 発話があれば transcriber で起こして on_caption コールバックに渡す。
 """
 
+import contextlib
 import threading
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import numpy as np
 
@@ -32,9 +33,9 @@ class LiveCaption:
         sample_rate: int = 16000,
         vad_aggressiveness: int = 2,
         label: str = "",
-        epoch: Optional[float] = None,
+        epoch: float | None = None,
         id_prefix: str = "",
-        caption_sink: Optional[Callable[[list], None]] = None,
+        caption_sink: Callable[[list], None] | None = None,
         agc_enabled: bool = True,
         agc_target_db: float = -20.0,
         agc_max_gain_db: float = 20.0,
@@ -61,13 +62,13 @@ class LiveCaption:
         self._buffer = np.zeros(0, dtype=np.int16)
         self._buf_lock = threading.Lock()
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._origin_ms = 0  # fallback 用: 処理済の累積 ms (epoch 未指定時)
         # mic/system で字幕タイムスタンプを揃えるための共有時刻基準 (perf_counter)。
         # 両 LiveCaption が同じ epoch を共有することで、別スレッド・別ストリームの
         # 開始タイミング差やドロップに依らず同一タイムラインに揃う。
         self._epoch = epoch
-        self._buf_end_ms: Optional[float] = None  # buffer 末尾サンプルの epoch 相対 wall-clock(ms)
+        self._buf_end_ms: float | None = None  # buffer 末尾サンプルの epoch 相対 wall-clock(ms)
         self._pending_base_ms = 0  # 直近 pop した chunk の先頭時刻(ms)
 
     def start(self) -> None:
@@ -87,7 +88,7 @@ class LiveCaption:
                 self._buf_end_ms = (time.perf_counter() - self._epoch) * 1000.0
             self._buffer = np.concatenate([self._buffer, samples])
 
-    def _pop_chunk(self) -> Optional[np.ndarray]:
+    def _pop_chunk(self) -> np.ndarray | None:
         with self._buf_lock:
             if len(self._buffer) < self._chunk_samples:
                 return None
@@ -129,11 +130,11 @@ class LiveCaption:
         for i in range(0, len(audio_int16) - frame_len + 1, frame_len):
             frame = audio_int16[i : i + frame_len].tobytes()
             total_frames += 1
-            try:
+            # webrtcvad can raise on malformed frames; treat those as non-speech
+            # (speech_frames is not incremented) and keep scanning the rest.
+            with contextlib.suppress(Exception):
                 if self._vad.is_speech(frame, self._sample_rate):
                     speech_frames += 1
-            except Exception:
-                continue
         if total_frames == 0:
             return False
         return (speech_frames / total_frames) >= 0.1  # 10% 以上発話
@@ -151,15 +152,14 @@ class LiveCaption:
             chunk = self._prepare_chunk(chunk)   # AGC: VAD と whisper の両方が増幅後を見る
             if not self._has_speech(chunk):
                 # 無音情報も surface (ハートビート代わり)
-                try:
+                # WS push failure はワーカ続行 (字幕ループを止めない)。
+                with contextlib.suppress(Exception):
                     self._on_caption({
                         "type": "info",
                         "msg": f"chunk #{chunks_processed} silent",
                         "start_ms": base_ms,
                         "label": self._label,
                     })
-                except Exception:
-                    pass
                 continue
             try:
                 segments = self._transcriber.transcribe_array(
@@ -171,14 +171,13 @@ class LiveCaption:
             except Exception as e:
                 print(f"[live-caption] transcribe failed: {type(e).__name__}: {e}",
                       file=sys.stderr, flush=True)
-                try:
+                # WS push failure はワーカ続行 (字幕ループを止めない)。
+                with contextlib.suppress(Exception):
                     self._on_caption({
                         "type": "error",
                         "msg": f"transcribe failed: {type(e).__name__}: {e}",
                         "label": self._label,
                     })
-                except Exception:
-                    pass
                 continue
             chunk_meta: list = []
             for seg in segments:
@@ -187,7 +186,8 @@ class LiveCaption:
                           if self._id_prefix else str(self._cap_n))
                 chunk_meta.append({"id": cap_id,
                                    "start_ms": seg["start_ms"], "end_ms": seg["end_ms"]})
-                try:
+                # WS push failure はワーカ続行 (字幕ループを止めない)。
+                with contextlib.suppress(Exception):
                     self._on_caption({
                         "type": "caption",
                         "id": cap_id,
@@ -198,8 +198,6 @@ class LiveCaption:
                         "is_final": False,
                         "label": self._label,
                     })
-                except Exception:
-                    pass
             # システム音のみ: 発行した字幕メタを LiveDiarizer に登録する。
             # バックグラウンド話者分離が後追いで caption_update を送る。
             if self._caption_sink is not None and chunk_meta:

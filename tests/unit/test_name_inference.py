@@ -1,6 +1,6 @@
 import asyncio
 
-from core.recording.name_inference import parse_name_inference, infer_names
+from core.recording.name_inference import infer_names, parse_name_inference
 
 
 def test_parse_valid_json():

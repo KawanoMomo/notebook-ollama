@@ -1,9 +1,15 @@
 """WASAPI loopback + マイク 同時 2ch 録音。"""
 
+# threading.Lock は class ではなく factory function なので、ランタイムでの
+# `threading.Lock | None` 評価が TypeError になる。PEP 563 で annotation を
+# 文字列化することで回避する (UP045 auto-fix 由来の互換問題)。
+from __future__ import annotations
+
+import contextlib
 import threading
 import wave
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 
 def list_input_devices() -> list[dict]:
@@ -28,7 +34,7 @@ def list_input_devices() -> list[dict]:
     return out
 
 
-def find_default_loopback_index() -> Optional[int]:
+def find_default_loopback_index() -> int | None:
     """既定出力デバイスに対応する loopback デバイスの index を返す。"""
     import pyaudiowpatch as pyaudio
     with pyaudio.PyAudio() as p:
@@ -51,18 +57,18 @@ def find_default_loopback_index() -> Optional[int]:
     return None
 
 
-def find_default_mic_index() -> Optional[int]:
+def find_default_mic_index() -> int | None:
     """既定マイクデバイスの index。"""
     import pyaudiowpatch as pyaudio
     with pyaudio.PyAudio() as p:
         try:
             info = p.get_default_input_device_info()
             return int(info["index"])
-        except (OSError, IOError):
+        except OSError:
             return None
 
 
-def resolve_device_info(device_index: int) -> Optional[dict]:
+def resolve_device_info(device_index: int) -> dict | None:
     """デバイス情報を一度だけ確実に取得する。
 
     pyaudio の get_device_info_by_index は PyAudio インスタンスごとに
@@ -98,10 +104,10 @@ class _ChannelRecorder:
         device_info: dict,
         out_path: Path,
         target_sample_rate: int = 16000,
-        on_chunk: Optional[Callable] = None,
+        on_chunk: Callable | None = None,
         pyaudio_instance=None,
-        open_lock: Optional[threading.Lock] = None,
-        mute_check: Optional[Callable[[], bool]] = None,
+        open_lock: threading.Lock | None = None,
+        mute_check: Callable[[], bool] | None = None,
     ):
         self._device_info = device_info
         self._device_index = int(device_info["index"])
@@ -119,8 +125,8 @@ class _ChannelRecorder:
         self._pa = pyaudio_instance  # 親 Recorder から共有される
         self._open_lock = open_lock or threading.Lock()
         self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None
-        self._error: Optional[Exception] = None
+        self._thread: threading.Thread | None = None
+        self._error: Exception | None = None
         self._exited = False  # _run の実行ループが最後まで抜けたか (teardown 安全判定用)
 
     def start(self) -> None:
@@ -133,7 +139,7 @@ class _ChannelRecorder:
             self._thread.join(timeout=5)
 
     @property
-    def error(self) -> Optional[Exception]:
+    def error(self) -> Exception | None:
         return self._error
 
     @property
@@ -147,8 +153,8 @@ class _ChannelRecorder:
         src_sr = self._src_sr
         src_ch = self._src_ch
         try:
-            import pyaudiowpatch as pyaudio
             import numpy as np
+            import pyaudiowpatch as pyaudio
             p = self._pa
             assert p is not None, "pyaudio_instance must be provided by Recorder"
             print(
@@ -223,21 +229,23 @@ class _ChannelRecorder:
             finally:
                 print(f"[recorder] stopping idx={self._device_index} chunks={chunk_count}",
                       file=sys.stderr, flush=True)
-                try:
+                # Best-effort teardown: WAV header may already be flushed; even
+                # if close() raises, we must continue to close the audio stream
+                # below so the device is released for the next session.
+                with contextlib.suppress(Exception):
                     wf.close()
-                except Exception:
-                    pass
                 # ストリーム破棄を open と同じ lock で直列化し、共有 PyAudio 上での
                 # 並行 close / terminate 競合 (native segfault) を避ける。
                 with self._open_lock:
-                    try:
+                    # Best-effort: even on failure to stop the stream, close()
+                    # below still has to run so the underlying handle is freed.
+                    with contextlib.suppress(Exception):
                         stream.stop_stream()
-                    except Exception:
-                        pass
-                    try:
+                    # Best-effort: PyAudio.terminate() (called later by Recorder)
+                    # would mask any close() exception anyway; swallow here so
+                    # the second channel's teardown is not skipped.
+                    with contextlib.suppress(Exception):
                         stream.close()
-                    except Exception:
-                        pass
         except Exception as e:
             self._error = e
             print(f"[recorder] FATAL idx={self._device_index}: {type(e).__name__}: {e}",
@@ -262,8 +270,8 @@ class Recorder:
     def __init__(self, session_dir: Path, sample_rate: int = 16000):
         self._session_dir = session_dir
         self._sample_rate = sample_rate
-        self._mic: Optional[_ChannelRecorder] = None
-        self._sys: Optional[_ChannelRecorder] = None
+        self._mic: _ChannelRecorder | None = None
+        self._sys: _ChannelRecorder | None = None
         self._mic_path = session_dir / "mic.wav"
         self._system_path = session_dir / "system.wav"
         self._pa = None  # 共有 PyAudio インスタンス (start で生成、stop で終了)
@@ -278,12 +286,12 @@ class Recorder:
 
     def start(
         self,
-        mic_index: Optional[int] = None,
-        system_index: Optional[int] = None,
-        mic_on_chunk: Optional[Callable] = None,
-        system_on_chunk: Optional[Callable] = None,
-        mic_mute_check: Optional[Callable[[], bool]] = None,
-        system_mute_check: Optional[Callable[[], bool]] = None,
+        mic_index: int | None = None,
+        system_index: int | None = None,
+        mic_on_chunk: Callable | None = None,
+        system_on_chunk: Callable | None = None,
+        mic_mute_check: Callable[[], bool] | None = None,
+        system_mute_check: Callable[[], bool] | None = None,
     ) -> None:
         if mic_index is None:
             mic_index = find_default_mic_index()
@@ -319,9 +327,9 @@ class Recorder:
             )
             self._sys.start()
 
-    def stop(self) -> dict[str, Optional[Path]]:
+    def stop(self) -> dict[str, Path | None]:
         """両ストリームを停止し、生成された wav パス (失敗時は None) を返す。"""
-        result: dict[str, Optional[Path]] = {"mic": None, "system": None}
+        result: dict[str, Path | None] = {"mic": None, "system": None}
         if self._mic is not None:
             self._mic.stop()
             if self._mic.error is None and self._mic_path.exists():
@@ -345,13 +353,14 @@ class Recorder:
                       file=sys.stderr, flush=True)
             else:
                 lock = getattr(self, "_open_lock", None)
-                try:
+                # Best-effort terminate: stop() must complete and clear _pa even
+                # if PyAudio.terminate() raises (it has been observed to surface
+                # WASAPI driver hiccups). Leaking is safer than crashing.
+                with contextlib.suppress(Exception):
                     if lock is not None:
                         with lock:
                             self._pa.terminate()
                     else:
                         self._pa.terminate()
-                except Exception:
-                    pass
             self._pa = None
         return result

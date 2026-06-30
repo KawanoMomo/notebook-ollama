@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from dataclasses import dataclass
 
 from apps.api.sse import SseBroker
+from core.adr.adr_job import AdrDeps, AdrJob
 from core.config import AppConfig
 from core.generation.stream import GenerationDeps, GenerationService
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
@@ -15,7 +17,6 @@ from core.retrieval.search import RetrievalService
 from core.settings_store import load_overrides
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
-from core.adr.adr_job import AdrDeps, AdrJob
 from core.summary.summarizer import SummaryDeps, SummaryJob
 
 _DEFAULT_EMBEDDING_DIM = 1024  # bge-m3
@@ -90,10 +91,8 @@ def build_context(config: AppConfig) -> AppContext:
     async def _summary_runner(source_id: str) -> None:
         # Best-effort: 失敗しても呼び出し元(取込パイプライン or summarize endpoint)を
         # 巻き込まない。SummaryJob 内部で status を error に落とす。
-        try:
+        with contextlib.suppress(Exception):
             await summary_job.run(source_id=source_id)
-        except Exception:
-            pass
 
     adr_job = AdrJob(
         deps=AdrDeps(
@@ -107,10 +106,8 @@ def build_context(config: AppConfig) -> AppContext:
     async def _adr_runner(source_id: str) -> None:
         # Best-effort: 失敗しても呼び出し元(adr endpoint)を巻き込まない。
         # AdrJob 内部で adr_status を error / skipped に落とす。
-        try:
+        with contextlib.suppress(Exception):
             await adr_job.run(source_id=source_id)
-        except Exception:
-            pass
 
     pipeline = IngestionPipeline(
         deps=PipelineDeps(

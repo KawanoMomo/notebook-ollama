@@ -17,11 +17,13 @@ try/except エラーハンドリングのパターンをミラーしている。
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from core.ids import new_id
 from core.logging import get_logger
@@ -415,25 +417,25 @@ class RecordingPipeline:
             update_source_status(
                 conn, source_id, status=SourceStatus.ERROR, error_msg=_CANCELLED_MSG
             )
-            try:
+            # SSE publish 失敗で background task をクラッシュさせない (DB 側の
+            # status は既に更新済み)。
+            with contextlib.suppress(Exception):
                 await self._publish(
                     notebook_id=notebook_id, source_id=source_id, step="error",
                     label="停止しました", progress=1.0, status=SourceStatus.ERROR.value,
                 )
-            except Exception:
-                pass
             log.info("recording_ingestion_cancelled", source_id=source_id)
         except Exception as exc:  # background task: 例外は status に記録して握りつぶす
             update_source_status(
                 conn, source_id, status=SourceStatus.ERROR, error_msg=str(exc)
             )
-            try:
+            # SSE publish 失敗で background task をクラッシュさせない (DB 側の
+            # status は既に更新済み)。
+            with contextlib.suppress(Exception):
                 await self._publish(
                     notebook_id=notebook_id, source_id=source_id, step="error",
                     label="エラー", progress=1.0, status=SourceStatus.ERROR.value,
                 )
-            except Exception:
-                pass
             log.exception("recording_ingestion_failed", source_id=source_id)
         finally:
             # 成否に関わらず停止フラグをクリアし、後続の再試行が事前キャンセル状態に

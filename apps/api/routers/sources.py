@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import shutil
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, File, Path, Request, UploadFile
 from fastapi.responses import Response
 
-from apps.api.routers.audio import _AUDIO_EXT_PRIORITY, _resolve_audio_path
+from apps.api.routers.audio import _resolve_audio_path
 from apps.api.schemas.source import Source, SourceRename, SourceUrlCreate
 from apps.api.schemas.source_content import (
     DocumentContent,
@@ -16,8 +17,8 @@ from apps.api.schemas.source_content import (
     SpeakerRename,
 )
 from core.exceptions import AppError, ErrorCode
-from core.ingestion.parsers import get_parser
 from core.ingestion.hashing import sha256_bytes
+from core.ingestion.parsers import get_parser
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import (
     delete_chunks_for_source,
@@ -108,8 +109,8 @@ def _to_schema(rec, sources_dir) -> Source:
 async def upload_file(
     request: Request,
     background: BackgroundTasks,
-    notebook_id: str = Path(...),
-    file: UploadFile = File(...),
+    notebook_id: Annotated[str, Path(...)],
+    file: Annotated[UploadFile, File(...)],
 ) -> Source:
     ctx = request.app.state.ctx
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
@@ -203,7 +204,8 @@ async def upload_url(
 async def list_sources(request: Request, notebook_id: str) -> list[Source]:
     ctx = request.app.state.ctx
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
-    return [_to_schema(r, ctx.config.sources_dir) for r in sources_repo.list_sources(ctx.conn, notebook_id=notebook_id)]
+    rows = sources_repo.list_sources(ctx.conn, notebook_id=notebook_id)
+    return [_to_schema(r, ctx.config.sources_dir) for r in rows]
 
 
 @router.delete("/{notebook_id}/sources/{source_id}", status_code=204)

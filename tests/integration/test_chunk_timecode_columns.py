@@ -1,4 +1,5 @@
 import sqlite3
+
 from core.storage.database import migrate
 from core.storage.migrations import run_chunk_timecode_migration
 

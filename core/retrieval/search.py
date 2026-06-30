@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Protocol
+from typing import Protocol
 
 from core.storage.chunks_repo import get_chunks_by_ids
 from core.storage.sources_repo import get_source

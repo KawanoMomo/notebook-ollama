@@ -215,7 +215,7 @@ def test_switch_publishes_progress_events(client):
     assert progress[0]["done"] == 0
     assert progress[0]["total"] == 2
     assert progress[-1]["done"] == 2
-    complete = [e for e in events if e["type"] == "reindex_complete"][0]
+    complete = next(e for e in events if e["type"] == "reindex_complete")
     assert complete["model"] == "bge-m3"
     assert complete["dim"] == 8
 
@@ -270,9 +270,9 @@ class _FakeRequest:
 
 @pytest.mark.asyncio
 async def test_settings_events_generator_maps_type_to_event(client):
-    """ジェネレータ本体を実行し、type→event 名写像・data の type 除去・unsubscribe を検証する(方式 a)。
+    """ジェネレータ本体を実行し、type→event 名写像・data の type 除去・unsubscribe を検証する。
 
-    ルート settings_events を直接呼び、返る EventSourceResponse.body_iterator
+    (方式 a) ルート settings_events を直接呼び、返る EventSourceResponse.body_iterator
     (= gen())を drive することで写像コードを実コードとして1回実行する。
     """
     ctx = client.app.state.ctx

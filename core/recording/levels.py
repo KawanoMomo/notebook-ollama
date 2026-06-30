@@ -1,5 +1,7 @@
 """音声レベル計算ユーティリティ。録音中のレベルメータ表示に使う。"""
 
+import contextlib
+
 import numpy as np
 
 
@@ -43,7 +45,6 @@ class LevelMeter:
         min_interval_ms: int = 100,
         sample_rate: int = 16000,
     ):
-        import time
         self._channel = channel
         self._on_level = on_level
         self._min_interval_s = min_interval_ms / 1000.0
@@ -58,12 +59,12 @@ class LevelMeter:
         self._last_push = now
         rms = rms_db(samples_int16)
         peak = peak_db(samples_int16)
-        try:
+        # Best-effort: a WS-side failure must not break the audio chunk callback
+        # (which runs on the PyAudio worker thread). Drop the level frame instead.
+        with contextlib.suppress(Exception):
             self._on_level({
                 "type": "level",
                 "channel": self._channel,
                 "rms_db": round(rms, 1),
                 "peak_db": round(peak, 1),
             })
-        except Exception:
-            pass

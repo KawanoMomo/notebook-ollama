@@ -4,7 +4,10 @@ import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 # --- vendored from meeting-transcriber (app.models.schema.TranscriptSegment) ---
@@ -13,17 +16,17 @@ from typing import Optional
 # by this module is inlined verbatim (see PROVENANCE.md "Local divergences").
 @dataclass
 class TranscriptSegment:
-    id: Optional[int]
+    id: int | None
     session_id: str
     channel: str              # 'mic' | 'system'
     start_ms: int
     end_ms: int
     speaker_id: str
     text: str
-    language: Optional[str] = None
-    confidence: Optional[float] = None
+    language: str | None = None
+    confidence: float | None = None
     edited: bool = False
-    original_text: Optional[str] = None
+    original_text: str | None = None
 
 
 # --- vendored from meeting-transcriber (app._cuda_dll) ---
@@ -41,7 +44,7 @@ def _register_cuda_dll_dirs() -> list:
         return []
     if spec is None or not spec.submodule_search_locations:
         return []
-    base = list(spec.submodule_search_locations)[0]  # .../site-packages/nvidia
+    base = next(iter(spec.submodule_search_locations))  # .../site-packages/nvidia
     added = []
     for sub in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc"):
         d = os.path.join(base, sub, "bin")
@@ -133,7 +136,7 @@ class Transcriber:
         *,
         channel: str,
         speaker_id: str,
-        language: Optional[str] = "ja",
+        language: str | None = "ja",
         session_id: str = "",
     ) -> list[TranscriptSegment]:
         # 遅延ジェネレータの反復まで含めてロックで直列化する
@@ -180,7 +183,7 @@ class Transcriber:
         self,
         audio: "np.ndarray",      # float32 [-1, 1] mono
         sample_rate: int = 16000,
-        language: Optional[str] = "ja",
+        language: str | None = "ja",
         base_ms: int = 0,
     ) -> list[dict]:
         """numpy 配列から直接 transcribe する (ライブ字幕用)。
@@ -197,7 +200,8 @@ class Transcriber:
 
         # 無音/極低レベルはモデルに渡さない (Whisper のハルシネーション源を断つ)。
         audio = audio.astype(np.float32)
-        if audio.size == 0 or float(np.sqrt(np.mean(np.square(audio)))) < _HALLUCINATION_SILENCE_RMS:
+        rms = float(np.sqrt(np.mean(np.square(audio)))) if audio.size else 0.0
+        if audio.size == 0 or rms < _HALLUCINATION_SILENCE_RMS:
             return []
 
         # ライブ字幕でのハルシネーション抑制:
@@ -251,7 +255,10 @@ _HALLUCINATION_SILENCE_RMS = 0.005
 
 
 def _normalize_caption(text: str) -> str:
-    return text.strip().strip("。.!！?？、,， 　　")
+    # Strip whitespace then strip any combination of these punctuation chars
+    # from both ends. `.strip(chars)` treats each char individually, which is
+    # the intended behavior here (not a multi-char substring removal).
+    return text.strip().strip("。.!！?？、,， 　　")  # noqa: B005
 
 
 # Whisper が無音/低レベル音声で生成しがちな定型ハルシネーション (YouTube 由来)。

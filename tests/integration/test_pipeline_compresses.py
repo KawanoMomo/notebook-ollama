@@ -30,7 +30,10 @@ async def test_pipeline_compresses_and_drops_wav(tmp_path: Path, monkeypatch):
     sysw.write_bytes(b"RIFFfakewav")
 
     async def fake_convert(src, dst, *, fmt, bitrate_kbps):
-        Path(dst).write_bytes(b"compressed")
+        # Test double: tiny synchronous write in a fake that mirrors the real
+        # `convert_audio` coroutine signature. No event loop blocking risk in
+        # a unit-scale test, so a sync write is acceptable here.
+        Path(dst).write_bytes(b"compressed")  # noqa: ASYNC240
         return Path(dst)
 
     monkeypatch.setattr(rp_mod, "convert_audio", fake_convert)

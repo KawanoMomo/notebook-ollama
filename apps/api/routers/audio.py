@@ -48,8 +48,8 @@ async def get_source_audio(
     ctx = request.app.state.ctx
     try:
         src = sources_repo.get_source(ctx.conn, source_id)
-    except AppError:
-        raise HTTPException(status_code=404, detail="source not found")
+    except AppError as e:
+        raise HTTPException(status_code=404, detail="source not found") from e
     if src.notebook_id != notebook_id:
         raise HTTPException(status_code=404, detail="source not in notebook")
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
@@ -62,12 +64,13 @@ def _get_diarizer(request):
     cfg = ctx.config.audio
     if not cfg.diarization_enabled:
         return None
-    from pathlib import Path
     seg = cfg.diarizer_segmentation_model or str(
         ctx.config.data_dir / "models" / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
     )
     emb = cfg.diarizer_embedding_model or str(
-        ctx.config.data_dir / "models" / "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+        ctx.config.data_dir
+        / "models"
+        / "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
     )
     if not (Path(seg).exists() and Path(emb).exists()):
         return None  # models not present -> pipeline degrades to no-diarization
@@ -92,7 +95,7 @@ async def audio_devices():
         from core.recording.recorder import list_input_devices
         return list_input_devices()
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"recording extras not installed: {e}")
+        raise HTTPException(status_code=503, detail=f"recording extras not installed: {e}") from e
 
 
 @router.post("/api/notebooks/{notebook_id}/recordings", response_model=RecordingStarted)
@@ -113,7 +116,7 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     except RecordingBusyError as e:
         ctx.conn.execute("DELETE FROM sources WHERE id=?", (src.id,))
         shutil.rmtree(session_dir, ignore_errors=True)
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     sess.extras["source_id"] = src.id
 
     # --- Live caption wiring (PREVIEW ONLY) -------------------------------
@@ -133,10 +136,8 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     def push_to_queue(msg):
         if msg.get("type") == "caption":
             live_segments.append(msg)
-        try:
+        with contextlib.suppress(Exception):
             cap_queue.put_nowait(msg)
-        except Exception:
-            pass
 
     sess.extras["queue"] = cap_queue
     sess.extras["live_segments"] = live_segments
@@ -213,10 +214,8 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         # empty session dir. Also stop any live-caption workers we started above.
         for _lc in (mic_lc, sys_lc):
             if _lc is not None:
-                try:
+                with contextlib.suppress(Exception):
                     _lc.stop()
-                except Exception:
-                    pass
         ctx.recordings.pop(sess.id)
         sources_repo.update_source_status(
             ctx.conn, src.id,
@@ -225,20 +224,19 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(
             status_code=500, detail=f"failed to start recording: {exc}"
-        )
+        ) from exc
     return RecordingStarted(
         recording_id=sess.id, source_id=src.id, status="recording",
         live_caption=live_active,
     )
 
 
-def _resolve_wav(p) -> "Path | None":
+def _resolve_wav(p) -> Path | None:
     """Return Path(p) only if the file exists and is non-trivial (>64 bytes).
 
     A zero-byte (or header-only) wav means that channel never captured audio;
     treat it as absent so the offline pipeline doesn't transcribe an empty file.
     """
-    from pathlib import Path
     if not p:
         return None
     path = Path(p)
@@ -306,10 +304,8 @@ async def stop_recording(
     # Stop the live-caption workers (if any) before the recorder so they don't
     # keep accepting chunks after the audio stream closes.
     for _lc in sess.extras.get("live_captions", []) or []:
-        try:
+        with contextlib.suppress(Exception):
             _lc.stop()
-        except Exception:
-            pass
     paths = sess.recorder.stop()
     sess.extras["paths"] = {k: (str(v) if v else None) for k, v in paths.items()}
 
@@ -353,8 +349,8 @@ async def retry_recording(
     ctx = request.app.state.ctx
     try:
         src = sources_repo.get_source(ctx.conn, source_id)
-    except AppError:
-        raise HTTPException(status_code=404, detail="source not found")
+    except AppError as e:
+        raise HTTPException(status_code=404, detail="source not found") from e
     if src.notebook_id != notebook_id:
         raise HTTPException(status_code=404, detail="source not in notebook")
     if src.kind != "recording":
@@ -396,8 +392,8 @@ async def cancel_recording(request: Request, notebook_id: str, source_id: str):
     ctx = request.app.state.ctx
     try:
         src = sources_repo.get_source(ctx.conn, source_id)
-    except AppError:
-        raise HTTPException(status_code=404, detail="source not found")
+    except AppError as e:
+        raise HTTPException(status_code=404, detail="source not found") from e
     if src.notebook_id != notebook_id:
         raise HTTPException(status_code=404, detail="source not in notebook")
     if src.kind != "recording":

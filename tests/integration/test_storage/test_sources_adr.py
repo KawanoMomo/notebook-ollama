@@ -44,7 +44,13 @@ def test_run_adr_migration_is_idempotent(conn):
     run_adr_migration(conn)
     run_adr_migration(conn)
     cols = _columns(conn, "sources")
-    assert {"adr_draft", "adr_status", "adr_template", "adr_confidence", "adr_generated_at"}.issubset(cols)
+    assert {
+        "adr_draft",
+        "adr_status",
+        "adr_template",
+        "adr_confidence",
+        "adr_generated_at",
+    }.issubset(cols)
 
 
 def test_run_adr_migration_adds_columns_to_legacy_db(tmp_path: Path):

@@ -1,5 +1,5 @@
-from core.config import AppConfig
 from apps.api.dependencies import build_context
+from core.config import AppConfig
 
 
 def test_build_context_wires_chat_read_timeout(tmp_path):

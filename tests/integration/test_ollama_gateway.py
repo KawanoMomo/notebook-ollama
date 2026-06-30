@@ -38,7 +38,7 @@ async def test_chat_serialized_by_fifo():
     started: list[int] = []
 
     async def run(i):
-        async for tok in gw.chat_stream(model="m", messages=[{"role": "user", "content": str(i)}]):
+        async for _tok in gw.chat_stream(model="m", messages=[{"role": "user", "content": str(i)}]):
             started.append(i)
             return  # stop after first token
 

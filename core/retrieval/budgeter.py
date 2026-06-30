@@ -60,7 +60,7 @@ def allocate_budget(inp: BudgetInput) -> BudgetOutput:
         # take newest first
         kept: list[HistoryTurn] = []
         used_hist = 0
-        for turn, tcount in zip(reversed(inp.history), reversed(hist_token_counts)):
+        for turn, tcount in zip(reversed(inp.history), reversed(hist_token_counts), strict=True):
             if used_hist + tcount <= budget_for_history:
                 kept.append(turn)
                 used_hist += tcount

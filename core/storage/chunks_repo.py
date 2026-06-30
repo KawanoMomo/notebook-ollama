@@ -20,7 +20,7 @@ class ChunkRecord:
     speaker: str | None = None
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "ChunkRecord":
+    def from_row(cls, row: sqlite3.Row) -> ChunkRecord:
         keys = row.keys()
         return cls(
             id=row["id"],
@@ -55,7 +55,13 @@ def get_chunks_by_ids(conn: sqlite3.Connection, ids: list[str]) -> list[ChunkRec
     if not ids:
         return []
     placeholders = ",".join("?" * len(ids))
-    rows = conn.execute(f"SELECT * FROM chunks WHERE id IN ({placeholders})", ids).fetchall()
+    # S608 is a false positive here: `placeholders` is only the literal
+    # "?,?,...,?" built from len(ids); the ids themselves are still bound as
+    # parameters (second arg to execute), never interpolated.
+    rows = conn.execute(
+        f"SELECT * FROM chunks WHERE id IN ({placeholders})",  # noqa: S608
+        ids,
+    ).fetchall()
     by_id = {row["id"]: ChunkRecord.from_row(row) for row in rows}
     return [by_id[i] for i in ids if i in by_id]
 

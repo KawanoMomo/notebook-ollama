@@ -12,6 +12,7 @@ import asyncio
 import re
 import uuid
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, File, Request, Response, UploadFile
 from fastapi.responses import FileResponse
@@ -196,7 +197,7 @@ async def delete_fixed_slot(request: Request, slot_index: int) -> PromptsOut:
 async def upload_fixed_icon(
     request: Request,
     slot_index: int,
-    file: UploadFile = File(...),
+    file: Annotated[UploadFile, File(...)],
 ) -> PromptsOut:
     data_dir = _data_dir(request)
     content = await file.read()

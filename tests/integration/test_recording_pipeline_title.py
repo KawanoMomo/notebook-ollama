@@ -9,8 +9,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from core.recording.recording_pipeline import RecordingPipeline, RecordingPipelineDeps
 from core.recording.transcriber import TranscriptSegment
 from core.storage import sources_repo
