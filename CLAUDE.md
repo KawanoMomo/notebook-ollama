@@ -8,8 +8,13 @@ Local personal NotebookLM clone over Ollama with MCP exposure.
 
 ## Run
 ```
-uv run uvicorn apps.api.main:app --reload --port 8765
+uv run --no-sync uvicorn apps.api.main:app --reload --port 8765
 ```
+`--no-sync` matters: a bare `uv run` re-syncs the venv to the base lockfile
+before every invocation, silently dropping any optional extra installed by
+hand (`uv sync --extra recording`, `--extra pdf`). Run `uv sync` yourself once
+(with whichever extras you want); this command never touches the venv after
+that.
 
 ## Test
 ```

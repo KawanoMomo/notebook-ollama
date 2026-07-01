@@ -105,8 +105,9 @@ ollama pull bge-m3        # 約 1.2 GB
 uv sync
 cd apps/web && npm install && cd ../..
 
-# API サーバ
-uv run uvicorn apps.api.main:app --port 8765
+# API サーバ (--no-sync: 上の uv sync/uv sync --extra recording で入れた依存を
+# 毎回の起動で勝手に消さないようにする。scripts/start.ps1・start.sh・dev.ps1・dev.sh も同様)
+uv run --no-sync uvicorn apps.api.main:app --port 8765
 # 別ターミナルで dev UI
 cd apps/web && npm run dev   # http://localhost:5173
 ```
@@ -135,6 +136,8 @@ uv sync --extra recording
 - 停止後に**オフラインで** STT・話者分離・話者名推定・LLM 整形・チャンク化・埋め込み
 - 話者は「あなた」（マイク）/「相手1…」（システム）として記録され、チップから**リネーム**可能
 - NVIDIA GPU（CUDA）推奨。録音依存が未導入のままでも API サーバ・取り込み・チャットは通常通り起動しますが、録音系エンドポイント (`/api/notebooks/{id}/recordings*`) は HTTP 503 を返し、UI 側では録音ボタンが失敗します（`uv sync --extra recording` で解消）。
+- `uv sync --extra recording` は一度実行すれば十分です。付属の起動スクリプト（`start.ps1` / `start.sh` / `dev.ps1` / `dev.sh`）は `uv run --no-sync` で起動するため、次回以降の起動でこの依存が勝手に外れることはありません。
+- **注意**: これらのスクリプトを経由せず、後日 **素の `uv sync`（`--extra` を付けない）** を再実行すると、以前入れた `recording` / `pdf` extra は静かにアンインストールされます（`git pull` 後の「依存を更新しよう」で踏みがちです）。全部まとめて維持したい場合は `uv sync --all-extras` を使ってください。
 
 ## Windows: PowerShell 実行ポリシーについて
 
@@ -193,7 +196,7 @@ Get-ExecutionPolicy -List
 ```bash
 cd apps/web && npm run build   # → apps/web/dist/
 cd ../..
-uv run uvicorn apps.api.main:app --port 8765
+uv run --no-sync uvicorn apps.api.main:app --port 8765
 # UI + API を同じ :8765 で提供
 ```
 
