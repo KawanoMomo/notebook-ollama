@@ -104,3 +104,68 @@ describe('currentNotebookStore — default-all-selected', () => {
     expect(store.selectedSourceIds.has('a')).toBe(false);
   });
 });
+
+function makeJobSource(overrides: Partial<Source> = {}): Source {
+  return {
+    id: 'src1',
+    notebook_id: 'nb1',
+    kind: 'pdf',
+    title: '設計書.pdf',
+    origin: null,
+    status: 'ready',
+    error_msg: null,
+    bytes: null,
+    page_count: null,
+    chunk_count: null,
+    created_at: 't',
+    updated_at: 't',
+    ...overrides,
+  };
+}
+
+describe('currentNotebookStore.activeJobs', () => {
+  it('ready のみのソースでは空配列', () => {
+    const store = createCurrentNotebookStore();
+    store.upsertSource(makeJobSource());
+    expect(store.activeJobs).toEqual([]);
+  });
+
+  it('取り込み中 (parsing/embedding 等) は ingest ジョブになる', () => {
+    const store = createCurrentNotebookStore();
+    store.upsertSource(makeJobSource({ status: 'parsing' }));
+    expect(store.activeJobs).toEqual([
+      { sourceId: 'src1', kind: 'ingest', label: '設計書.pdf: 取り込み中' },
+    ]);
+  });
+
+  it('summary_status/adr_status が generating なら各ジョブになる(同一ソースで複数可)', () => {
+    const store = createCurrentNotebookStore();
+    store.upsertSource(
+      makeJobSource({ summary_status: 'generating', adr_status: 'generating' }),
+    );
+    expect(store.activeJobs).toEqual([
+      { sourceId: 'src1', kind: 'summary', label: '設計書.pdf: 要約生成中' },
+      { sourceId: 'src1', kind: 'adr', label: '設計書.pdf: ADR生成中' },
+    ]);
+  });
+
+  it('error / skipped は進行中として扱わない', () => {
+    const store = createCurrentNotebookStore();
+    store.upsertSource(
+      makeJobSource({
+        status: 'error',
+        summary_status: 'error',
+        adr_status: 'skipped',
+      }),
+    );
+    expect(store.activeJobs).toEqual([]);
+  });
+
+  it('title が無ければ origin、それも無ければ「ソース」をラベルに使う', () => {
+    const store = createCurrentNotebookStore();
+    store.upsertSource(
+      makeJobSource({ title: null, origin: '録音', status: 'parsing' }),
+    );
+    expect(store.activeJobs[0].label).toBe('録音: 取り込み中');
+  });
+});
