@@ -4,6 +4,7 @@
   import SourceUploadModal from './SourceUploadModal.svelte';
   import RecordingControls from './RecordingControls.svelte';
   import Button from './Button.svelte';
+  import Spinner from './Spinner.svelte';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
   import { sourcesApi } from '$lib/api/sources';
@@ -251,10 +252,15 @@
       class:active={recordingStore.recording}
       title="録音"
       aria-label="録音"
+      aria-busy={recordingStore.starting}
       onclick={startRecording}
-      disabled={recordingStore.recording}
+      disabled={recordingStore.recording || recordingStore.starting}
     >
-      <Mic size="16" />
+      {#if recordingStore.starting}
+        <Spinner size={16} />
+      {:else}
+        <Mic size="16" />
+      {/if}
     </button>
   </div>
   <RecordingControls {notebookId} />
