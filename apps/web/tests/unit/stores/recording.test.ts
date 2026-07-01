@@ -108,6 +108,7 @@ describe('recording store', () => {
 
     expect(upserts).toHaveLength(0);
     expect(store.error).toBe('boom');
+    expect(store.stopping).toBe(false);
   });
 
   it('toggleMute はミュート状態を切り替え WS へ mute コマンドを送る', async () => {
