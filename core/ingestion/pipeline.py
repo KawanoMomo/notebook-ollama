@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from core.exceptions import AppError, ErrorCode
 from core.ids import new_id

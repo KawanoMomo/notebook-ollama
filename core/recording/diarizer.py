@@ -86,8 +86,8 @@ def _convert_sherpa_segments(segments) -> list[SpeakerSegment]:
     return [
         SpeakerSegment(
             speaker_id=f"spk_{int(s.speaker):03d}",
-            start_ms=int(round(s.start * 1000)),
-            end_ms=int(round(s.end * 1000)),
+            start_ms=round(s.start * 1000),
+            end_ms=round(s.end * 1000),
         )
         for s in segments
     ]

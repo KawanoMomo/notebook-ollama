@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Protocol
 
 from core.logging import get_logger
 from core.storage import sources_repo

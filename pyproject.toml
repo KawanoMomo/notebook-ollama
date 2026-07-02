@@ -97,6 +97,16 @@ ignore = ["S101"]  # allow asserts in tests
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S"]
+# RUF001 (ambiguous unicode in strings): the following files intentionally hold
+# full-width Japanese punctuation (「」（）！？：，．) — either in user-facing
+# prompts/messages or in regex/strip character sets that MUST contain JP forms
+# alongside ASCII. Substituting ASCII would break the linguistic intent or the
+# Japanese text processing. Scoped per-file so any unintended occurrence
+# elsewhere still trips RUF001.
+"core/generation/prompts.py" = ["RUF001"]          # JP system prompt text
+"core/ingestion/chunker.py" = ["RUF001"]           # JP sentence-end regex
+"core/recording/title_inference.py" = ["RUF001"]   # JP/ASCII colon separators
+"core/recording/transcriber.py" = ["RUF001"]       # JP/ASCII strip char set
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
