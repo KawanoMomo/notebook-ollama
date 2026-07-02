@@ -15,8 +15,9 @@ from __future__ import annotations
 import asyncio
 import re
 import sqlite3
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Protocol
 
 from core.adr.prompts import build_extract_prompt, build_gate_prompt
 from core.logging import get_logger
@@ -114,7 +115,7 @@ class AdrJob:
         is_yes = bool(_GATE_YES_RE.search(gate_text))
         is_no = bool(_GATE_NO_RE.search(gate_text))
         # YES の表記が無いか、NO のみが先に出てきたらスキップ扱い。
-        if (not is_yes) or is_no and gate_text.lstrip().upper().startswith("NO"):
+        if (not is_yes) or (is_no and gate_text.lstrip().upper().startswith("NO")):
             reason, evidence = _parse_gate_no(gate_text)
             sources_repo.update_source_adr_skipped(
                 conn, source_id, reason=reason, evidence=evidence

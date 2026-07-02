@@ -1,7 +1,6 @@
 """話者声紋 embedding の抽出・類似度計算・横セッションマッチング。"""
 
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import soundfile as sf
@@ -60,13 +59,13 @@ def best_named_match(
     query: np.ndarray,
     candidates: list[tuple[str, bytes]],
     threshold: float = 0.7,
-) -> Optional[tuple[str, float]]:
+) -> tuple[str, float] | None:
     """query embedding に最も似ている (name, embedding) を返す。
 
     candidates: [(display_name, embedding_bytes), ...] 同名複数行 OK。
     threshold 未満なら None。同名複数行のうち最大類似度を採用。
     """
-    best_name: Optional[str] = None
+    best_name: str | None = None
     best_sim = -1.0
     for name, blob in candidates:
         emb = deserialize_embedding(blob)
