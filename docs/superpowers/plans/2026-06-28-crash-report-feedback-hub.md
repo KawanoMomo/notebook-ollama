@@ -2025,12 +2025,14 @@ PASS 後、Draft PR に push。
 
 ## レビューチェックリスト (PR Ready for Review 前に必ず確認)
 
-- [ ] [[feedback-no-data-guarantee-in-ui]]: UI のどこにも「以下のデータを送信します / 送信しません」リストが無いか (CrashDetectionModal / OptInDialog / CrashReportSection / FeedbackTab を grep)。
-- [ ] [[feedback_compact_ui_repurpose_affordance]]: ヘッダ・設定画面・Drawer のどこも縦に肥大化していないか (Sprint 5/7/8 視覚ゲートの「縦肥大化チェック」項目を再実行)。
-- [ ] [[feedback_visual_verification]]: 全 GUI sprint で Evaluator スクショ証跡が PR に添付されているか。
-- [ ] redactor が spec §6.2 のホワイトリストから外れていないか (Task 1.1 の `ALLOWED_LOG_FIELDS` が spec と一致)。
-- [ ] 8KB URL 制限が極端入力でも `MAX_URL_LEN` 以下に収まるか (Task 2.4 のテストで保証)。
-- [ ] `~/.notebook-ollama/reported.txt` / `crash-pending/*.json` / `running.lock` / `logs/last-session.log` の生成位置が `config.data_dir` 配下に統一されているか。
-- [ ] origin remote と `REPO_SLUG` が一致するか (`KawanoMomo/notebook-ollama`)。
-- [ ] `master` ブランチに直接 commit していないか (`git log --oneline master..HEAD` でこの PR の全 commit が見える状態)。
-- [ ] console.error が全シナリオで 0 件か (Playwright E2E + 手動 DevTools)。
+全項目 2026-07-02 最終QA (docs/eval/2026-07-02-crash-report-final-qa/) で確認済み。
+
+- [x] [[feedback-no-data-guarantee-in-ui]]: UI のどこにも「以下のデータを送信します / 送信しません」リストが無いか (CrashDetectionModal / OptInDialog / CrashReportSection / FeedbackTab を grep)。→ grep 0件。CrashDetectionModal のコメントで明示的に不採用を記録済み。
+- [x] [[feedback_compact_ui_repurpose_affordance]]: ヘッダ・設定画面・Drawer のどこも縦に肥大化していないか (Sprint 5/7/8 視覚ゲートの「縦肥大化チェック」項目を再実行)。→ 実機確認: ヘッダ56px不変・Megaphone/歯車とも34×34、Drawer 440px、CrashReportSection 559px (Audio設定1476pxと比べコンパクト)。
+- [x] [[feedback_visual_verification]]: 全 GUI sprint で Evaluator スクショ証跡が PR に添付されているか。→ Sprint5-9 の docs/eval/2026-06-2*-feedback-hub-sprint* に加え、最終QAの docs/eval/2026-07-02-crash-report-final-qa/ を追加。
+- [x] redactor が spec §6.2 のホワイトリストから外れていないか (Task 1.1 の `ALLOWED_LOG_FIELDS` が spec と一致)。→ 通す/通さないリストとも spec と完全一致 (denylist は HW識別子を追加で防御的に強化)。
+- [x] 8KB URL 制限が極端入力でも `MAX_URL_LEN` 以下に収まるか (Task 2.4 のテストで保証)。→ `MAX_URL_LEN=7000`、境界値・5万字入力含む test_prefill_url.py 42件PASS。
+- [x] `~/.notebook-ollama/reported.txt` / `crash-pending/*.json` / `running.lock` / `logs/last-session.log` の生成位置が `config.data_dir` 配下に統一されているか。→ core/config.py で全パスが `data_dir` 起点と確認。
+- [x] origin remote と `REPO_SLUG` が一致するか (`KawanoMomo/notebook-ollama`)。→ 一致確認。
+- [x] `master` ブランチに直接 commit していないか (`git log --oneline master..HEAD` でこの PR の全 commit が見える状態)。→ 全14 commit が feature branch上のみ。
+- [x] console.error が全シナリオで 0 件か (Playwright E2E + 手動 DevTools)。→ 初回検証で `apps/web/src/lib/api/client.ts` の実バグ (非2xx `{detail}` 応答での TypeError) を発見・修正 (TDD, tests/unit/api-client.test.ts)。再検証で全シナリオ console.error 0件・PASS。
