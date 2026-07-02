@@ -108,6 +108,7 @@ describe('recording store', () => {
 
     expect(upserts).toHaveLength(0);
     expect(store.error).toBe('boom');
+    expect(store.stopping).toBe(false);
   });
 
   it('toggleMute はミュート状態を切り替え WS へ mute コマンドを送る', async () => {
@@ -206,5 +207,94 @@ describe('recording store', () => {
     ws.emit({ type: 'caption', id: 'c3', label: 'あなた', text: '通る', start_ms: 1500, is_final: true });
     expect(store.captions).toHaveLength(2);
     expect(store.captions.at(-1)!.id).toBe('c3');
+  });
+
+  it('start は API 応答前に starting=true、応答後に recording=true / starting=false', async () => {
+    let resolveStart!: (v: unknown) => void;
+    const api = {
+      start: vi.fn().mockReturnValue(
+        new Promise((res) => {
+          resolveStart = res;
+        }),
+      ),
+      stop: vi.fn(),
+    };
+    const store = createRecordingStore(api as never, noopNbStore);
+
+    const p = store.start('nb1');
+    // await 前 = API 応答前: optimistic に starting が立ち、recording はまだ false
+    expect(store.starting).toBe(true);
+    expect(store.recording).toBe(false);
+
+    resolveStart({
+      recording_id: 'r1',
+      source_id: 's1',
+      status: 'recording',
+      live_caption: false,
+    });
+    await p;
+    expect(store.starting).toBe(false);
+    expect(store.recording).toBe(true);
+  });
+
+  it('api.start 失敗時は starting=false に戻り recording は false のまま(例外は伝播)', async () => {
+    const api = {
+      start: vi.fn().mockRejectedValue(new Error('mic busy')),
+      stop: vi.fn(),
+    };
+    const store = createRecordingStore(api as never, noopNbStore);
+    await expect(store.start('nb1')).rejects.toThrow('mic busy');
+    expect(store.starting).toBe(false);
+    expect(store.recording).toBe(false);
+  });
+
+  it('stop は API 応答前に stopping=true、完了後に stopping=false', async () => {
+    let resolveStop!: (v: unknown) => void;
+    const api = {
+      start: vi.fn().mockResolvedValue({
+        recording_id: 'r1',
+        source_id: 's1',
+        status: 'recording',
+        live_caption: false,
+      }),
+      stop: vi.fn().mockReturnValue(
+        new Promise((res) => {
+          resolveStop = res;
+        }),
+      ),
+    };
+    const store = createRecordingStore(api as never, noopNbStore);
+    await store.start('nb1');
+
+    const p = store.stop();
+    expect(store.stopping).toBe(true);
+
+    resolveStop({ recording_id: 'r1', source_id: 's1', status: 'processing', paths: {} });
+    await p;
+    expect(store.stopping).toBe(false);
+    expect(store.recording).toBe(false);
+  });
+
+  it('starting 中の二重 start は no-op', async () => {
+    let resolveStart!: (v: unknown) => void;
+    const api = {
+      start: vi.fn().mockReturnValue(
+        new Promise((res) => {
+          resolveStart = res;
+        }),
+      ),
+      stop: vi.fn(),
+    };
+    const store = createRecordingStore(api as never, noopNbStore);
+    const p = store.start('nb1');
+    void store.start('nb1'); // 二重呼び出し
+    expect(api.start).toHaveBeenCalledTimes(1);
+    resolveStart({
+      recording_id: 'r1',
+      source_id: 's1',
+      status: 'recording',
+      live_caption: false,
+    });
+    await p;
   });
 });

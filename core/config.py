@@ -12,10 +12,14 @@ class OllamaSettings(BaseModel):
     default_model: str = "qwen2.5:14b"
     embedding_model: str = "bge-m3"
     embedding_dim: int = 1024
-    request_timeout_seconds: float = 120.0
+    # GPT-OSS:20B など大型モデルは初回ロードに 120 秒以上かかるため、
+    # 既定を 600 秒(10 分)に伸ばす。VRAM が小さい GPU での CPU/GPU 分割ロードや
+    # cold start を許容するための保険値。settings UI から個別調整も可能。
+    request_timeout_seconds: float = 600.0
     # chat_stream の read タイムアウト(秒)。connect は httpx 既定のまま。
     # 詰まった Ollama が無限ハングせず例外→error イベントで表面化させる。
-    chat_read_timeout_seconds: float = 120.0
+    # 大型モデルの first-token までの待ち時間も同じ理由で 600 秒に伸ばす。
+    chat_read_timeout_seconds: float = 600.0
     # Workaround for llama.cpp GPU bug that emits NaN embeddings for some
     # multilingual inputs (esp. Japanese) under bge-m3. num_gpu=0 forces CPU
     # inference for embeddings. Set to None or {} to use Ollama defaults.

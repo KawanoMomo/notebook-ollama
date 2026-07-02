@@ -18,6 +18,7 @@ from apps.api.schemas.settings import (
     HwProfileSchema,
     OllamaSettingsSchema,
     OllamaSettingsUpdate,
+    OllamaTimeoutsUpdate,
     RetrievalSettingsSchema,
 )
 from core.accel.plan import is_phase1_implementable
@@ -43,6 +44,8 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             embedding_dim=request.app.state.ctx.vector_store.collection_dim(),
             runtime_backend=cfg.ollama.runtime_backend,
             text_embed_backend=cfg.ollama.text_embed_backend,
+            request_timeout_seconds=cfg.ollama.request_timeout_seconds,
+            chat_read_timeout_seconds=cfg.ollama.chat_read_timeout_seconds,
         ),
         generation=GenerationSettingsSchema(
             context_budget_ratio=cfg.generation.context_budget_ratio,
@@ -151,7 +154,48 @@ async def put_ollama_settings(
         default_model=cfg.ollama.default_model,
         embedding_model=cfg.ollama.embedding_model,
         embedding_dim=request.app.state.ctx.vector_store.collection_dim(),
+        request_timeout_seconds=cfg.ollama.request_timeout_seconds,
+        chat_read_timeout_seconds=cfg.ollama.chat_read_timeout_seconds,
     )
+
+
+@router.put("/settings/ollama/timeouts")
+async def put_ollama_timeouts(
+    request: Request, body: OllamaTimeoutsUpdate
+) -> dict[str, float]:
+    """Ollama リクエストタイムアウト(秒)を更新する。
+
+    大型モデル(GPT-OSS:20B 等)の初回ロード時に既定値 600 秒では足りない、
+    あるいは逆に短くしてフェイルファストしたい場合に UI から変更する経路。
+
+    変更は in-memory cfg と settings.json の両方に反映する。次回起動時は
+    settings.json の値が AppConfig の既定を上書きする(env > settings.json > 既定)。
+    """
+    cfg = request.app.state.ctx.config
+    cfg.ollama = cfg.ollama.model_copy(
+        update={
+            "request_timeout_seconds": body.request_timeout_seconds,
+            "chat_read_timeout_seconds": body.chat_read_timeout_seconds,
+        }
+    )
+
+    # 既存の ollama セクションへ merge 保存(default_model / embedding_* を壊さない)。
+    from core.settings_store import load_overrides, save_section
+    existing = load_overrides(cfg.data_dir).get("ollama")
+    existing = existing if isinstance(existing, dict) else {}
+    save_section(
+        cfg.data_dir,
+        "ollama",
+        {
+            **existing,
+            "request_timeout_seconds": body.request_timeout_seconds,
+            "chat_read_timeout_seconds": body.chat_read_timeout_seconds,
+        },
+    )
+    return {
+        "request_timeout_seconds": cfg.ollama.request_timeout_seconds,
+        "chat_read_timeout_seconds": cfg.ollama.chat_read_timeout_seconds,
+    }
 
 
 _REINDEX_TOPIC = "embedding_reindex"

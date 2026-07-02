@@ -105,8 +105,9 @@ ollama pull bge-m3        # 約 1.2 GB
 uv sync
 cd apps/web && npm install && cd ../..
 
-# API サーバ
-uv run uvicorn apps.api.main:app --port 8765
+# API サーバ (--no-sync: 上の uv sync/uv sync --extra recording で入れた依存を
+# 毎回の起動で勝手に消さないようにする。scripts/start.ps1・start.sh・dev.ps1・dev.sh も同様)
+uv run --no-sync uvicorn apps.api.main:app --port 8765
 # 別ターミナルで dev UI
 cd apps/web && npm run dev   # http://localhost:5173
 ```
@@ -134,7 +135,9 @@ uv sync --extra recording
 - マイク + システム音声（ループバック）の**同時録音**と**ライブ字幕**
 - 停止後に**オフラインで** STT・話者分離・話者名推定・LLM 整形・チャンク化・埋め込み
 - 話者は「あなた」（マイク）/「相手1…」（システム）として記録され、チップから**リネーム**可能
-- NVIDIA GPU（CUDA）推奨。録音依存が未導入だと、録音 UI は表示されますが録音開始・文字起こしは失敗します（`uv sync --extra recording` を実行してください）。
+- NVIDIA GPU（CUDA）推奨。録音依存が未導入のままでも API サーバ・取り込み・チャットは通常通り起動しますが、録音系エンドポイント (`/api/notebooks/{id}/recordings*`) は HTTP 503 を返し、UI 側では録音ボタンが失敗します（`uv sync --extra recording` で解消）。
+- `uv sync --extra recording` は一度実行すれば十分です。付属の起動スクリプト（`start.ps1` / `start.sh` / `dev.ps1` / `dev.sh`）は `uv run --no-sync` で起動するため、次回以降の起動でこの依存が勝手に外れることはありません。
+- **注意**: これらのスクリプトを経由せず、後日 **素の `uv sync`（`--extra` を付けない）** を再実行すると、以前入れた `recording` / `pdf` extra は静かにアンインストールされます（`git pull` 後の「依存を更新しよう」で踏みがちです）。全部まとめて維持したい場合は `uv sync --all-extras` を使ってください。
 
 ## Windows: PowerShell 実行ポリシーについて
 
@@ -188,12 +191,52 @@ Get-ExecutionPolicy -List
 
 なお、`scripts\install-startup.ps1` がタスクスケジューラに登録する起動コマンドには `-ExecutionPolicy Bypass` が既に組み込まれているため、ログオン時自動起動はポリシー変更なしでも動作します。
 
+## トラブルシューティング
+
+### 大型モデル(GPT-OSS:20B 等)で「ネットワークエラー」が出る
+
+Ollama がモデルをロードしている間に HTTP タイムアウト(既定 600 秒)が切れている可能性があります。RTX 2080 Ti (VRAM 11 GB) など VRAM が小さい GPU では、20B モデルは CPU/GPU 分割ロードになり初回ロードに数分かかります。
+
+対策(優先順):
+
+1. **モデルを事前ロードして常駐させる**(推奨・追加コストなし)
+
+   別ターミナルで一度ロードしておくと、Notebook Ollama からの呼び出しは即時応答します。
+
+   ```powershell
+   ollama run gpt-oss:20b ""
+   ```
+
+   既定では 5 分間アイドルでアンロードされます。長く常駐させたい場合は `OLLAMA_KEEP_ALIVE=24h` を `ollama serve` の環境変数に指定してください。
+
+2. **設定 UI でタイムアウトを延ばす**
+
+   `設定 → モデル・Ollama → タイムアウト` で `request_timeout` と `chat_read_timeout` を 1200 (秒) 等に変更し保存。`settings.json` に永続化されます。
+
+3. **環境変数で起動時から伸ばす**(自動起動・サーバ運用向け)
+
+   PowerShell:
+
+   ```powershell
+   $env:NOTEBOOK_OLLAMA_OLLAMA__REQUEST_TIMEOUT_SECONDS = "1200"
+   $env:NOTEBOOK_OLLAMA_OLLAMA__CHAT_READ_TIMEOUT_SECONDS = "1200"
+   .\scripts\start.ps1
+   ```
+
+   Bash:
+
+   ```bash
+   export NOTEBOOK_OLLAMA_OLLAMA__REQUEST_TIMEOUT_SECONDS=1200
+   export NOTEBOOK_OLLAMA_OLLAMA__CHAT_READ_TIMEOUT_SECONDS=1200
+   ./scripts/start.sh
+   ```
+
 ## 本番ビルド
 
 ```bash
 cd apps/web && npm run build   # → apps/web/dist/
 cd ../..
-uv run uvicorn apps.api.main:app --port 8765
+uv run --no-sync uvicorn apps.api.main:app --port 8765
 # UI + API を同じ :8765 で提供
 ```
 

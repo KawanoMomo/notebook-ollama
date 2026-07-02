@@ -1,0 +1,84 @@
+INFO:     Started server process [48728]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58950 - "GET /api/notebooks/01KW711X3EPBBBXYMWAH4PF5JG/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64362 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55094 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55094 - "GET /_app/immutable/entry/start.BQmsAOtq.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51179 - "GET /_app/immutable/chunks/CqXYmDwd.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51678 - "GET /_app/immutable/entry/app.Br6BHbqz.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59980 - "GET /_app/immutable/chunks/CCmbrD0F.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61146 - "GET /_app/immutable/nodes/0.WU3Kx1tN.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53043 - "GET /_app/immutable/chunks/wJBRoup-.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55094 - "GET /_app/immutable/assets/client.BIszycmQ.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55094 - "GET /_app/immutable/assets/Toast.BGR42tWp.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61146 - "GET /_app/immutable/assets/0.DS3WAfSO.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55094 - "GET /_app/immutable/chunks/C6lIVPeP.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53043 - "GET /_app/immutable/chunks/Q_cDGv5o.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61146 - "GET /_app/immutable/chunks/C-oyKow3.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51678 - "GET /_app/immutable/chunks/B0FvubME.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51179 - "GET /_app/immutable/chunks/CqY_d_nr.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59980 - "GET /_app/immutable/chunks/Dfwm482k.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55094 - "GET /_app/immutable/chunks/7rsVDeab.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61146 - "GET /_app/immutable/chunks/CJ307fqy.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51678 - "GET /_app/immutable/nodes/1.GiOVtUdJ.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53043 - "GET /_app/immutable/chunks/7qE2PubM.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59980 - "GET /_app/immutable/nodes/2.DXxBsLhc.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55094 - "GET /_app/immutable/chunks/D_J9Kyqf.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53043 - "GET /api/notebooks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61735 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61736 - "GET /api/audio-devices HTTP/1.1" 200 OK
+HTTP Request: GET https://huggingface.co/api/models/Systran/faster-whisper-large-v3/revision/main "HTTP/1.1 200 OK"
+[recorder] starting device idx=1 name='Microphone (Razer Seiren Mini)' sr=44100 ch=2 -> C:\Users\momo\.notebook-ollama\sources\01KWCAM3G1FPCNREXGMMPF0B31\mic.wav
+[recorder] starting device idx=38 name='スピーカー (Sound Blaster AE-7) [Loopback]' sr=48000 ch=6 -> C:\Users\momo\.notebook-ollama\sources\01KWCAM3G1FPCNREXGMMPF0B31\system.wav
+INFO:     127.0.0.1:61737 - "POST /api/notebooks/01KW9P17H2BFM5YFX8N4W7GK8H/recordings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64619 - "GET /api/notebooks/01KW9P17H2BFM5YFX8N4W7GK8H HTTP/1.1" 200 OK
+[recorder] first chunk read OK from idx=1 (371 samples @ 16000Hz)
+[recorder] stopping idx=1 chunks=602
+[recorder] stopping idx=38 chunks=0
+INFO:     127.0.0.1:52421 - "POST /api/notebooks/01KW9P17H2BFM5YFX8N4W7GK8H/recordings/01KWCAM3G6TX0YAHXK09FW7R0Y/stop HTTP/1.1" 200 OK
+Processing audio with duration 00:13.959
+VAD filter removed 00:13.959 of audio
+INFO:     127.0.0.1:64777 - "POST /api/notebooks/01KW9P17H2BFM5YFX8N4W7GK8H/recordings/01KWCAM3G1FPCNREXGMMPF0B31/cancel HTTP/1.1" 200 OK
+{"source_id": "01KWCAM3G1FPCNREXGMMPF0B31", "chunk_count": 0, "event": "recording_ingestion_complete", "level": "info", "timestamp": "2026-06-30T13:14:10.928917Z"}
+{"source_id": "01KWCAM3G1FPCNREXGMMPF0B31", "event": "summary_skip_no_chunks", "level": "warning", "timestamp": "2026-06-30T13:14:10.928917Z"}
+INFO:     127.0.0.1:61009 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61009 - "GET /_app/immutable/entry/start.BQmsAOtq.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /_app/immutable/chunks/CqXYmDwd.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51542 - "GET /_app/immutable/chunks/CCmbrD0F.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51624 - "GET /_app/immutable/entry/app.Br6BHbqz.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /_app/immutable/chunks/wJBRoup-.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59919 - "GET /_app/immutable/chunks/C6lIVPeP.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61009 - "GET /_app/immutable/assets/client.BIszycmQ.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /_app/immutable/assets/Toast.BGR42tWp.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51542 - "GET /_app/immutable/assets/0.DS3WAfSO.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51624 - "GET /_app/immutable/chunks/Q_cDGv5o.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59919 - "GET /_app/immutable/chunks/CqY_d_nr.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /_app/immutable/nodes/0.WU3Kx1tN.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61009 - "GET /_app/immutable/chunks/B0FvubME.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51624 - "GET /_app/immutable/chunks/7rsVDeab.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51542 - "GET /_app/immutable/chunks/Dfwm482k.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /_app/immutable/chunks/C-oyKow3.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59919 - "GET /_app/immutable/chunks/CJ307fqy.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /_app/immutable/nodes/1.GiOVtUdJ.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61009 - "GET /_app/immutable/nodes/2.DXxBsLhc.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /_app/immutable/chunks/D_J9Kyqf.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51542 - "GET /_app/immutable/chunks/7qE2PubM.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /api/notebooks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /notebooks/01KW9P17H2BFM5YFX8N4W7GK8H HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /_app/immutable/nodes/3.Dzzqem9J.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51542 - "GET /_app/immutable/chunks/BUkVVZ1l.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61009 - "GET /_app/immutable/assets/3.DYklE5sc.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /api/prompts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51542 - "GET /api/notebooks/01KW9P17H2BFM5YFX8N4W7GK8H HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61009 - "GET /api/notebooks/01KW9P17H2BFM5YFX8N4W7GK8H/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51542 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /api/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59919 - "GET /api/notebooks/01KW9P17H2BFM5YFX8N4W7GK8H/events HTTP/1.1" 200 OK
+HTTP Request: GET http://localhost:11434/api/tags "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/embeddings "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"

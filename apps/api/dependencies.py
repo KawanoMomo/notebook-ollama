@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any
 
@@ -15,7 +16,6 @@ from core.generation.stream import GenerationDeps, GenerationService
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
 from core.logging import get_logger
 from core.ollama.gateway import OllamaGateway
-from core.recording.recording_pipeline import RecordingPipeline, RecordingPipelineDeps
 from core.recording.session import RecordingRegistry
 from core.retrieval.search import RetrievalService
 from core.settings_store import load_overrides
@@ -23,8 +23,18 @@ from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
 from core.summary.summarizer import SummaryDeps, SummaryJob
 
-if TYPE_CHECKING:
+# 録音スタック(faster-whisper / sherpa-onnx / soundfile / scipy …)は
+# `[project.optional-dependencies] recording` の opt-in extra。ベース install
+# (=`uv sync` 単体)では soundfile が無く、`core.recording.recording_pipeline`
+# のトップレベル import が ModuleNotFoundError でこける。これを起動時に巻き込むと
+# uvicorn が app import の段階で死に、録音機能を使う気がないユーザーまでアプリが
+# 起動しない。README が `recording` extra を opt-in と明言している以上、依存欠落
+# は「録音エンドポイントだけが 503」になる形で degrade させ、起動はさせる。
+if TYPE_CHECKING:  # pragma: no cover - typing only
     from core.accel.factory import _TextEmbedderLike
+    from core.recording.recording_pipeline import RecordingPipeline
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_EMBEDDING_DIM = 1024  # bge-m3
 
@@ -99,6 +109,10 @@ class AppContext:
     ``faster-whisper-cuda``) the resulting object is bit-equivalent to the
     pre-DI lazy ``Transcriber(...)`` construction in ``recordings.py``.
 
+    ``recording_pipeline`` is ``None`` when the `recording` extra is not
+    installed (soundfile / scipy / faster-whisper 等が欠落) — 録音系ルータは
+    ``_require_recording_pipeline`` でこれを見て 503 を返す。
+
     Test hooks honoured by ``apps.api.routers.recordings``:
 
     * ``ctx.transcriber_factory`` — legacy 0-arg callable that returns a
@@ -120,7 +134,7 @@ class AppContext:
         retrieval: RetrievalService,
         generation: GenerationService,
         recordings: RecordingRegistry,
-        recording_pipeline: RecordingPipeline,
+        recording_pipeline: RecordingPipeline | None,
         summary_runner: Any,
         adr_runner: Any,
         hw_profile: HwProfile,
@@ -358,17 +372,31 @@ def build_context(config: AppConfig) -> AppContext:
     )
     generation = GenerationService(deps=GenerationDeps(retrieval=retrieval, ollama=gateway))
     recordings = RecordingRegistry()
-    recording_pipeline = RecordingPipeline(
-        deps=RecordingPipelineDeps(
-            conn=conn,
-            vector_store=vs,
-            ollama=gateway,
-            embedding_model=config.ollama.embedding_model,
-            embedding_model_getter=lambda: config.ollama.embedding_model,
-            broker=sse_broker,
-            summary_runner=_summary_runner,
+    # `recording` extra (faster-whisper / sherpa-onnx / soundfile …)が未導入の
+    # ベース install では recording_pipeline.py の top-level import が
+    # ModuleNotFoundError でこける。ここで握ってログを出し、recording_pipeline=None
+    # にしておけば残りのアプリ(ingest / chat / MCP / crash-report …)は起動する。
+    # 録音系ルータ側は None を見たら 503("recording extras not installed")を返す。
+    try:
+        from core.recording.recording_pipeline import RecordingPipeline, RecordingPipelineDeps
+        recording_pipeline: RecordingPipeline | None = RecordingPipeline(
+            deps=RecordingPipelineDeps(
+                conn=conn,
+                vector_store=vs,
+                ollama=gateway,
+                embedding_model=config.ollama.embedding_model,
+                embedding_model_getter=lambda: config.ollama.embedding_model,
+                broker=sse_broker,
+                summary_runner=_summary_runner,
+            )
         )
-    )
+    except ModuleNotFoundError as exc:
+        logger.warning(
+            "recording extras not installed (%s); recording endpoints will return 503. "
+            "Run `uv sync --extra recording` to enable.",
+            exc.name or exc,
+        )
+        recording_pipeline = None
     return AppContext(
         config=config,
         conn=conn,
