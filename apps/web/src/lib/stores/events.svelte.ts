@@ -1,4 +1,5 @@
 import { openNotebookEvents, type SourceStatusEvent } from "$lib/api/events";
+import type { Source } from "$lib/api/types";
 import { currentNotebookStore } from "./currentNotebook.svelte";
 import { notify } from "$lib/utils/notifications";
 
@@ -56,6 +57,14 @@ export function createEventsStore(): EventsStore {
           status: ev.status as typeof existing.status,
           chunk_count: chunkCount,
           embedded,
+          // 要約/ADRジョブの進行状態。ペイロードに含まれる場合のみ上書きし、
+          // 含まれない従来イベント(取り込みパイプライン等)では既存値を維持する。
+          ...(typeof ev.summary_status === 'string'
+            ? { summary_status: ev.summary_status as Source['summary_status'] }
+            : {}),
+          ...(typeof ev.adr_status === 'string'
+            ? { adr_status: ev.adr_status as Source['adr_status'] }
+            : {}),
         });
         if (prev !== ev.status) {
           const title = existing.title ?? existing.origin ?? "ソース";

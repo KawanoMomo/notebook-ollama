@@ -14,6 +14,21 @@ from core.storage.chunks_repo import delete_chunks_for_source
 
 router = APIRouter(tags=["recordings"])
 
+_RECORDING_EXTRA_HINT = (
+    "recording extras not installed; run `uv sync --extra recording` to enable"
+)
+
+
+def _require_recording_pipeline(ctx) -> None:
+    """録音 extra が入っていない場合は 503 で即時返す。
+
+    `apps/api/dependencies.py` は recording 依存が欠落した環境でも起動できるよう
+    recording_pipeline を None にして起動する(README で recording は opt-in)。
+    録音/再変換/停止は録音 extra を実際に必要とするので、None なら 503 を返す。
+    """
+    if getattr(ctx, "recording_pipeline", None) is None:
+        raise HTTPException(status_code=503, detail=_RECORDING_EXTRA_HINT)
+
 
 def _make_recorder(ctx, session_dir):
     factory = getattr(ctx, "recorder_factory", None)
@@ -101,6 +116,7 @@ async def audio_devices():
 @router.post("/api/notebooks/{notebook_id}/recordings", response_model=RecordingStarted)
 async def start_recording(request: Request, notebook_id: str, body: StartRecording):
     ctx = request.app.state.ctx
+    _require_recording_pipeline(ctx)
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
     src = sources_repo.create_source(
         ctx.conn, notebook_id=notebook_id, kind="recording", title=None, origin="録音"
@@ -295,6 +311,7 @@ async def stop_recording(
     request: Request, notebook_id: str, rid: str, background: BackgroundTasks
 ):
     ctx = request.app.state.ctx
+    _require_recording_pipeline(ctx)
     sess = ctx.recordings.get(rid)
     if sess is None:
         raise HTTPException(status_code=400, detail="not recording")
@@ -347,6 +364,7 @@ async def retry_recording(
     from core.exceptions import AppError
 
     ctx = request.app.state.ctx
+    _require_recording_pipeline(ctx)
     try:
         src = sources_repo.get_source(ctx.conn, source_id)
     except AppError as e:

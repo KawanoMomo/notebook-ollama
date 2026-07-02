@@ -1,0 +1,151 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - link "Notebook Ollama" [ref=e4] [cursor=pointer]:
+      - /url: /
+    - generic [ref=e5]:
+      - button "お知らせ・フィードバック" [ref=e6] [cursor=pointer]:
+        - img [ref=e7]
+      - link "設定" [ref=e8] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e9]
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - heading "ノートブック" [level=1] [ref=e13]
+        - button "新規ノートブック" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+          - text: 新規ノートブック
+      - generic [ref=e16]:
+        - link "E2E Test Notebook 0 ソース 更新 1日前" [ref=e17] [cursor=pointer]:
+          - /url: /notebooks/01KW9P17H2BFM5YFX8N4W7GK8H
+          - heading "E2E Test Notebook" [level=3] [ref=e18]
+          - generic [ref=e19]:
+            - generic [ref=e20]:
+              - img [ref=e21]
+              - text: 0 ソース
+            - generic [ref=e22]: 更新 1日前
+        - link "E2E Test Notebook 0 ソース 更新 1日前" [ref=e23] [cursor=pointer]:
+          - /url: /notebooks/01KW9NZDSN1AZ3SDYRAYM7KZ95
+          - heading "E2E Test Notebook" [level=3] [ref=e24]
+          - generic [ref=e25]:
+            - generic [ref=e26]:
+              - img [ref=e27]
+              - text: 0 ソース
+            - generic [ref=e28]: 更新 1日前
+        - link "加藤純一 雑談まとめ 1 ソース 更新 2日前" [ref=e29] [cursor=pointer]:
+          - /url: /notebooks/01KW711X3EPBBBXYMWAH4PF5JG
+          - heading "加藤純一" [level=3] [ref=e30]
+          - paragraph [ref=e31]: 雑談まとめ
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - img [ref=e34]
+              - text: 1 ソース
+            - generic [ref=e35]: 更新 2日前
+        - link "QSPI 3 ソース qwen2.5:14b 更新 5日前" [ref=e36] [cursor=pointer]:
+          - /url: /notebooks/01KS5ASTT6FA1YQSE12B38P7X7
+          - heading "QSPI" [level=3] [ref=e37]
+          - generic [ref=e38]:
+            - generic [ref=e39]:
+              - img [ref=e40]
+              - text: 3 ソース
+            - generic [ref=e41]: qwen2.5:14b
+            - generic [ref=e42]: 更新 5日前
+        - link "雑談 オリフォー 1 ソース gpt-oss:latest 更新 5日前" [ref=e43] [cursor=pointer]:
+          - /url: /notebooks/01KVTGEMYYYB5PFYTP8JN45VH9
+          - heading "雑談" [level=3] [ref=e44]
+          - paragraph [ref=e45]: オリフォー
+          - generic [ref=e46]:
+            - generic [ref=e47]:
+              - img [ref=e48]
+              - text: 1 ソース
+            - generic [ref=e49]: gpt-oss:latest
+            - generic [ref=e50]: 更新 5日前
+        - link "mute-e2e-verify3 Option A(録音側無音)後の再E2E 1 ソース 更新 7日前" [ref=e51] [cursor=pointer]:
+          - /url: /notebooks/01KVRJEF3MBY1VE709GVRPGK7X
+          - heading "mute-e2e-verify3" [level=3] [ref=e52]
+          - paragraph [ref=e53]: Option A(録音側無音)後の再E2E
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - img [ref=e56]
+              - text: 1 ソース
+            - generic [ref=e57]: 更新 7日前
+        - link "mute-e2e-verify2 timebase修正後の再E2E(パイナップル除外確認) 1 ソース 更新 7日前" [ref=e58] [cursor=pointer]:
+          - /url: /notebooks/01KVQZD9H8SJV9DPE3R11JVWV8
+          - heading "mute-e2e-verify2" [level=3] [ref=e59]
+          - paragraph [ref=e60]: timebase修正後の再E2E(パイナップル除外確認)
+          - generic [ref=e61]:
+            - generic [ref=e62]:
+              - img [ref=e63]
+              - text: 1 ソース
+            - generic [ref=e64]: 更新 7日前
+        - link "mute-e2e-verify ミュート区間がオフライン変換から除外されるE2E検証 1 ソース 更新 7日前" [ref=e65] [cursor=pointer]:
+          - /url: /notebooks/01KVQXD0R0RVTX0P83WZM4Y0NF
+          - heading "mute-e2e-verify" [level=3] [ref=e66]
+          - paragraph [ref=e67]: ミュート区間がオフライン変換から除外されるE2E検証
+          - generic [ref=e68]:
+            - generic [ref=e69]:
+              - img [ref=e70]
+              - text: 1 ソース
+            - generic [ref=e71]: 更新 7日前
+        - link "AI関係 AI関連の技術的な調べものリスト 2 ソース 更新 9日前" [ref=e72] [cursor=pointer]:
+          - /url: /notebooks/01KVN2Z0PDTJMCK4KBQMDP1D44
+          - heading "AI関係" [level=3] [ref=e73]
+          - paragraph [ref=e74]: AI関連の技術的な調べものリスト
+          - generic [ref=e75]:
+            - generic [ref=e76]:
+              - img [ref=e77]
+              - text: 2 ソース
+            - generic [ref=e78]: 更新 9日前
+        - link "scope-test 2 ソース 更新 11日前" [ref=e79] [cursor=pointer]:
+          - /url: /notebooks/01KVE9MNP6ASQJDPGZQS0674GX
+          - heading "scope-test" [level=3] [ref=e80]
+          - generic [ref=e81]:
+            - generic [ref=e82]:
+              - img [ref=e83]
+              - text: 2 ソース
+            - generic [ref=e84]: 更新 11日前
+        - link "s5-verify 5 ソース 更新 11日前" [ref=e85] [cursor=pointer]:
+          - /url: /notebooks/01KVDEP0VV134M8HXS66SYFJ3G
+          - heading "s5-verify" [level=3] [ref=e86]
+          - generic [ref=e87]:
+            - generic [ref=e88]:
+              - img [ref=e89]
+              - text: 5 ソース
+            - generic [ref=e90]: 更新 11日前
+        - link "rec-pipeline-test 1 ソース 更新 12日前" [ref=e91] [cursor=pointer]:
+          - /url: /notebooks/01KVBW1V32AJ7M4XG717T1T8RB
+          - heading "rec-pipeline-test" [level=3] [ref=e92]
+          - generic [ref=e93]:
+            - generic [ref=e94]:
+              - img [ref=e95]
+              - text: 1 ソース
+            - generic [ref=e96]: 更新 12日前
+        - link "rec-smoke2 2 ソース 更新 12日前" [ref=e97] [cursor=pointer]:
+          - /url: /notebooks/01KVB1XC0710QT88ZVM6YHNT90
+          - heading "rec-smoke2" [level=3] [ref=e98]
+          - generic [ref=e99]:
+            - generic [ref=e100]:
+              - img [ref=e101]
+              - text: 2 ソース
+            - generic [ref=e102]: 更新 12日前
+        - link "rec-smoke 3 ソース 更新 12日前" [ref=e103] [cursor=pointer]:
+          - /url: /notebooks/01KVB1E6ZWT5D82Z2VXF228KN6
+          - heading "rec-smoke" [level=3] [ref=e104]
+          - generic [ref=e105]:
+            - generic [ref=e106]:
+              - img [ref=e107]
+              - text: 3 ソース
+            - generic [ref=e108]: 更新 12日前
+  - dialog "クラッシュレポート機能" [ref=e109]:
+    - banner [ref=e110]:
+      - heading "クラッシュレポート機能" [level=2] [ref=e111]
+    - generic [ref=e112]:
+      - paragraph [ref=e113]: NotebookOllamaでエラーが発生したとき、開発者に不具合情報を報告できます。
+      - paragraph [ref=e114]:
+        - strong [ref=e115]: 送信前にプレビューが表示され、内容を確認・編集してから送信できます。
+        - text: 報告は任意です。
+      - group [ref=e116]:
+        - generic "動作の詳細を見る" [ref=e117] [cursor=pointer]
+    - contentinfo [ref=e118]:
+      - button "後で決める" [ref=e119] [cursor=pointer]
+      - button "有効にする" [ref=e120] [cursor=pointer]
