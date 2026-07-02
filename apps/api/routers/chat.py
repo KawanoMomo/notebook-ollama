@@ -22,9 +22,9 @@ router = APIRouter(prefix="/api/notebooks/{notebook_id}/conversations", tags=["c
 
 
 def _ping_event() -> ServerSentEvent:
-    """名前付き ping イベント。フロントが lastBeatAt 更新に使う。
+    """名前付き ping イベント。
 
-    未知イベントは無視されるため後方互換。
+    フロントが lastBeatAt 更新に使う(未知イベントは無視されるため後方互換)。
     """
     return ServerSentEvent(data="{}", event="ping")
 

@@ -1,0 +1,144 @@
+INFO:     Started server process [15828]
+INFO:     Waiting for application startup.
+{"stt_id": "faster-whisper-cuda", "diarize_id": "sherpa-onnx-cpu", "llm_id": "ollama-cuda", "text_embed_id": "ollama-bge-m3-cpu", "vendor": "nvidia", "dgpu": "NVIDIA GeForce RTX 2080 Ti", "cpu_brand": "12th Gen Intel(R) Core(TM) i9-12900KF", "reason": "STT: CUDA dGPU detected (NVIDIA GeForce RTX 2080 Ti) -> faster-whisper-cuda; DIARIZE: diarizer is cpu-only in v1 -> sherpa-onnx-cpu; LLM: CUDA dGPU detected (NVIDIA GeForce RTX 2080 Ti) -> ollama-cuda; TEXT_EMBED: CUDA dGPU detected but GPU embed disabled (Ollama #13572 NaN bug) -> ollama-bge-m3-cpu", "event": "backend_plan_resolved", "level": "info", "timestamp": "2026-06-29T18:01:42.278022Z"}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
+INFO:     127.0.0.1:65077 - "GET /api/notebooks/01KW711X3EPBBBXYMWAH4PF5JG/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62783 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62784 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55772 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53294 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53294 - "GET /_app/immutable/entry/start.Bbk1-vI6.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51569 - "GET /_app/immutable/chunks/75ItxC-8.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51664 - "GET /_app/immutable/entry/app.DGCJZuRp.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57347 - "GET /_app/immutable/chunks/CCmbrD0F.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56453 - "GET /_app/immutable/chunks/CWj6FrbW.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54539 - "GET /_app/immutable/chunks/wJBRoup-.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54539 - "GET /_app/immutable/assets/client.BIszycmQ.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53294 - "GET /_app/immutable/assets/0.DS3WAfSO.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54539 - "GET /_app/immutable/assets/Toast.BGR42tWp.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53294 - "GET /_app/immutable/chunks/C6lIVPeP.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56453 - "GET /_app/immutable/chunks/Q_cDGv5o.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56453 - "GET /_app/immutable/chunks/CqY_d_nr.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54539 - "GET /_app/immutable/nodes/0.dKkqN4Rb.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51664 - "GET /_app/immutable/chunks/B0FvubME.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51569 - "GET /_app/immutable/chunks/C-oyKow3.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53294 - "GET /_app/immutable/chunks/Dfwm482k.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53294 - "GET /_app/immutable/chunks/7rsVDeab.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57347 - "GET /_app/immutable/chunks/CJ307fqy.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54539 - "GET /_app/immutable/nodes/1.jIVg1iwj.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51664 - "GET /_app/immutable/nodes/2.Drz1DWew.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51569 - "GET /_app/immutable/assets/Spinner.COIclFpS.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56453 - "GET /_app/immutable/assets/Button.BHt3bu-d.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53294 - "GET /_app/immutable/assets/2.D1i_7S47.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57347 - "GET /_app/immutable/chunks/7qE2PubM.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51569 - "GET /_app/immutable/chunks/D_J9Kyqf.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51569 - "GET /api/notebooks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61303 - "GET /settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61303 - "GET /_app/immutable/entry/start.Bbk1-vI6.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63309 - "GET /_app/immutable/chunks/75ItxC-8.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58369 - "GET /_app/immutable/chunks/CCmbrD0F.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57767 - "GET /_app/immutable/entry/app.DGCJZuRp.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64741 - "GET /_app/immutable/chunks/CWj6FrbW.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59687 - "GET /_app/immutable/chunks/wJBRoup-.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63309 - "GET /_app/immutable/assets/Toast.BGR42tWp.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61303 - "GET /_app/immutable/assets/client.BIszycmQ.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58369 - "GET /_app/immutable/assets/0.DS3WAfSO.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57767 - "GET /_app/immutable/chunks/C6lIVPeP.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64741 - "GET /_app/immutable/chunks/Q_cDGv5o.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59687 - "GET /_app/immutable/nodes/0.dKkqN4Rb.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63309 - "GET /_app/immutable/chunks/CqY_d_nr.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61303 - "GET /_app/immutable/chunks/B0FvubME.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58369 - "GET /_app/immutable/chunks/C-oyKow3.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57767 - "GET /_app/immutable/chunks/Dfwm482k.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64741 - "GET /_app/immutable/chunks/7rsVDeab.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59687 - "GET /_app/immutable/chunks/CJ307fqy.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63309 - "GET /_app/immutable/nodes/1.jIVg1iwj.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61303 - "GET /_app/immutable/nodes/4.Czy9Wut2.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58369 - "GET /_app/immutable/chunks/BUkVVZ1l.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57767 - "GET /_app/immutable/assets/Spinner.COIclFpS.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64741 - "GET /_app/immutable/assets/4.DCuvRmqa.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59687 - "GET /_app/immutable/chunks/7qE2PubM.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61303 - "GET /api/audio-devices HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64741 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59687 - "GET /api/stats HTTP/1.1" 200 OK
+HTTP Request: GET http://localhost:11434/api/tags "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/embeddings "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/embeddings "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:57767 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57767 - "GET /api/settings/acceleration HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61594 - "GET /api/settings/acceleration HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62027 - "GET /notebooks/01KVTGEMYYYB5PFYTP8JN45VH9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62027 - "GET /_app/immutable/entry/start.Bbk1-vI6.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56904 - "GET /_app/immutable/chunks/75ItxC-8.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60176 - "GET /_app/immutable/chunks/CCmbrD0F.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65315 - "GET /_app/immutable/entry/app.DGCJZuRp.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59206 - "GET /_app/immutable/chunks/CWj6FrbW.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61736 - "GET /_app/immutable/chunks/wJBRoup-.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56904 - "GET /_app/immutable/assets/client.BIszycmQ.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62027 - "GET /_app/immutable/assets/Toast.BGR42tWp.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65315 - "GET /_app/immutable/chunks/C6lIVPeP.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60176 - "GET /_app/immutable/assets/0.DS3WAfSO.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61736 - "GET /_app/immutable/nodes/0.dKkqN4Rb.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59206 - "GET /_app/immutable/chunks/Q_cDGv5o.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65315 - "GET /_app/immutable/chunks/B0FvubME.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56904 - "GET /_app/immutable/chunks/CqY_d_nr.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60176 - "GET /_app/immutable/chunks/C-oyKow3.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61736 - "GET /_app/immutable/chunks/7rsVDeab.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59206 - "GET /_app/immutable/chunks/CJ307fqy.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62027 - "GET /_app/immutable/chunks/Dfwm482k.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65315 - "GET /_app/immutable/assets/Spinner.COIclFpS.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56904 - "GET /_app/immutable/assets/Button.BHt3bu-d.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59206 - "GET /_app/immutable/chunks/BUkVVZ1l.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62027 - "GET /_app/immutable/assets/3.DYklE5sc.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61736 - "GET /_app/immutable/nodes/1.jIVg1iwj.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60176 - "GET /_app/immutable/nodes/3.dtgwao5E.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65315 - "GET /_app/immutable/chunks/7qE2PubM.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56904 - "GET /_app/immutable/chunks/D_J9Kyqf.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60176 - "GET /api/prompts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62027 - "GET /api/notebooks/01KVTGEMYYYB5PFYTP8JN45VH9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56904 - "GET /api/notebooks/01KVTGEMYYYB5PFYTP8JN45VH9/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62027 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60176 - "GET /api/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65315 - "GET /api/notebooks/01KVTGEMYYYB5PFYTP8JN45VH9/events HTTP/1.1" 200 OK
+HTTP Request: GET http://localhost:11434/api/tags "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:56904 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56509 - "GET /api/health HTTP/1.1" 200 OK

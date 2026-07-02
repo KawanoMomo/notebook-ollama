@@ -1,0 +1,30 @@
+{
+  "beam_size": 5,
+  "captured_at_utc": "2026-06-29T23:20:58.715913+00:00",
+  "compute_type": "float16",
+  "device": "cuda",
+  "fixture_kind": "synthetic_sine_440hz",
+  "fixture_path": null,
+  "hardware": {
+    "cpu_brand": "12th Gen Intel(R) Core(TM) i9-12900KF",
+    "cuda_available": true,
+    "cuda_device_count": 1
+  },
+  "language": "ja",
+  "metrics": {
+    "audio_duration_s": 30.0,
+    "cuda_first_chunk_latency_ms": 334.06969998031855,
+    "cuda_rtf": 0.01114034333343928,
+    "cuda_tokens_per_sec": 20.94489607272256,
+    "segment_count": 1,
+    "total_tokens": 7,
+    "transcription_wall_s": 0.3342103000031784
+  },
+  "model": "large-v3",
+  "notes": [
+    "Audio is a synthetic 440 Hz sine wave (no real-speech fixture available). RTF / tokens/sec values are NOT comparable to a real-speech run. To capture a meaningful baseline, drop a 16 kHz mono float32 WAV at tests/fixtures/30s-jp.wav and re-run this script.",
+    "regression_ratio is 1.30 (not the default 1.10) because the synthetic fixture decodes in ~250 ms wall time with 1 segment / ~7 tokens. A 10 % threshold (25 ms) sits below the natural CUDA-stream / GC / thermal noise floor on a 2080 Ti, so a 1.10 gate flags run-to-run jitter as a regression. The 1.30 ratio absorbs that jitter; a real-speech fixture would return to the tighter 1.10."
+  ],
+  "placeholder": false,
+  "regression_ratio": 1.3
+}

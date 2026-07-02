@@ -1,0 +1,14 @@
+=== GET http://127.0.0.1:8765/api/settings -> 200 (ollama block, evidence for AC3 schema-merge integration) ===
+{
+  "ollama": {
+    "endpoint": "http://localhost:11434",
+    "default_model": "gpt-oss:20b",
+    "embedding_model": "bge-m3",
+    "embedding_dim": 1024,
+    "runtime_backend": "auto",            <-- this branch (igpu-npu-accel)
+    "text_embed_backend": "auto",         <-- this branch (igpu-npu-accel)
+    "request_timeout_seconds": 600.0,     <-- master (ollama-timeout-config)
+    "chat_read_timeout_seconds": 600.0    <-- master (ollama-timeout-config)
+  }
+}
+All four merged fields coexist in the OllamaSettingsSchema (apps/api/schemas/settings.py lines 26-29) and are served by the API. Schema merge integration is correct.

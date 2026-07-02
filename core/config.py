@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from core.crash_reporter.settings import CrashReportSettings
 
 
 class OllamaSettings(BaseModel):
@@ -23,6 +26,13 @@ class OllamaSettings(BaseModel):
     # multilingual inputs (esp. Japanese) under bge-m3. num_gpu=0 forces CPU
     # inference for embeddings. Set to None or {} to use Ollama defaults.
     embedding_options: dict[str, int] = Field(default_factory=lambda: {"num_gpu": 0})
+    # Acceleration backend selection (Phase 1: CUDA-only baseline).
+    # "auto" -> BackendPlanner picks "ollama-cuda" on RTX 2080 Ti, preserving
+    # existing behavior. Phase 2 will widen the Literal to include
+    # ipex-llm-ollama / ollama-vulkan / openvino-genai-server.
+    runtime_backend: Literal["auto", "ollama-cuda"] = "auto"
+    # Phase 2 will widen to include ollama-bge-m3-gpu / openvino-bge-m3-{igpu,npu}.
+    text_embed_backend: Literal["auto", "ollama-bge-m3-cpu"] = "auto"
 
 
 class GenerationSettings(BaseModel):
@@ -70,6 +80,15 @@ class AudioSettings(BaseModel):
     storage_bitrate_kbps: int = 64
     keep_audio: bool = True
     auto_title: bool = True             # 停止後パイプラインで LLM がタイトル自動命名
+    # Acceleration backend selection (Phase 1: CUDA-only baseline).
+    # "auto" -> BackendPlanner picks faster-whisper-cuda / sherpa-onnx-cpu /
+    # sherpa-onnx-cpu on RTX 2080 Ti, preserving existing behavior.
+    # Phase 2 will widen the Literal to include openvino-whisper-{igpu,npu}.
+    transcriber_backend: Literal[
+        "auto", "faster-whisper-cuda", "faster-whisper-cpu"
+    ] = "auto"
+    diarizer_backend: Literal["auto", "sherpa-onnx-cpu"] = "auto"
+    speaker_embed_backend: Literal["auto", "sherpa-onnx-cpu"] = "auto"
 
 
 def _default_data_dir() -> Path:
@@ -90,6 +109,7 @@ class AppConfig(BaseSettings):
     server: ServerSettings = Field(default_factory=ServerSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
+    crash_report: CrashReportSettings = Field(default_factory=CrashReportSettings)
 
     @property
     def metadata_db_path(self) -> Path:
@@ -111,6 +131,40 @@ class AppConfig(BaseSettings):
     def mcp_token_path(self) -> Path:
         return self.data_dir / "mcp.token"
 
+    # ------------------------------------------------------------------
+    # Crash-report / Feedback Hub paths (spec §4 / §7.2, plan Sprint 3)
+    # ------------------------------------------------------------------
+    @property
+    def crash_pending_dir(self) -> Path:
+        """未送信 crash レポート (PendingCrash JSON) のディレクトリ。"""
+        return self.data_dir / "crash-pending"
+
+    @property
+    def reported_path(self) -> Path:
+        """既報 fingerprint を 1 行 1 ハッシュで永続化するファイル。"""
+        return self.data_dir / "reported.txt"
+
+    @property
+    def running_lock_path(self) -> Path:
+        """uvicorn プロセス PID を保持する lock。unclean shutdown 検知に使う。"""
+        return self.data_dir / "running.lock"
+
+    @property
+    def notices_path(self) -> Path:
+        """お知らせ (FeedbackHub Notice タブ) の app-bundled JSON 配置。
+
+        ユーザの ``data_dir`` ではなくリポジトリ同梱の ``<repo>/data/notices.json``
+        を返す (plan Task 3.6 / 3.7: お知らせはアプリ配布物の一部)。
+        """
+        # core/config.py → parents[1] = <repo root>
+        return Path(__file__).resolve().parents[1] / "data" / "notices.json"
+
     def ensure_dirs(self) -> None:
-        for p in (self.data_dir, self.qdrant_path, self.sources_dir, self.logs_dir):
+        for p in (
+            self.data_dir,
+            self.qdrant_path,
+            self.sources_dir,
+            self.logs_dir,
+            self.crash_pending_dir,
+        ):
             p.mkdir(parents=True, exist_ok=True)

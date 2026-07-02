@@ -1,8 +1,5 @@
 """WASAPI loopback + マイク 同時 2ch 録音。"""
 
-# threading.Lock は class ではなく factory function なので、ランタイムでの
-# `threading.Lock | None` 評価が TypeError になる。PEP 563 で annotation を
-# 文字列化することで回避する (UP045 auto-fix 由来の互換問題)。
 from __future__ import annotations
 
 import contextlib

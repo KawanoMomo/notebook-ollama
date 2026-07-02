@@ -204,8 +204,10 @@ async def upload_url(
 async def list_sources(request: Request, notebook_id: str) -> list[Source]:
     ctx = request.app.state.ctx
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
-    rows = sources_repo.list_sources(ctx.conn, notebook_id=notebook_id)
-    return [_to_schema(r, ctx.config.sources_dir) for r in rows]
+    return [
+        _to_schema(r, ctx.config.sources_dir)
+        for r in sources_repo.list_sources(ctx.conn, notebook_id=notebook_id)
+    ]
 
 
 @router.delete("/{notebook_id}/sources/{source_id}", status_code=204)

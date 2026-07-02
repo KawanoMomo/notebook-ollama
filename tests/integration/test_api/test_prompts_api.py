@@ -31,8 +31,7 @@ def test_get_prompts_returns_defaults_when_empty(client):
     body = r.json()
     assert len(body["fixed"]) == 3
     assert all(
-        s["title"] == "" and s["body"] == "" and s["icon_url"] is None
-        for s in body["fixed"]
+        s["title"] == "" and s["body"] == "" and s["icon_url"] is None for s in body["fixed"]
     )
     assert body["dropdown"] == []
 

@@ -1,0 +1,8 @@
+28. [GET] http://127.0.0.1:8765/api/prompts => [200] OK
+29. [GET] http://127.0.0.1:8765/api/notebooks/01KW711X3EPBBBXYMWAH4PF5JG => [200] OK
+30. [GET] http://127.0.0.1:8765/api/notebooks/01KW711X3EPBBBXYMWAH4PF5JG/sources => [200] OK
+31. [GET] http://127.0.0.1:8765/api/models => [200] OK
+32. [GET] http://127.0.0.1:8765/api/settings => [200] OK
+33. [GET] http://127.0.0.1:8765/api/stats => [200] OK
+
+Note: 28 static requests not shown, run with "static" option to see them.

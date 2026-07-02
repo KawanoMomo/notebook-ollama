@@ -39,15 +39,22 @@ def _make_recorder(ctx, session_dir):
 
 
 def _get_transcriber(request):
-    """Lazily build (and cache on app state) the shared whisper transcriber.
+    """Lazily resolve the shared whisper transcriber for live + offline use.
 
-    Created on first live-caption recording (or offline stop) so the model load
-    cost is only paid when transcription is actually requested. The same cached
-    instance backs both live captions and the offline pipeline.
+    Resolution order (highest priority first):
 
-    Honors a test hook: if ``ctx.transcriber_factory`` is set, it is used to
-    build the cached transcriber instead of constructing the real one (so tests
-    never load a whisper model).
+    1. ``ctx.transcriber_factory`` — legacy 0-arg test hook used by
+       ``tests/integration/test_api/test_recordings_api.py`` and
+       ``test_recording_stop_dispatch.py`` to inject a fake transcriber
+       AFTER lifespan startup. Preserved verbatim so the existing test
+       suite stays GREEN.
+    2. ``ctx.transcriber`` (Sprint 3 DI) — a lazy property on AppContext
+       that builds via ``ctx.backend_factory.build_transcriber(...)``.
+       The factory wraps the existing ``Transcriber`` class with
+       identical constructor args, so behaviour is preserved.
+
+    The transcriber is cached on ``app.state.transcriber`` so live captions
+    and the offline pipeline share a single WhisperModel load.
     """
     tr = getattr(request.app.state, "transcriber", None)
     if tr is None:
@@ -56,52 +63,32 @@ def _get_transcriber(request):
         if fac is not None:
             tr = fac()
         else:
-            from core.recording.transcriber import Transcriber
-            a = ctx.config.audio
-            tr = Transcriber(
-                model_size=a.whisper_model, device=a.device, compute_type=a.compute_type
-            )
+            # Sprint 3 DI path — ctx.transcriber is the lazy @property on
+            # AppContext, backed by ctx.backend_factory.build_transcriber.
+            tr = ctx.transcriber
         request.app.state.transcriber = tr
     return tr
 
 
 def _get_diarizer(request):
-    """Lazily build the speaker diarizer for the offline pipeline.
+    """Lazily resolve the speaker diarizer for the offline pipeline.
 
-    Returns None when diarization is disabled or the ONNX models are not present
-    on disk, so the pipeline degrades gracefully to single-speaker mode. Honors a
-    test hook (``ctx.diarizer_factory``) so tests never load a real model.
+    Returns ``None`` when diarization is disabled or the ONNX models are not
+    present on disk, so the pipeline degrades gracefully to single-speaker
+    mode. Resolution order mirrors :func:`_get_transcriber`:
+
+    1. ``ctx.diarizer_factory`` — legacy 0-arg test hook.
+    2. ``ctx.diarizer`` (Sprint 3 DI) — lazy property on AppContext that
+       builds via ``ctx.backend_factory.build_diarizer(...)`` with the model
+       paths resolved from ``ctx.config.audio`` (and the disk-existence
+       check applied inside the property so the Factory stays I/O-free).
     """
     ctx = request.app.state.ctx
     fac = getattr(ctx, "diarizer_factory", None)
     if fac is not None:
         return fac()
-    cfg = ctx.config.audio
-    if not cfg.diarization_enabled:
-        return None
-    seg = cfg.diarizer_segmentation_model or str(
-        ctx.config.data_dir / "models" / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
-    )
-    emb = cfg.diarizer_embedding_model or str(
-        ctx.config.data_dir
-        / "models"
-        / "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
-    )
-    if not (Path(seg).exists() and Path(emb).exists()):
-        return None  # models not present -> pipeline degrades to no-diarization
-    try:
-        from core.recording.diarizer import SherpaDiarizer
-        # SherpaDiarizer.__init__(segmentation_model, embedding_model, threshold,
-        # num_clusters, ...). max_speakers None -> -1 (auto cluster count).
-        num_clusters = cfg.max_speakers if cfg.max_speakers is not None else -1
-        return SherpaDiarizer(
-            segmentation_model=seg,
-            embedding_model=emb,
-            threshold=cfg.diarizer_threshold,
-            num_clusters=num_clusters,
-        )
-    except Exception:
-        return None
+    # Sprint 3 DI path — ctx.diarizer is the lazy @property on AppContext.
+    return ctx.diarizer
 
 
 @router.get("/api/audio-devices")
@@ -110,7 +97,9 @@ async def audio_devices():
         from core.recording.recorder import list_input_devices
         return list_input_devices()
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"recording extras not installed: {e}") from e
+        raise HTTPException(
+            status_code=503, detail=f"recording extras not installed: {e}"
+        ) from e
 
 
 @router.post("/api/notebooks/{notebook_id}/recordings", response_model=RecordingStarted)
@@ -367,8 +356,8 @@ async def retry_recording(
     _require_recording_pipeline(ctx)
     try:
         src = sources_repo.get_source(ctx.conn, source_id)
-    except AppError as e:
-        raise HTTPException(status_code=404, detail="source not found") from e
+    except AppError as exc:
+        raise HTTPException(status_code=404, detail="source not found") from exc
     if src.notebook_id != notebook_id:
         raise HTTPException(status_code=404, detail="source not in notebook")
     if src.kind != "recording":
@@ -410,8 +399,8 @@ async def cancel_recording(request: Request, notebook_id: str, source_id: str):
     ctx = request.app.state.ctx
     try:
         src = sources_repo.get_source(ctx.conn, source_id)
-    except AppError as e:
-        raise HTTPException(status_code=404, detail="source not found") from e
+    except AppError as exc:
+        raise HTTPException(status_code=404, detail="source not found") from exc
     if src.notebook_id != notebook_id:
         raise HTTPException(status_code=404, detail="source not in notebook")
     if src.kind != "recording":

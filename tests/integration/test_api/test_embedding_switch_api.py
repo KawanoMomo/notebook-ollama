@@ -272,7 +272,7 @@ class _FakeRequest:
 async def test_settings_events_generator_maps_type_to_event(client):
     """ジェネレータ本体を実行し、type→event 名写像・data の type 除去・unsubscribe を検証する。
 
-    (方式 a) ルート settings_events を直接呼び、返る EventSourceResponse.body_iterator
+    方式 a: ルート settings_events を直接呼び、返る EventSourceResponse.body_iterator
     (= gen())を drive することで写像コードを実コードとして1回実行する。
     """
     ctx = client.app.state.ctx
