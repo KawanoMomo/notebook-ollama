@@ -1,0 +1,14 @@
+{
+  "note": "Playwright browser_network_requests (non-static) captured per page. All 2xx.",
+  "requests": [
+    { "ac": "AC1", "method": "GET", "url": "http://127.0.0.1:8765/api/notebooks", "status": 200 },
+    { "ac": "AC2", "method": "GET", "url": "http://127.0.0.1:8765/api/settings/acceleration", "status": 200 },
+    { "ac": "AC3", "method": "GET", "url": "http://127.0.0.1:8765/api/settings", "status": 200, "comment": "returns runtime_backend/text_embed_backend/request_timeout_seconds/chat_read_timeout_seconds" },
+    { "ac": "AC4", "method": "GET", "url": "http://127.0.0.1:8765/api/prompts", "status": 200 },
+    { "ac": "AC4", "method": "GET", "url": "http://127.0.0.1:8765/api/notebooks/01KW711X3EPBBBXYMWAH4PF5JG", "status": 200 },
+    { "ac": "AC4", "method": "GET", "url": "http://127.0.0.1:8765/api/notebooks/01KW711X3EPBBBXYMWAH4PF5JG/sources", "status": 200 },
+    { "ac": "AC4", "method": "GET", "url": "http://127.0.0.1:8765/api/models", "status": 200 },
+    { "ac": "AC4", "method": "GET", "url": "http://127.0.0.1:8765/api/stats", "status": 200 }
+  ],
+  "failed_requests": []
+}

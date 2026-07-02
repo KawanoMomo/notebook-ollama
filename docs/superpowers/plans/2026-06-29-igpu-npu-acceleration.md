@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development`(推奨)または `superpowers:executing-plans` でタスクごとに実装する。各 Step はチェックボックス(`- [ ]`)で進捗管理する。
 
+> **Status (2026-07-02): Phase 1 (Sprint 1〜3) 実装完了・検証済み。** 本文中の `- [ ]` は各 Step 実施時にチェックが更新されなかった記録漏れで、実装未了を意味しない(git log で Sprint 1/2/3 各コミット確認済み)。完了の裏付け: `tests/unit/accel/` 相当 60 件 PASS、CUDA 回帰ゲート (`pytest -m "cuda and slow"`) 3件 PASS、Sprint3 最終 smoke report PASS (`docs/eval/2026-06-30-igpu-npu-accel-sprint3-final/`)。2026-07-02 に origin/master (17コミット先行) とのコンフリクトを解消・マージし、マージ後の実機視覚検証も PASS (`docs/eval/2026-07-02-igpu-npu-accel-post-merge/`)。Phase 2 (Intel/AMD 実バックエンド) は開発機に対象ハードウェアが無いため計画上無期限延期のまま(下記 Phase 2 セクション参照)。
+
 ## 本プランのスコープ — Phase 1 限定
 
 **本 PR は Phase 1(Sprint 1〜3)のみを実装する。** Sprint 4〜7(Intel/AMD 実バックエンド・UI 上書き・インストールスクリプト)は **Phase 2 として後送り** とし、本書末尾の `## Phase 2 (deferred)` セクションに移動する。

@@ -1,0 +1,13 @@
+=== Playwright browser_console_messages (level=error, all=true) ===
+Captured after each navigation. NOTEBOOK-OLLAMA post-merge visual verification 2026-07-02.
+
+[AC1] top page  http://127.0.0.1:8765/
+  -> Total messages: 0 (Errors: 0, Warnings: 0)
+
+[AC2] settings acceleration tab  http://127.0.0.1:8765/settings
+  -> Total messages: 0 (Errors: 0, Warnings: 0)
+
+[AC4] notebook detail  http://127.0.0.1:8765/notebooks/01KW711X3EPBBBXYMWAH4PF5JG
+  -> Total messages: 0 (Errors: 0, Warnings: 0)
+
+console.error total across all evaluated pages: 0
