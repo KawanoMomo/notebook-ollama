@@ -67,6 +67,8 @@ function makeAppSettings(crash_report: CrashReportSettings | undefined): AppSett
       default_model: 'qwen2.5:14b',
       embedding_model: 'nomic-embed-text',
       embedding_dim: 768,
+      request_timeout_seconds: 600,
+      chat_read_timeout_seconds: 600,
     },
     generation: { context_budget_ratio: 0.8, response_budget_tokens: 1024 },
     retrieval: { top_k: 8, top_k_max: 30, min_history_turns: 2 },

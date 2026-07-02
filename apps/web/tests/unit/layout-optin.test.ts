@@ -138,6 +138,8 @@ const FULL_SETTINGS_UNDECIDED: AppSettings = {
     default_model: 'llama3',
     embedding_model: 'nomic-embed-text',
     embedding_dim: 768,
+    request_timeout_seconds: 600,
+    chat_read_timeout_seconds: 600,
   },
   generation: { context_budget_ratio: 0.5, response_budget_tokens: 2048 },
   retrieval: { top_k: 5, top_k_max: 10, min_history_turns: 1 },
