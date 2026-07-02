@@ -13,6 +13,10 @@ export interface LiveCaption {
 
 export interface RecordingStore {
   readonly recording: boolean;
+  /** start() の API 応答待ち。クリック直後の optimistic pending 表示に使う。 */
+  readonly starting: boolean;
+  /** stop() の API 応答待ち。 */
+  readonly stopping: boolean;
   readonly recordingId: string | null;
   readonly sourceId: string | null;
   readonly notebookId: string | null;
@@ -46,6 +50,8 @@ export function createRecordingStore(
   nbStore: CurrentNotebookStore = currentNotebookStore,
 ): RecordingStore {
   let recording = $state(false);
+  let starting = $state(false);
+  let stopping = $state(false);
   let recordingId = $state<string | null>(null);
   let sourceId = $state<string | null>(null);
   let notebookId = $state<string | null>(null);
@@ -237,6 +243,12 @@ export function createRecordingStore(
     get recording() {
       return recording;
     },
+    get starting() {
+      return starting;
+    },
+    get stopping() {
+      return stopping;
+    },
     get recordingId() {
       return recordingId;
     },
@@ -277,30 +289,39 @@ export function createRecordingStore(
       return error;
     },
     async start(nbId) {
-      if (recording) return;
+      if (recording || starting) return;
       error = null;
-      const started = await api.start(nbId, { live_caption: liveCaptionEnabled });
-      recording = true;
-      recordingId = started.recording_id;
-      sourceId = started.source_id;
-      notebookId = nbId;
-      liveCaptionActive = started.live_caption;
-      captions = [];
-      micLevel = 0;
-      sysLevel = 0;
-      elapsedMs = 0;
-      startedAt = Date.now();
-      micMuted = false;
-      systemMuted = false;
-      clearTimer();
-      timer = setInterval(() => {
-        elapsedMs = Date.now() - startedAt;
-      }, 200);
-      intentionalClose = false; // 新規接続。onclose での自動再接続を許可する
-      reconnectAttempts = 0;
-      connectWs(started.recording_id);
+      // optimistic pending: API 応答を待たずにボタンを即座に反応させる。
+      // 失敗時は finally で戻り、recording は false のままなのでロールバック不要。
+      starting = true;
+      try {
+        const started = await api.start(nbId, { live_caption: liveCaptionEnabled });
+        recording = true;
+        recordingId = started.recording_id;
+        sourceId = started.source_id;
+        notebookId = nbId;
+        liveCaptionActive = started.live_caption;
+        captions = [];
+        micLevel = 0;
+        sysLevel = 0;
+        elapsedMs = 0;
+        startedAt = Date.now();
+        micMuted = false;
+        systemMuted = false;
+        clearTimer();
+        timer = setInterval(() => {
+          elapsedMs = Date.now() - startedAt;
+        }, 200);
+        intentionalClose = false; // 新規接続。onclose での自動再接続を許可する
+        reconnectAttempts = 0;
+        connectWs(started.recording_id);
+      } finally {
+        starting = false;
+      }
     },
     async stop() {
+      if (stopping) return;
+      stopping = true;
       const nbId = notebookId;
       const rid = recordingId;
       const sid = sourceId; // resetTransient() が null 化する前に捕捉
@@ -335,6 +356,7 @@ export function createRecordingStore(
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
       } finally {
+        stopping = false;
         resetTransient();
       }
     },

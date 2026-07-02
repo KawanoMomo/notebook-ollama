@@ -26,6 +26,14 @@ export const settingsApi = {
       method: 'POST',
       body: JSON.stringify({ model }),
     }),
+  putOllamaTimeouts: (request_timeout_seconds: number, chat_read_timeout_seconds: number) =>
+    request<{ request_timeout_seconds: number; chat_read_timeout_seconds: number }>(
+      '/api/settings/ollama/timeouts',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ request_timeout_seconds, chat_read_timeout_seconds }),
+      },
+    ),
   /**
    * クラッシュレポート設定の更新 (spec §7.3 / Sprint 7 Task 7.2)。
    *

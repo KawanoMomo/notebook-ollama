@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GenerationSettingsSchema(BaseModel):
@@ -22,10 +22,18 @@ class OllamaSettingsSchema(BaseModel):
     default_model: str
     embedding_model: str
     embedding_dim: int | None = None
+    request_timeout_seconds: float = 600.0
+    chat_read_timeout_seconds: float = 600.0
 
 
 class OllamaSettingsUpdate(BaseModel):
     default_model: str
+
+
+class OllamaTimeoutsUpdate(BaseModel):
+    # 24 時間以上は受け付けない(誤入力ガード)。最小は 5 秒。
+    request_timeout_seconds: float = Field(ge=5, le=86400)
+    chat_read_timeout_seconds: float = Field(ge=5, le=86400)
 
 
 class AudioSettingsSchema(BaseModel):

@@ -136,6 +136,8 @@ export interface OllamaSettings {
   default_model: string;
   embedding_model: string;
   embedding_dim: number | null;
+  request_timeout_seconds: number;
+  chat_read_timeout_seconds: number;
 }
 
 export interface OllamaSettingsUpdate {

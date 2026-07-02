@@ -10,6 +10,7 @@
   import { pushToast } from '$lib/components/Toast.svelte';
   import { bindShortcuts } from '$lib/utils/keys';
   import Spinner from '$lib/components/Spinner.svelte';
+  import JobStatusBar from '$lib/components/JobStatusBar.svelte';
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
   import ChatPanel from '$lib/components/ChatPanel.svelte';
   import LiveCaptionView from '$lib/components/LiveCaptionView.svelte';
@@ -31,6 +32,15 @@
   );
   // <select> の現在値。null(=既定)は空文字 '' を選択。
   const selectedModel = $derived(currentNotebookStore.notebook?.default_model ?? '');
+
+  // 進行中ジョブに録音変換パイプラインの step 情報(あれば)を合成する。
+  // summary/adr ジョブは step を発行しないため ingest のみ対象。
+  const jobRows = $derived(
+    currentNotebookStore.activeJobs.map((j) => ({
+      ...j,
+      step: j.kind === 'ingest' ? eventsStore.convStepFor(j.sourceId) : undefined,
+    })),
+  );
 
   async function onModelChange(e: Event) {
     const value = (e.currentTarget as HTMLSelectElement).value;
@@ -114,6 +124,8 @@
         </label>
       {/if}
     </div>
+
+  <JobStatusBar jobs={jobRows} />
 
   {#if currentNotebookStore.loading}
     <div class="state"><Spinner /> 読み込み中…</div>

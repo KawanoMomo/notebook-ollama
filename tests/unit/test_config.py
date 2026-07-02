@@ -4,7 +4,12 @@ from core.config import AppConfig, OllamaSettings
 
 
 def test_ollama_chat_read_timeout_default():
-    assert OllamaSettings().chat_read_timeout_seconds == 120.0
+    # 大型モデル(GPT-OSS:20B 等)の初回ロードを許容する 600s 保険値。
+    assert OllamaSettings().chat_read_timeout_seconds == 600.0
+
+
+def test_ollama_request_timeout_default():
+    assert OllamaSettings().request_timeout_seconds == 600.0
 
 
 def test_ollama_chat_read_timeout_env_override(monkeypatch):

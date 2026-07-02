@@ -2,6 +2,7 @@
   import { Square, Mic, MicOff, Volume2, VolumeX } from '@lucide/svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
   import { pushToast } from './Toast.svelte';
+  import Spinner from './Spinner.svelte';
 
   interface Props {
     // Accepted for symmetry with SourcesPanel and future per-notebook gain
@@ -39,8 +40,12 @@
     <div class="recrow">
       <span class="recnow"><span class="dot pulse"></span> 録音中</span>
       <span class="rectimer">{elapsed}</span>
-      <button class="stopbtn" onclick={stop}>
-        <Square size="12" fill="currentColor" /> 停止
+      <button class="stopbtn" onclick={stop} disabled={recordingStore.stopping}>
+        {#if recordingStore.stopping}
+          <Spinner size={12} /> 停止中…
+        {:else}
+          <Square size="12" fill="currentColor" /> 停止
+        {/if}
       </button>
     </div>
     <div class="recrow">
@@ -157,6 +162,10 @@
     padding: 3px 9px;
     font-size: 12px;
     font-weight: 600;
+  }
+  .stopbtn:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
   .switch {
     width: 38px;

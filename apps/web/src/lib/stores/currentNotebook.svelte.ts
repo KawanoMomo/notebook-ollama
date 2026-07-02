@@ -2,12 +2,21 @@ import type { Notebook, Source } from '$lib/api/types';
 import { notebooksApi } from '$lib/api/notebooks';
 import { sourcesApi } from '$lib/api/sources';
 
+/** JobStatusBar に表示する進行中ジョブ1件。 */
+export interface ActiveJob {
+  sourceId: string;
+  kind: 'ingest' | 'summary' | 'adr';
+  label: string;
+}
+
 export interface CurrentNotebookStore {
   readonly notebook: Notebook | null;
   readonly sources: Source[];
   readonly selectedSourceIds: ReadonlySet<string>;
   readonly loading: boolean;
   readonly error: string | null;
+  /** 進行中ジョブ一覧(取り込み/要約/ADR)。JobStatusBar が購読する。 */
+  readonly activeJobs: ActiveJob[];
   load(id: string): Promise<void>;
   update(patch: { default_model?: string | null }): Promise<void>;
   clear(): void;
@@ -33,6 +42,27 @@ export function createCurrentNotebookStore(
   let loading = $state(false);
   let error = $state<string | null>(null);
 
+  // 進行中ジョブの導出。判定条件は spec 2026-07-02 に基づく:
+  // status ∈ {pending,parsing,chunking,embedding} / summary_status==='generating'
+  // / adr_status==='generating'。error/skipped は進行中として扱わない。
+  const INGEST_ACTIVE = new Set(['pending', 'parsing', 'chunking', 'embedding']);
+  const activeJobs = $derived.by<ActiveJob[]>(() => {
+    const jobs: ActiveJob[] = [];
+    for (const s of sources) {
+      const name = s.title ?? s.origin ?? 'ソース';
+      if (INGEST_ACTIVE.has(s.status)) {
+        jobs.push({ sourceId: s.id, kind: 'ingest', label: `${name}: 取り込み中` });
+      }
+      if (s.summary_status === 'generating') {
+        jobs.push({ sourceId: s.id, kind: 'summary', label: `${name}: 要約生成中` });
+      }
+      if (s.adr_status === 'generating') {
+        jobs.push({ sourceId: s.id, kind: 'adr', label: `${name}: ADR生成中` });
+      }
+    }
+    return jobs;
+  });
+
   return {
     get notebook() {
       return notebook;
@@ -48,6 +78,9 @@ export function createCurrentNotebookStore(
     },
     get error() {
       return error;
+    },
+    get activeJobs() {
+      return activeJobs;
     },
     async load(id) {
       loading = true;
