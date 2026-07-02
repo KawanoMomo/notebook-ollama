@@ -5,10 +5,6 @@ summary_runner を呼ぶことの単体確認。
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
-
 import pytest
 
 
@@ -31,11 +27,11 @@ async def test_ingestion_pipeline_invokes_summary_runner_after_ready(tmp_path):
             return [0.1, 0.2, 0.3]
 
     class _FakeVS:
-        def upsert(self, vectors):  # noqa: ANN001
+        def upsert(self, vectors):
             pass
 
     md = b"# Title\n\nhello world hello world hello world hello world hello world."
-    from core.storage.sources_repo import create_source, SourceStatus
+    from core.storage.sources_repo import SourceStatus, create_source
     src = create_source(conn, notebook_id=nb.id, kind="markdown", origin="t.md")
 
     summary_calls: list[str] = []
@@ -83,7 +79,7 @@ async def test_ingestion_pipeline_summary_runner_failure_does_not_fail_ingestion
             return [0.1]
 
     class _FakeVS:
-        def upsert(self, vectors):  # noqa: ANN001
+        def upsert(self, vectors):
             pass
 
     async def _boom(_sid: str) -> None:

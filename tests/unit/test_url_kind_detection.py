@@ -13,7 +13,10 @@ def test_pdf_via_content_type():
 
 
 def test_pdf_via_magic_bytes_when_content_type_missing():
-    assert _detect_url_kind(url="https://x.test/foo", content_type=None, data=b"%PDF-1.7\n...") == "pdf"
+    assert (
+        _detect_url_kind(url="https://x.test/foo", content_type=None, data=b"%PDF-1.7\n...")
+        == "pdf"
+    )
 
 
 def test_pdf_via_url_extension_when_server_returns_octet_stream():

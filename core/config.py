@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +26,13 @@ class OllamaSettings(BaseModel):
     # multilingual inputs (esp. Japanese) under bge-m3. num_gpu=0 forces CPU
     # inference for embeddings. Set to None or {} to use Ollama defaults.
     embedding_options: dict[str, int] = Field(default_factory=lambda: {"num_gpu": 0})
+    # Acceleration backend selection (Phase 1: CUDA-only baseline).
+    # "auto" -> BackendPlanner picks "ollama-cuda" on RTX 2080 Ti, preserving
+    # existing behavior. Phase 2 will widen the Literal to include
+    # ipex-llm-ollama / ollama-vulkan / openvino-genai-server.
+    runtime_backend: Literal["auto", "ollama-cuda"] = "auto"
+    # Phase 2 will widen to include ollama-bge-m3-gpu / openvino-bge-m3-{igpu,npu}.
+    text_embed_backend: Literal["auto", "ollama-bge-m3-cpu"] = "auto"
 
 
 class GenerationSettings(BaseModel):
@@ -60,8 +68,10 @@ class AudioSettings(BaseModel):
     manual_boost_max_db: float = 18.0
     diarization_enabled: bool = True
     max_speakers: int | None = None     # None = auto
-    diarizer_segmentation_model: str | None = None  # None -> <data_dir>/models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx
-    diarizer_embedding_model: str | None = None      # None -> <data_dir>/models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx
+    # None -> <data_dir>/models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx
+    diarizer_segmentation_model: str | None = None
+    # None -> <data_dir>/models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx
+    diarizer_embedding_model: str | None = None
     diarizer_threshold: float = 0.5
     voiceprint_naming: bool = True
     name_inference_llm: bool = True
@@ -70,6 +80,15 @@ class AudioSettings(BaseModel):
     storage_bitrate_kbps: int = 64
     keep_audio: bool = True
     auto_title: bool = True             # 停止後パイプラインで LLM がタイトル自動命名
+    # Acceleration backend selection (Phase 1: CUDA-only baseline).
+    # "auto" -> BackendPlanner picks faster-whisper-cuda / sherpa-onnx-cpu /
+    # sherpa-onnx-cpu on RTX 2080 Ti, preserving existing behavior.
+    # Phase 2 will widen the Literal to include openvino-whisper-{igpu,npu}.
+    transcriber_backend: Literal[
+        "auto", "faster-whisper-cuda", "faster-whisper-cpu"
+    ] = "auto"
+    diarizer_backend: Literal["auto", "sherpa-onnx-cpu"] = "auto"
+    speaker_embed_backend: Literal["auto", "sherpa-onnx-cpu"] = "auto"
 
 
 def _default_data_dir() -> Path:

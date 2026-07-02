@@ -1,0 +1,12 @@
+=== GET /api/settings/acceleration -> 200 OK (rendered in Acceleration tab) ===
+Detected hardware:
+  CPU: 12th Gen Intel(R) Core(TM) i9-12900KF
+  CUDA dGPU: NVIDIA GeForce RTX 2080 Ti (VRAM 11264 MiB)
+  DirectML: 未検出 (not available)
+Selected backend plan:
+  STT (文字起こし):   faster-whisper-cuda
+  Diarize (話者分離): sherpa-onnx-cpu
+  LLM (生成):         ollama-cuda
+  Text Embed (埋込):  ollama-bge-m3-cpu
+Status: Phase 1 実装可能 ✓
+Override controls in panel: NONE (no <select>, no [Apply]). Only a "再検出" re-probe button. Consistent with Phase 1 read-only design.

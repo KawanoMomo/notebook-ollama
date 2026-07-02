@@ -47,8 +47,8 @@ def test_content_document_reparses_faithfully(client):
 def test_content_recording_returns_ordered_segments(client):
     nb = _create_nb(client)
     ctx = client.app.state.ctx
-    from core.storage.sources_repo import create_source
     from core.storage.chunks_repo import ChunkRecord, insert_chunks
+    from core.storage.sources_repo import create_source
 
     src = create_source(
         ctx.conn, notebook_id=nb, kind="recording",

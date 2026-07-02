@@ -1,10 +1,50 @@
-import math
-import os
+from __future__ import annotations
+
 import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING
+
+# --- vendored from meeting-transcriber (app._cuda_dll) ---
+# Upstream registered CUDA (cuBLAS/cuDNN) DLL search paths at `app` package
+# import time, *before* importing WhisperModel. The implementation lives in
+# `core.accel.cuda_dll` so `core.accel.probe.probe_cuda()` can call it
+# without pulling faster_whisper into the probe path (see plan Sprint 1 /
+# Task 1.1). Re-exported here for backward compatibility with existing
+# callers / tests that import `_register_cuda_dll_dirs` from this module.
+from core.accel.cuda_dll import _register_cuda_dll_dirs
+
+# --- whisper postprocess (Sprint 3 / Task 3.1) ---
+# RMS floor, hallucination blocklist, confidence mapping were extracted into
+# core.recording.whisper_postprocess so they can be unit-tested without
+# loading faster-whisper / CUDA. ``apply_rms_floor``, ``_logprob_to_confidence``,
+# and ``_is_hallucination_phrase`` are used directly below; the remaining
+# names are re-exported under their original ``_``-prefixed identifiers so
+# existing ``from core.recording.transcriber import _is_hallucination_phrase``
+# style call sites continue to work without modification.
+from core.recording.whisper_postprocess import (
+    HALLUCINATION_NORM as _HALLUCINATION_NORM,  # noqa: F401  -- re-export
+)
+from core.recording.whisper_postprocess import (
+    HALLUCINATION_SILENCE_RMS as _HALLUCINATION_SILENCE_RMS,  # noqa: F401  -- re-export
+)
+from core.recording.whisper_postprocess import (
+    apply_rms_floor,
+    is_voice,  # noqa: F401  -- re-export for live_caption / future backends
+)
+from core.recording.whisper_postprocess import (
+    logprob_to_confidence as _logprob_to_confidence,
+)
+from core.recording.whisper_postprocess import (
+    normalize_for_hallucination_check as _normalize_caption,  # noqa: F401  -- re-export
+)
+from core.recording.whisper_postprocess import (
+    should_filter_hallucination as _is_hallucination_phrase,
+)
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 # --- vendored from meeting-transcriber (app.models.schema.TranscriptSegment) ---
@@ -13,51 +53,17 @@ from typing import Optional
 # by this module is inlined verbatim (see PROVENANCE.md "Local divergences").
 @dataclass
 class TranscriptSegment:
-    id: Optional[int]
+    id: int | None
     session_id: str
     channel: str              # 'mic' | 'system'
     start_ms: int
     end_ms: int
     speaker_id: str
     text: str
-    language: Optional[str] = None
-    confidence: Optional[float] = None
+    language: str | None = None
+    confidence: float | None = None
     edited: bool = False
-    original_text: Optional[str] = None
-
-
-# --- vendored from meeting-transcriber (app._cuda_dll) ---
-# Upstream registered CUDA (cuBLAS/cuDNN) DLL search paths at `app` package import
-# time, *before* importing WhisperModel. There is no `app` package here, so the
-# stdlib-only registration is inlined and run at module import (see PROVENANCE.md).
-def _register_cuda_dll_dirs() -> list:
-    """nvidia の CUDA DLL を DLL 検索パスへ登録 (win32 のみ、無害な no-op fallback)。"""
-    if sys.platform != "win32" or not hasattr(os, "add_dll_directory"):
-        return []
-    try:
-        import importlib.util
-        spec = importlib.util.find_spec("nvidia")
-    except Exception:
-        return []
-    if spec is None or not spec.submodule_search_locations:
-        return []
-    base = list(spec.submodule_search_locations)[0]  # .../site-packages/nvidia
-    added = []
-    for sub in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc"):
-        d = os.path.join(base, sub, "bin")
-        if os.path.isdir(d):
-            try:
-                os.add_dll_directory(d)
-                added.append(d)
-            except OSError:
-                pass
-    if added:
-        # add_dll_directory alone is insufficient on this CUDA stack — ctranslate2
-        # cannot resolve cublas64_12.dll's dependencies without PATH. Mirror what
-        # meeting-transcriber's start-gpu.bat does, but in-process so a plain
-        # `uvicorn` launch gets GPU too.
-        os.environ["PATH"] = os.pathsep.join(added) + os.pathsep + os.environ.get("PATH", "")
-    return added
+    original_text: str | None = None
 
 
 # モジュール import 時に一度だけ登録 (WhisperModel import 前)。
@@ -133,7 +139,7 @@ class Transcriber:
         *,
         channel: str,
         speaker_id: str,
-        language: Optional[str] = "ja",
+        language: str | None = "ja",
         session_id: str = "",
     ) -> list[TranscriptSegment]:
         # 遅延ジェネレータの反復まで含めてロックで直列化する
@@ -178,9 +184,9 @@ class Transcriber:
 
     def transcribe_array(
         self,
-        audio: "np.ndarray",      # float32 [-1, 1] mono
+        audio: np.ndarray,        # float32 [-1, 1] mono
         sample_rate: int = 16000,
-        language: Optional[str] = "ja",
+        language: str | None = "ja",
         base_ms: int = 0,
     ) -> list[dict]:
         """numpy 配列から直接 transcribe する (ライブ字幕用)。
@@ -196,9 +202,12 @@ class Transcriber:
             pass
 
         # 無音/極低レベルはモデルに渡さない (Whisper のハルシネーション源を断つ)。
+        # apply_rms_floor は silence なら [] を返す (early-return signal)、
+        # 非 silent なら None を返して下のモデル呼び出しに進ませる。
         audio = audio.astype(np.float32)
-        if audio.size == 0 or float(np.sqrt(np.mean(np.square(audio)))) < _HALLUCINATION_SILENCE_RMS:
-            return []
+        early = apply_rms_floor(audio)
+        if early is not None:
+            return early
 
         # ライブ字幕でのハルシネーション抑制:
         #  - vad_filter=True で無音区間を除外
@@ -240,34 +249,10 @@ class Transcriber:
             return out
 
 
-def _logprob_to_confidence(avg_logprob: float) -> float:
-    """avg_logprob (-∞..0) を 0..1 の confidence に正規化する近似。"""
-    return max(0.0, min(1.0, math.exp(avg_logprob)))
-
-
-# これ未満の RMS は無音とみなし STT に渡さない (float32 [-1,1] 基準, ≈ -46 dBFS)。
-# 実発話は概ね RMS > 0.05 のため誤除外しない。
-_HALLUCINATION_SILENCE_RMS = 0.005
-
-
-def _normalize_caption(text: str) -> str:
-    return text.strip().strip("。.!！?？、,， 　　")
-
-
-# Whisper が無音/低レベル音声で生成しがちな定型ハルシネーション (YouTube 由来)。
-# セグメント全体がこれらに一致するときのみ除外する (実発話の部分文字列は除外しない)。
-# 注: 「ご清聴ありがとうございました」は実会議の締めで出るため意図的に含めない。
-_HALLUCINATION_NORM = frozenset(_normalize_caption(p) for p in (
-    "ご視聴ありがとうございました",
-    "ご視聴ありがとうございます",
-    "ご視聴いただきありがとうございました",
-    "最後までご視聴いただきありがとうございました",
-    "チャンネル登録お願いします",
-    "チャンネル登録をお願いします",
-    "チャンネル登録よろしくお願いします",
-))
-
-
-def _is_hallucination_phrase(text: str) -> bool:
-    """セグメント全体が既知の定型ハルシネーションと一致するか。"""
-    return _normalize_caption(text) in _HALLUCINATION_NORM
+# NOTE: `_logprob_to_confidence`, `_HALLUCINATION_SILENCE_RMS`,
+# `_normalize_caption`, `_HALLUCINATION_NORM`, `_is_hallucination_phrase`,
+# `apply_rms_floor`, and `is_voice` now live in
+# `core.recording.whisper_postprocess` (Sprint 3 / Task 3.1). They are
+# re-exported at the top of this module under their original names so older
+# `from core.recording.transcriber import _is_hallucination_phrase` style
+# call sites continue to work without modification.

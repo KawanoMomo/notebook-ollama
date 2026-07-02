@@ -1,6 +1,7 @@
 import sqlite3
+
+from core.storage.chunks_repo import ChunkRecord, get_chunks_by_ids, insert_chunks
 from core.storage.database import migrate
-from core.storage.chunks_repo import ChunkRecord, insert_chunks, get_chunks_by_ids
 
 
 def _conn():

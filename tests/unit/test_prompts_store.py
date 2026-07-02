@@ -26,7 +26,6 @@ from core.prompts.store import (
     update_dropdown,
 )
 
-
 # --- 基本モデル -----------------------------------------------------------
 
 
@@ -191,7 +190,7 @@ def test_reorder_dropdown_with_complete_ids_succeeds(tmp_path: Path):
 
 def test_reorder_dropdown_with_missing_id_raises(tmp_path: Path):
     a = add_dropdown(tmp_path, title="A", body="x")
-    b = add_dropdown(tmp_path, title="B", body="x")
+    _b = add_dropdown(tmp_path, title="B", body="x")
     with pytest.raises(AppError) as ei:
         reorder_dropdown(tmp_path, [a.id])
     assert ei.value.code == ErrorCode.INPUT_INVALID
@@ -206,7 +205,7 @@ def test_reorder_dropdown_with_extra_id_raises(tmp_path: Path):
 
 def test_reorder_dropdown_with_duplicate_id_raises(tmp_path: Path):
     a = add_dropdown(tmp_path, title="A", body="x")
-    b = add_dropdown(tmp_path, title="B", body="x")
+    _b = add_dropdown(tmp_path, title="B", body="x")
     with pytest.raises(AppError) as ei:
         reorder_dropdown(tmp_path, [a.id, a.id])
     assert ei.value.code == ErrorCode.INPUT_INVALID

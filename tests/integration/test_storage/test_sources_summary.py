@@ -11,7 +11,7 @@ import pytest
 
 from core.exceptions import AppError, ErrorCode
 from core.storage import sources_repo
-from core.storage.database import connect, migrate
+from core.storage.database import migrate
 from core.storage.migrations import run_summary_migration
 from core.storage.sources_repo import SummaryStatus
 

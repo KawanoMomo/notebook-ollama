@@ -1,5 +1,6 @@
 import pytest
-from core.storage.vector_store import VectorStore, ChunkVector
+
+from core.storage.vector_store import ChunkVector, VectorStore
 
 
 @pytest.mark.qdrant

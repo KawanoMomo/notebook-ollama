@@ -11,12 +11,13 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import AudioSettingsSection from '$lib/components/settings/AudioSettingsSection.svelte';
   import PromptsSection from '$lib/components/settings/PromptsSection.svelte';
+  import AccelerationPanel from '$lib/components/settings/AccelerationPanel.svelte';
   import CrashReportSection from '$lib/components/settings/CrashReportSection.svelte';
   import { pushToast } from '$lib/components/Toast.svelte';
   import type { ModelInfo } from '$lib/api/types';
 
   let section = $state<
-    'models' | 'gen' | 'prompts' | 'audio' | 'storage' | 'modelsList' | 'crash'
+    'models' | 'accel' | 'gen' | 'prompts' | 'audio' | 'storage' | 'modelsList' | 'crash'
   >('audio');
 
   // --- 埋め込みモデル切替 (section==='models') の state ---
@@ -200,6 +201,16 @@
       </button>
       <button
         class="nitem"
+        class:active={section === 'accel'}
+        onclick={() => (section = 'accel')}
+      >
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+        </svg>
+        アクセラレーション
+      </button>
+      <button
+        class="nitem"
         class:active={section === 'gen'}
         onclick={() => (section = 'gen')}
       >
@@ -273,6 +284,8 @@
         <AudioSettingsSection />
       {:else if section === 'prompts'}
         <PromptsSection />
+      {:else if section === 'accel'}
+        <AccelerationPanel />
       {:else if section === 'crash'}
         <CrashReportSection />
       {:else if settingsStore.loading || modelsStore.loading}

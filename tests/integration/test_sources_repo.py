@@ -78,7 +78,7 @@ def test_upsert_dedupe_returns_existing_on_hash_collision(tmp_path):
 
 
 def test_get_missing_source(tmp_path):
-    conn, nb = _ctx(tmp_path)
+    conn, _nb = _ctx(tmp_path)
     with pytest.raises(AppError) as excinfo:
         get_source(conn, "xxx")
     assert excinfo.value.code == ErrorCode.STORAGE_NOT_FOUND

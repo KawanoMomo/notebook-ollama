@@ -1,5 +1,5 @@
-from core.generation.locations import format_location, format_timecode
 from core.generation.citations import CitationSpec, build_citations
+from core.generation.locations import format_location, format_timecode
 
 
 def test_format_timecode():
@@ -9,7 +9,8 @@ def test_format_timecode():
 
 
 def test_format_location_recording():
-    assert format_location(page=None, heading_path=None, start_ms=754_000, speaker="相手1") == "相手1 00:12:34"
+    result = format_location(page=None, heading_path=None, start_ms=754_000, speaker="相手1")
+    assert result == "相手1 00:12:34"
 
 
 def test_format_location_speaker_only_and_time_only():

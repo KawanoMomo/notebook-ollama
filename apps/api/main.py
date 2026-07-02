@@ -191,6 +191,29 @@ async def lifespan(app: FastAPI):
             configure_logging()
 
         app.state.ctx = build_context(config)
+        # --- Sprint 3 / Task 3.4: chosen-backend-plan startup banner ----------
+        # Logs the resolved BackendPlan ids (and the HwProfile that produced them)
+        # so the chosen acceleration path is visible in the startup log without
+        # having to hit /api/settings or scrape the Acceleration tab. The four
+        # backend ids land in the structured payload as ``stt_id`` /
+        # ``diarize_id`` / ``llm_id`` / ``text_embed_id`` — the
+        # ``test_lifespan_accel_wiring.py`` smoke test asserts on these keys.
+        from core.logging import get_logger
+        _banner_log = get_logger("apps.api.lifespan")
+        _ctx_for_banner = app.state.ctx
+        _plan_for_banner = _ctx_for_banner.backend_plan
+        _hw_for_banner = _ctx_for_banner.hw_profile
+        _banner_log.info(
+            "backend_plan_resolved",
+            stt_id=_plan_for_banner.stt_id,
+            diarize_id=_plan_for_banner.diarize_id,
+            llm_id=_plan_for_banner.llm_id,
+            text_embed_id=_plan_for_banner.text_embed_id,
+            vendor=_hw_for_banner.vendor,
+            dgpu=_hw_for_banner.dgpu,
+            cpu_brand=_hw_for_banner.cpu_brand,
+            reason=_plan_for_banner.reason,
+        )
         from apps.api import _mcp_state
         _mcp_state.ctx = app.state.ctx
         yield

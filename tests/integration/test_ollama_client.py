@@ -2,8 +2,8 @@ import httpx
 import pytest
 import respx
 
-from core.ollama.client import OllamaClient
 from core.exceptions import AppError, ErrorCode
+from core.ollama.client import OllamaClient
 
 
 @pytest.mark.asyncio
