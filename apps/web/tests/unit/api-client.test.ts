@@ -43,6 +43,23 @@ describe('api client', () => {
     });
   });
 
+  it('throws ApiError with detail as message on FastAPI raw HTTPException ({detail} shape)', async () => {
+    // apps/api/routers/{crash,audio,recordings}.py raise plain FastAPI
+    // HTTPException (not AppError), which serializes as {"detail": "..."}
+    // instead of the AppError envelope {"error": {code, message, ...}}.
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'crash abc123 not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(request('/api/crash/abc123/prefill-url')).rejects.toMatchObject({
+      code: 'http.error',
+      status: 404,
+      message: 'crash abc123 not found',
+    });
+  });
+
   it('throws ApiError on network failure', async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('network'));
     await expect(request('/api/notebooks')).rejects.toBeInstanceOf(ApiError);

@@ -1,0 +1,76 @@
+===================================================================
+STALE-SERVER STATE (before backend restart) - 2026-07-02 22:59:25
+===================================================================
+Scenario 1 (OptIn 'enable' click):
+  [ERROR] Failed to load resource: status 405 (Method Not Allowed)
+          @ http://127.0.0.1:8765/api/settings/crash-report
+  Classification: HTTP network-log artifact (browser surfaces failed
+  fetch to console). NOT a JS console.error() call.
+  Root cause: running uvicorn predates this branch's routers.
+  Evidence: live /openapi.json has NO /api/settings/crash-report,
+            NO /api/crash/*, NO /api/feedback-hub/* (0 feature routes),
+            yet apps/api/main.py includes all of them (lines 252-256).
+            405 (not 404) because the unmatched PUT falls through to the
+            SPA StaticFiles mount, which only allows GET/HEAD.
+
+
+===================================================================
+INSTRUMENTED SESSION LOG (browser_evaluate hooks: console.error override + fetch wrapper)
+===================================================================
+
+-- Session 1: home page (http://127.0.0.1:8765/), drawer scenarios --
+Scenario 1 (OptIn 'enable' PUT): fetchFail PUT /api/settings/crash-report -> 405
+   -> network-log artifact. OptInDialog showed inline "エラー: PUT ... 405"
+      and stayed open for retry (graceful, no crash).
+Scenario 2 (open drawer, tabs):
+   - お知らせ (NoticesTab): GET notices failed (stale) -> graceful UI
+     "お知らせの取得に失敗しました / 再試行" (network artifact, no JS console.error captured post-hook)
+   - 不具合 (BugReportTab): fetchFail GET /api/crash/pending -> 404 (network artifact)
+     REAL JS console.error(): "[BugReportTab] load failed: Cannot read properties of undefined (reading 'code')"
+     -> genuine console.error() call (BugReportTab.svelte:43 catch block).
+        The thrown value is a TypeError from client.ts:57-58 (see report).
+   - ご意見 (FeedbackTab): loaded clean, NO console.error, NO fetch on mount.
+Scenario 3 (feedback form): kind select + textarea input + html2canvas
+   auto-capture (blob screenshot.png thumbnail) + 削除 remove -> ALL CLEAN,
+   no new console.error / jsError / fetchFail.
+Scenario 4 (close drawer): ESC -> closed clean; reopen + backdrop click -> closed clean.
+   No new console.error.
+
+-- Session 2: settings page (http://127.0.0.1:8765/settings) --
+   Page load: GET /api/settings 200, models 200 (exist on stale server). No error.
+   OptIn re-appeared (enabled still null because PUT never succeeded) - expected.
+Scenario 5 (crash section + toggle):
+   - CrashReportSection rendered. fetchFail on enable toggle:
+     PUT /api/settings/crash-report -> 405 (network artifact).
+   - NO JS console.error (toggle uses pushToast). BUT toast text was the
+     corrupted "Cannot read properties of undefined (reading 'code')"
+     (client.ts:57-58 bug corrupts the user-facing error message).
+Scenario 6 (sample crash preview):
+   - CrashPreviewDialog opened (client-side). fetchFail:
+     GET /api/crash/sample-crash-preview/prefill-url -> 404
+     (BY DESIGN: sample uses a non-existent id; see CrashReportSection.svelte comment).
+   - NO JS console.error (dialog uses loadError state). Inline message again
+     corrupted to "Cannot read properties of undefined (reading 'code')".
+
+===================================================================
+CLASSIFICATION SUMMARY
+===================================================================
+A) Browser network-log artifacts ("Failed to load resource", NOT JS console.error()):
+   - PUT  /api/settings/crash-report        -> 405 (x2: OptIn enable, settings toggle)
+   - GET  /api/crash/pending                -> 404 (bugs tab)
+   - GET  /api/feedback-hub notices         -> failed (notices tab)
+   - GET  /api/crash/<id>/prefill-url       -> 404 (sample preview; by design)
+   ROOT CAUSE: stale uvicorn (PID 59028) predates this branch. Live /openapi.json
+   registers ZERO crash/feedback/notice routes; source apps/api/main.py includes
+   all of them (lines 252-256). 405 (not 404) for PUT because unmatched request
+   falls through to the SPA StaticFiles mount (GET/HEAD only).
+
+B) GENUINE JS console.error() calls:
+   - "[BugReportTab] load failed: Cannot read properties of undefined (reading 'code')"
+     Source: BugReportTab.svelte:43 (catch) logging a TypeError thrown by
+     apps/web/src/lib/api/client.ts:57-58 which assumes every non-2xx JSON body
+     has an {error:{code,...}} envelope. FastAPI HTTPException/404/405/422 bodies
+     are {"detail": ...} -> body.error is undefined -> err.code throws.
+     NOTE: crash router raises HTTPException(404) for unknown ids (crash.py:288),
+     and the app's custom handler (main.py:225) only wraps AppError, NOT
+     HTTPException -> this bug is reproducible on a FRESH backend too, not only stale.
