@@ -279,12 +279,46 @@ if ($cleaned.Count -gt 0) {
     Write-Host "[start] Cleaned up a previous/stale instance (PID $($cleaned -join ', '))." -ForegroundColor Yellow
 }
 
+# ---------------------------------------------------------------------------
+# 3b. Bootstrap the Python venv on first run only
+# ---------------------------------------------------------------------------
+# `uv run` (below) always uses --no-sync so this script never triggers an
+# implicit resolve+sync on every single start (faster, deterministic: the
+# venv is exactly what the user last explicitly `uv sync`'d, nothing more).
+# That means uv will never auto-create the venv either, so do it here exactly
+# once, the same way npm install/build are bootstrapped above for the
+# frontend.
+#
+# IMPORTANT (the actual footgun this guards against): `uv run` by itself does
+# NOT strip previously-installed optional extras (verified empirically). The
+# command that DOES strip them is a **bare `uv sync`** run again later
+# (e.g. re-following this README's own Quick Start after `git pull`, having
+# already run `uv sync --extra recording` in an earlier session) - "no
+# --extra flag" means "reset to the base dependency set", silently
+# uninstalling soundfile/faster-whisper/etc. See README recording-support section.
+$VenvDir = Join-Path $ProjectRoot ".venv"
+if (-not (Test-Path $VenvDir)) {
+    Write-Host "[start] .venv not found - running uv sync..." -ForegroundColor Yellow
+    Push-Location $ProjectRoot
+    try {
+        & uv sync
+        if ($LASTEXITCODE -ne 0) { throw "uv sync failed (exit $LASTEXITCODE)" }
+    } finally {
+        Pop-Location
+    }
+    Write-Host "[start] Dependencies installed. (Recording support is optional: uv sync --extra recording, or uv sync --all-extras for everything)" -ForegroundColor Green
+}
+
 $env:NOTEBOOK_OLLAMA_DATA_DIR = $DataDir
 
 # Single process on purpose: Qdrant local mode keeps an exclusive lock, so
 # multiple uvicorn workers cannot share the storage. Do NOT add --workers.
+#
+# --no-sync: skip uv's implicit resolve+sync check on every invocation. The
+# venv is the user's explicit responsibility (`uv sync` / `uv sync --extra
+# recording` / `uv sync --all-extras`); this script only ever reads it.
 $uvicornArgs = @(
-    "run", "uvicorn",
+    "run", "--no-sync", "uvicorn",
     "apps.api.main:app",
     "--host", "127.0.0.1",
     "--port", "$Port"
