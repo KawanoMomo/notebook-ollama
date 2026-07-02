@@ -25,6 +25,13 @@
     .\scripts\start.ps1
     .\scripts\start.ps1 -OpenBrowser
     .\scripts\start.ps1 -Background
+
+.NOTES
+    Large models (GPT-OSS:20B etc.) may need longer Ollama timeouts than the
+    600 s defaults. Either change them in Settings -> Models / Ollama, or set
+    these env vars before starting:
+      $env:NOTEBOOK_OLLAMA_OLLAMA__REQUEST_TIMEOUT_SECONDS = "1200"
+      $env:NOTEBOOK_OLLAMA_OLLAMA__CHAT_READ_TIMEOUT_SECONDS = "1200"
 #>
 param(
     [int]   $Port = 8765,

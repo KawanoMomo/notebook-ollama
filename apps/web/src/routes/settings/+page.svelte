@@ -90,6 +90,42 @@
     closeReindex?.();
   });
 
+  // --- タイムアウト設定 ---
+  let timeoutDraft = $state<{ req: number; read: number } | null>(null);
+  let savingTimeouts = $state(false);
+
+  // settings の load 完了で draft 初期化
+  $effect(() => {
+    const ol = settingsStore.settings?.ollama;
+    if (ol && timeoutDraft === null) {
+      timeoutDraft = {
+        req: ol.request_timeout_seconds,
+        read: ol.chat_read_timeout_seconds,
+      };
+    }
+  });
+
+  const timeoutsDirty = $derived(
+    timeoutDraft !== null &&
+      settingsStore.settings !== null &&
+      (timeoutDraft.req !== settingsStore.settings.ollama.request_timeout_seconds ||
+        timeoutDraft.read !== settingsStore.settings.ollama.chat_read_timeout_seconds),
+  );
+
+  async function saveTimeouts() {
+    if (!timeoutDraft) return;
+    savingTimeouts = true;
+    try {
+      await settingsApi.putOllamaTimeouts(timeoutDraft.req, timeoutDraft.read);
+      await settingsStore.load();
+      pushToast('タイムアウトを更新しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    } finally {
+      savingTimeouts = false;
+    }
+  }
+
   async function confirmSwitch() {
     if (!switchTarget) return;
     const target = switchTarget;
@@ -310,6 +346,51 @@
                 {/if}
               </span>
             </div>
+          {/if}
+
+          <h3 style="margin-top: var(--space-5)">タイムアウト</h3>
+          <p class="t-hint">
+            大型モデル(GPT-OSS 20B 等)で「ネットワークエラー」が出る場合に伸ばしてください。
+            <code>request</code> = /api/show と /api/embeddings、<code>chat_read</code> = ストリーミング応答の最初のトークンまでの待ち時間。
+          </p>
+          {#if timeoutDraft}
+            <dl>
+              <dt>request_timeout (秒)</dt>
+              <dd>
+                <input
+                  type="number"
+                  class="num"
+                  min="5"
+                  max="86400"
+                  step="30"
+                  bind:value={timeoutDraft.req}
+                  aria-label="request_timeout_seconds"
+                />
+              </dd>
+              <dt>chat_read_timeout (秒)</dt>
+              <dd>
+                <input
+                  type="number"
+                  class="num"
+                  min="5"
+                  max="86400"
+                  step="30"
+                  bind:value={timeoutDraft.read}
+                  aria-label="chat_read_timeout_seconds"
+                />
+              </dd>
+            </dl>
+            {#if timeoutsDirty}
+              <div class="emb-actions">
+                <button
+                  class="emb-btn primary"
+                  onclick={saveTimeouts}
+                  disabled={savingTimeouts}
+                >
+                  {savingTimeouts ? '保存中…' : 'タイムアウトを保存'}
+                </button>
+              </div>
+            {/if}
           {/if}
         {:else if section === 'gen'}
           <h3>生成</h3>
@@ -632,5 +713,21 @@
   .emb-progress-text {
     font-size: 12px;
     color: var(--color-fg-muted);
+  }
+  .t-hint {
+    margin: 0 0 var(--space-3);
+    font-size: 12px;
+    color: var(--color-fg-muted);
+    line-height: 1.55;
+  }
+  .num {
+    font-size: 13px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    width: 120px;
+    font-variant-numeric: tabular-nums;
   }
 </style>
