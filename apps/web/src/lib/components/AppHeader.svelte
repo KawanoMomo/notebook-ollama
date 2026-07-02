@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Settings } from '@lucide/svelte';
+  import { Megaphone, Settings } from '@lucide/svelte';
+  import { feedbackHubStore } from '$lib/stores/feedbackHub.svelte';
   interface Props {
     title?: string;
     children?: import('svelte').Snippet;
@@ -15,6 +16,18 @@
     {#if children}
       {@render children()}
     {/if}
+    <button
+      type="button"
+      class="icon-btn megaphone-btn"
+      aria-label="お知らせ・フィードバック"
+      title="お知らせ・フィードバック"
+      onclick={() => feedbackHubStore.open()}
+    >
+      <Megaphone size={18} strokeWidth={1.75} />
+      {#if feedbackHubStore.unreadCount > 0}
+        <span class="badge-dot" aria-label="未読あり"></span>
+      {/if}
+    </button>
     <a href="/settings" class="icon-btn" aria-label="設定">
       <Settings size={18} />
     </a>
@@ -49,8 +62,25 @@
     display: inline-flex;
     padding: var(--space-2);
     border-radius: var(--radius-md);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
   }
   .icon-btn:hover {
     background: var(--color-bg-elevated);
+  }
+  .megaphone-btn {
+    position: relative;
+  }
+  .badge-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 0 1.5px var(--color-bg);
+    pointer-events: none;
   }
 </style>

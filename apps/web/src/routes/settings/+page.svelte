@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
-  import { ArrowLeft } from '@lucide/svelte';
+  import { ArrowLeft, Megaphone } from '@lucide/svelte';
   import { navMemoryStore } from '$lib/stores/navMemory.svelte';
   import { settingsStore } from '$lib/stores/settings.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
@@ -12,13 +12,13 @@
   import AudioSettingsSection from '$lib/components/settings/AudioSettingsSection.svelte';
   import PromptsSection from '$lib/components/settings/PromptsSection.svelte';
   import AccelerationPanel from '$lib/components/settings/AccelerationPanel.svelte';
+  import CrashReportSection from '$lib/components/settings/CrashReportSection.svelte';
   import { pushToast } from '$lib/components/Toast.svelte';
   import type { ModelInfo } from '$lib/api/types';
 
-  let section =
-    $state<'models' | 'accel' | 'gen' | 'prompts' | 'audio' | 'storage' | 'modelsList'>(
-      'audio',
-    );
+  let section = $state<
+    'models' | 'accel' | 'gen' | 'prompts' | 'audio' | 'storage' | 'modelsList' | 'crash'
+  >('audio');
 
   // --- 埋め込みモデル切替 (section==='models') の state ---
   // <select> の選択値。'' = 未選択(=現行と同じ。切替なし)。
@@ -244,6 +244,16 @@
         音声・録音
       </button>
 
+      <div class="grp" style="margin-top:6px">フィードバック</div>
+      <button
+        class="nitem"
+        class:active={section === 'crash'}
+        onclick={() => (section = 'crash')}
+      >
+        <Megaphone size={16} strokeWidth={1.75} class="ni" aria-hidden="true" />
+        クラッシュレポート
+      </button>
+
       <div class="grp" style="margin-top:6px">システム</div>
       <button
         class="nitem"
@@ -276,6 +286,8 @@
         <PromptsSection />
       {:else if section === 'accel'}
         <AccelerationPanel />
+      {:else if section === 'crash'}
+        <CrashReportSection />
       {:else if settingsStore.loading || modelsStore.loading}
         <div class="state"><Spinner /> 読み込み中…</div>
       {:else if settingsStore.error || modelsStore.error}

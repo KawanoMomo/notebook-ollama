@@ -1,0 +1,9 @@
+26. [GET] http://127.0.0.1:8765/api/notebooks => [200] OK
+27. [GET] http://127.0.0.1:8765/api/settings => [200] OK
+28. [GET] http://127.0.0.1:8765/api/stats => [200] OK
+29. [GET] http://127.0.0.1:8765/api/feedback-hub/notices => [200] OK
+55. [POST] http://127.0.0.1:8765/api/feedback-hub/feedback => [200] OK
+56. [GET] http://127.0.0.1:8765/api/crash/pending => [200] OK
+57. [POST] http://127.0.0.1:8765/api/crash/report => [201] Created
+
+Note: 50 static requests not shown, run with "static" option to see them.

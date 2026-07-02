@@ -25,6 +25,11 @@ dependencies = [
     "mcp[cli]>=1.0",
     "pyyaml>=6.0",
     "truststore>=0.10",
+    # psutil is used by core/crash_reporter/hardware.py (CPU cores / RAM / disk)
+    # and by core/crash_reporter/lifecycle.py (running.lock PID liveness check).
+    # Must be in core dependencies, not the optional `recording` extra, because
+    # the crash reporter ships in the base install.
+    "psutil>=5.9",
 ]
 
 # Optional dependency: AGPL-3.0 licensed. The core project ships under MIT
@@ -73,6 +78,10 @@ dev = [
     # PyMuPDF kept in dev so the fixture generators and parser tests can run.
     # Production install must opt-in via `pip install '.[pdf]'`.
     "pymupdf>=1.24",
+    # Property-based testing for the crash-reporter PII redactor (spec §11.1).
+    # Fuzzes nested dict shapes against the recursive-walk invariant: no
+    # forbidden key may appear in the output at any depth.
+    "hypothesis>=6.100",
 ]
 
 [tool.uv]

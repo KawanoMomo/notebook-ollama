@@ -1,0 +1,59 @@
+===================================================================
+ROUND 2 RE-VERIFICATION (fresh uvicorn + rebuilt dist) - 2026-07-02 (JST)
+Server: http://127.0.0.1:8765  |  9 feature routes now registered (see ../live-openapi-routes.txt for round1 stale baseline)
+Instrumentation: browser_evaluate hooks (console.error override + fetch wrapper classifying /api/* into fetchOks / fetchFails)
+===================================================================
+
+[ENV FIX VERIFIED]
+  Live /openapi.json now registers 9 feature routes incl:
+    PUT /api/settings/crash-report, GET /api/crash/pending,
+    GET /api/crash/{id}/prefill-url, GET /api/feedback-hub/notices,
+    POST /api/feedback-hub/feedback, GET /api/feedback-hub/unread-count ...
+  crash_report settings persisted: enabled=true, auto_prompt=true, opted_in_at set
+  -> OptIn dialog correctly does NOT re-prompt (enabled != null). (Round1 verified OptIn appearance.)
+
+[CODE FIX VERIFIED] apps/web/src/lib/api/client.ts:61-73
+  Now checks `'error' in body ? body.error : undefined`; falls back to `detail`
+  when the {error:{code}} envelope is absent (FastAPI {"detail":...}).
+  Source confirmed + dist rebuilt 2026-07-02 23:37 (hardened parse present in bundle).
+
+-- SCENARIO RESULTS (round 2) --
+S1 OptIn: not shown (already opted-in, enabled=true) -> correct no-reprompt behavior.
+S2 Drawer + 3 tabs:
+   - お知らせ (NoticesTab): GET /api/feedback-hub/notices -> 200, real notices rendered. CLEAN.
+   - 不具合 (BugReportTab): GET /api/crash/pending -> 200, "未送信のレポートはありません".
+     *** BugReportTab console.error is GONE (round1 bug fixed). *** CLEAN.
+   - ご意見 (FeedbackTab): CLEAN.
+   - Drawer width still 440px.
+S3 Feedback form: kind select + textarea + html2canvas auto-capture (blob thumb) + 削除 remove -> CLEAN.
+S4 Close: ESC closes; reopen + backdrop closes. CLEAN.
+S5 Settings toggle: PUT /api/settings/crash-report -> 200 (was 405). Silent success (no error toast, correct).
+   No broken "Cannot read..." toast. Toggled OFF then back ON to restore enabled=true. CLEAN.
+S6 Sample preview: CrashPreviewDialog opens. GET prefill-url -> 404 (BY DESIGN, non-existent sample id).
+   Error message now CLEAN: "プレビューの読み込みに失敗しました: crash sample-crash-preview not found"
+   (was "Cannot read properties of undefined (reading 'code')" in round1). NO TypeError.
+   POST .../dismiss -> 404 (by design) also handled cleanly (no console.error). Dialog closes via ESC/backdrop.
+
+-- AGGREGATE TALLY (round 2) --
+Real JS console.error() calls: 0  (across all scenarios)
+Uncaught JS errors (window error/unhandledrejection): 0
+console.warn: 0
+
+fetchOks (2xx) on feature endpoints:
+  GET  /api/settings                          200
+  GET  /api/feedback-hub/notices              200
+  GET  /api/crash/pending                     200
+  PUT  /api/settings/crash-report             200 (x2: OFF then ON)
+
+fetchFails (all BY-DESIGN sample 404s, browser network-log artifacts, NOT JS console.error):
+  GET  /api/crash/sample-crash-preview/prefill-url   404  (sample uses non-existent id, per CrashReportSection.svelte design comment)
+  POST /api/crash/sample-crash-preview/dismiss       404  (same sample; handled gracefully)
+
+[ITEM B re-confirm] header 56px; megaphone btn 34x34 == gear btn 34x34; CrashReportSection 559px (unchanged vs round1). No bloat.
+
+CONCLUSION:
+  - Primary bug ([BugReportTab] console.error) : FIXED.
+  - client.ts {"detail"} handling (toast/preview text) : FIXED (clean detail text shown).
+  - crash/feedback-hub APIs : now 2xx.
+  - Remaining 404s are BY-DESIGN sample artifacts (network-log only, no console.error).
+  => Item A: PASS   |   Item B: PASS

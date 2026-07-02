@@ -34,8 +34,9 @@
     "vitest": "^2.1"
   },
   "dependencies": {
-    "highlight.js": "^11.10",
     "@lucide/svelte": "^1.16.0",
+    "highlight.js": "^11.10",
+    "html2canvas": "^1.4.1",
     "markdown-it": "^14.1"
   }
 }

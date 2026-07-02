@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -13,6 +14,8 @@ from apps.api.schemas.settings import (
     AppSettingsSchema,
     AudioSettingsSchema,
     BackendPlanSchema,
+    CrashReportSettingsSchema,
+    CrashReportSettingsUpdate,
     EmbeddingSwitchRequest,
     GenerationSettingsSchema,
     HwProfileSchema,
@@ -22,11 +25,12 @@ from apps.api.schemas.settings import (
     RetrievalSettingsSchema,
 )
 from core.accel.plan import is_phase1_implementable
+from core.crash_reporter.settings import CrashReportSettings
 from core.exceptions import AppError, ErrorCode
 from core.ollama.client import OllamaClient
 from core.ollama.gateway import probe_embedding_dim
 from core.ollama.models_info import classify_kind
-from core.settings_store import save_section
+from core.settings_store import save_crash_report, save_section
 from core.storage import chunks_repo, notebooks_repo, sources_repo
 from core.storage.vector_store import ChunkVector
 
@@ -77,6 +81,67 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             diarizer_backend=cfg.audio.diarizer_backend,
             speaker_embed_backend=cfg.audio.speaker_embed_backend,
         ),
+        crash_report=CrashReportSettingsSchema(
+            enabled=cfg.crash_report.enabled,
+            auto_prompt=cfg.crash_report.auto_prompt,
+            opted_in_at=cfg.crash_report.opted_in_at,
+        ),
+    )
+
+
+@router.put("/settings/crash-report", response_model=CrashReportSettingsSchema)
+async def put_crash_report_settings(
+    request: Request, body: CrashReportSettingsUpdate
+) -> CrashReportSettingsSchema:
+    """クラッシュレポートのオプトイン状態を更新する (S6 / S8 用 PUT)。
+
+    body は部分更新 (``model_dump(exclude_unset=True)``) — UI が変更したい
+    フィールドだけ送る前提。残りは現在の in-memory cfg.crash_report を保持する。
+
+    Auto-stamp の契約 (spec §7.3 オプトインフロー):
+    - 直前の状態が ``enabled is None`` (= 未決定) で、今回 ``enabled=True`` に
+      遷移し、かつ caller が ``opted_in_at`` を明示していないとき、サーバが
+      現在時刻 (UTC) を ``opted_in_at`` に自動付与する。これにより UI 側で
+      「オプトインを許可しました」のタイムスタンプを別途送らなくても良い。
+    - それ以外 (False → True 再オプトインや明示的に opted_in_at を送ったケース)
+      ではサーバは何もせず caller の値を尊重する。
+
+    永続化は ``save_crash_report`` 経由で settings.json の crash_report セクション
+    だけを書き戻す (audio / ollama セクションは保持される)。
+    """
+    cfg = request.app.state.ctx.config
+    current = cfg.crash_report
+    patch = body.model_dump(exclude_unset=True)
+
+    new_enabled = patch.get("enabled", current.enabled)
+    new_auto_prompt = patch.get("auto_prompt", current.auto_prompt)
+    new_opted_in_at = patch.get("opted_in_at", current.opted_in_at)
+
+    # オプトイン遷移 (None → True) の自動タイムスタンプ。
+    # 「opted_in_at が caller から明示的に送られていない」を `model_fields_set`
+    # ではなく `'opted_in_at' not in patch` で判定する (exclude_unset 後の dict は
+    # 明示送信したフィールドだけを含むので意味的に等価)。
+    if (
+        current.enabled is None
+        and new_enabled is True
+        and "opted_in_at" not in patch
+    ):
+        new_opted_in_at = datetime.now(UTC)
+
+    updated = CrashReportSettings(
+        enabled=new_enabled,
+        auto_prompt=new_auto_prompt,
+        opted_in_at=new_opted_in_at,
+    )
+
+    # in-memory 反映 + 永続化 (audio / ollama と同じ規約)。
+    cfg.crash_report = updated
+    save_crash_report(cfg.data_dir, updated)
+
+    return CrashReportSettingsSchema(
+        enabled=updated.enabled,
+        auto_prompt=updated.auto_prompt,
+        opted_in_at=updated.opted_in_at,
     )
 
 

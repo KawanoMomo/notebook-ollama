@@ -37,7 +37,9 @@ Thumbs.db
 
 # Recording: STT/diarization models + recorded audio (fetched/reused, never committed)
 models/
-data/
+data/*
+# Static seed files that ship with the repo (お知らせ等)
+!data/notices.json
 *.wav
 *.m4a
 *.opus

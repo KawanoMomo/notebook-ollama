@@ -53,9 +53,24 @@ export async function request<T = unknown>(
   const isJson = contentType.includes('application/json');
   if (!response.ok) {
     if (isJson) {
-      const body = (await response.json()) as ErrorResponse;
-      const err = body.error;
-      throw new ApiError(err.code, response.status, err.message, err.detail, err.remediation);
+      // apps/api/routers/{crash,audio,recordings}.py raise plain FastAPI
+      // HTTPException in a few not-found paths, which serializes as
+      // `{"detail": "..."}` rather than the AppError envelope
+      // `{"error": {code, message, ...}}` the rest of the API uses. Handle
+      // both shapes instead of assuming `body.error` is always present.
+      const body = (await response.json()) as ErrorResponse | { detail?: unknown };
+      const err = 'error' in body ? body.error : undefined;
+      if (err) {
+        throw new ApiError(err.code, response.status, err.message, err.detail, err.remediation);
+      }
+      const detail =
+        'detail' in body && typeof body.detail === 'string' ? body.detail : null;
+      throw new ApiError(
+        'http.error',
+        response.status,
+        detail ?? `HTTP ${response.status}`,
+        detail,
+      );
     }
     const text = await response.text();
     throw new ApiError(

@@ -2,6 +2,7 @@ import { request } from './client';
 import type {
   AppSettings,
   AudioSettings,
+  CrashReportSettings,
   OllamaSettings,
   OllamaSettingsUpdate,
   Stats,
@@ -33,4 +34,21 @@ export const settingsApi = {
         body: JSON.stringify({ request_timeout_seconds, chat_read_timeout_seconds }),
       },
     ),
+  /**
+   * クラッシュレポート設定の更新 (spec §7.3 / Sprint 7 Task 7.2)。
+   *
+   * backend endpoint `PUT /api/settings/crash-report` を想定。
+   * patch は部分更新を許容するが、現状の backend 設計 (`save_section`
+   * パターン) では full body を期待するため、呼び出し側 (settings store)
+   * で「現行値 + patch」をマージしてから渡す。
+   *
+   * NOTE: 本エンドポイントの実装は Sprint 7 のバックエンド追補タスク
+   * (`apps/api/routers/settings.py` に `put_crash_report` を追加) で完了予定。
+   * 現在は frontend 側の結線のみ。
+   */
+  putCrashReport: (body: Partial<CrashReportSettings>) =>
+    request<CrashReportSettings>('/api/settings/crash-report', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 };
