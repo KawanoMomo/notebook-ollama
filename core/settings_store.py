@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from core.crash_reporter.settings import CrashReportSettings
 from core.logging import get_logger
 
 log = get_logger("settings_store")
 
 _FILE = "settings.json"
+_CRASH_REPORT_SECTION = "crash_report"
 
 
 def settings_path(data_dir: Path) -> Path:
@@ -63,3 +65,46 @@ def apply_overrides(config) -> None:
         except Exception:
             # 不正な settings.json で起動をクラッシュさせない (既定値で続行)。
             log.warning("settings_override_invalid", section="ollama")
+
+    crash_report = ov.get(_CRASH_REPORT_SECTION)
+    if isinstance(crash_report, dict) and crash_report:
+        # crash_report セクションを既定値にマージ適用する (audio / ollama と同じ規約)。
+        # 既存ユーザの settings.json には crash_report キーが存在しないため、
+        # キー欠落時は何もせず既定値 (enabled=None, auto_prompt=True) のままにする
+        # = バックワード互換。型不正 (例: enabled="yes") でも起動を止めない。
+        merged = {**config.crash_report.model_dump(mode="json"), **crash_report}
+        try:
+            config.crash_report = CrashReportSettings(**merged)
+        except Exception:
+            log.warning("settings_override_invalid", section=_CRASH_REPORT_SECTION)
+
+
+def load_crash_report(data_dir: Path) -> CrashReportSettings:
+    """settings.json から crash_report セクションだけを取り出して
+    CrashReportSettings を返す。キー欠落・破損ファイルでは既定値を返す。
+
+    AppConfig 経由ではなく単発で読み書きしたい呼び出し側
+    (オプトインフロー UI / collector) のためのショートカット。
+    """
+    ov = load_overrides(data_dir)
+    raw = ov.get(_CRASH_REPORT_SECTION)
+    if not isinstance(raw, dict):
+        return CrashReportSettings()
+    try:
+        return CrashReportSettings(**raw)
+    except Exception:
+        # 型不正値での起動クラッシュを避ける契約は apply_overrides と同じ。
+        log.warning("settings_override_invalid", section=_CRASH_REPORT_SECTION)
+        return CrashReportSettings()
+
+
+def save_crash_report(data_dir: Path, settings: CrashReportSettings) -> None:
+    """CrashReportSettings を settings.json の crash_report セクションへ保存する。
+
+    datetime フィールド (opted_in_at) は ``model_dump(mode='json')`` で ISO 8601
+    文字列に変換してから書き出すので、json.dumps が ``TypeError`` を起こすことなく
+    永続化できる。``save_section`` が他セクション (audio / ollama) をマージ保持する
+    のと同じ規約。
+    """
+    payload = settings.model_dump(mode="json")
+    save_section(data_dir, _CRASH_REPORT_SECTION, payload)

@@ -1,0 +1,15 @@
+{
+  "note": "Observed failed HTTP requests during QA (browser fetch wrapper + Playwright network log). All failures are STALE-SERVER artifacts except where noted by-design.",
+  "dev_server": "http://127.0.0.1:8765",
+  "running_server_pid": 59028,
+  "failed_requests": [
+    { "method": "PUT", "url": "/api/settings/crash-report", "status": 405, "trigger": "OptIn 'enable' + settings toggle", "cause": "route absent on stale server; PUT falls through to SPA StaticFiles mount (GET/HEAD only) -> 405" },
+    { "method": "GET", "url": "/api/crash/pending", "status": 404, "trigger": "bugs tab load", "cause": "route absent on stale server" },
+    { "method": "GET", "url": "/api/feedback-hub notices", "status": "failed", "trigger": "notices tab load", "cause": "route absent on stale server" },
+    { "method": "GET", "url": "/api/crash/sample-crash-preview/prefill-url", "status": 404, "trigger": "sample preview", "cause": "by-design (non-existent sample id) AND route absent on stale server" }
+  ],
+  "successful_requests_on_stale_server": [
+    { "method": "GET", "url": "/api/settings", "status": 200 },
+    { "method": "GET", "url": "/api/models", "status": 200 }
+  ]
+}

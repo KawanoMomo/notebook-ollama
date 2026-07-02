@@ -8,20 +8,22 @@ import truststore
 
 truststore.inject_into_ssl()
 
-import json  # noqa: E402
+import logging  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
 
-from fastapi import FastAPI
-from fastapi.requests import Request
-from fastapi.responses import JSONResponse
-from starlette.responses import JSONResponse as StarletteJSONResponse
-from starlette.types import Receive, Scope, Send
+from fastapi import FastAPI  # noqa: E402
+from fastapi.requests import Request  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+from starlette.responses import JSONResponse as StarletteJSONResponse  # noqa: E402
+from starlette.types import Receive, Scope, Send  # noqa: E402
 
-from apps.api.dependencies import build_context
-from apps.api.routers import (
+from apps.api.dependencies import build_context  # noqa: E402
+from apps.api.routers import (  # noqa: E402
     audio,
     chat,
+    crash,
     events,
+    feedback_hub,
     health,
     notebooks,
     prompts,
@@ -29,15 +31,19 @@ from apps.api.routers import (
     recordings,
     sources,
 )
-from apps.api.routers import (
+from apps.api.routers import (  # noqa: E402
     models as models_router,
 )
-from apps.api.routers import (
+from apps.api.routers import (  # noqa: E402
     settings as settings_router,
 )
-from core.config import AppConfig
-from core.exceptions import AppError
-from core.logging import configure_logging
+from core.config import AppConfig  # noqa: E402
+from core.crash_reporter import collector as crash_collector  # noqa: E402
+from core.crash_reporter import lifecycle as crash_lifecycle  # noqa: E402
+from core.exceptions import AppError  # noqa: E402
+from core.logging import configure_logging  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 class _McpAsgiProxy:
@@ -88,16 +94,129 @@ class _McpAsgiProxy:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_logging()
+    """FastAPI lifespan with crash-report lifecycle wiring.
+
+    Sprint 4 Task 4.3. The crash auto-detection pipeline (file-backed
+    JSON-lines log sink, ``running.lock`` ownership, log-tail recovery
+    of unclean prior shutdowns, in-process trap collector) is **only**
+    activated when ``config.crash_report.enabled is True`` (spec §5.9 —
+    explicit opt-in required). With ``enabled`` set to ``None`` (not yet
+    decided) or ``False`` (explicit opt-out), the lifespan skips ALL of
+    log capture / lock / collector registration — the Feedback Hub still
+    works through the manual ``/api/crash/report`` and
+    ``/api/feedback-hub/*`` routers, but no background auto-collection
+    runs and nothing is written under ``data_dir`` for crash
+    bookkeeping.
+
+    On the happy path (enabled=True), the order is intentional:
+
+    1. ``configure_logging(logs_dir=...)`` rotates the previous session's
+       ``last-session.log`` → ``last-session.log.prev`` and installs the
+       redacted JSON-lines file sink so subsequent logs land in the new
+       ``last-session.log`` (Sprint 4 Task 4.1).
+    2. ``lifecycle.acquire`` stamps our PID into ``running.lock``. If
+       the prior PID is dead, it returns an :class:`UncleanShutdown`;
+       we then run ``collect_pending_from_log_tail`` to convert the
+       rotated log into a ``PendingCrash`` JSON file (dedup against
+       ``reported.txt`` is enforced inside that helper).
+    3. ``crash_collector.register`` installs the live traps (FastAPI
+       exception handler, ``sys.excepthook``, signal handlers, atexit).
+
+    Shutdown order is the reverse and runs in a ``finally`` so a
+    ``yield`` that raises does not leak handlers or strand the lock:
+
+    1. ``crash_collector.unregister`` (only if we actually registered).
+    2. ``lifecycle.release(running_lock_path)`` (only if we actually
+       acquired). Idempotent on a missing file — defensive against
+       ``release`` racing with manual deletion.
+    3. App context teardown (vector store + sqlite conn) — preserved
+       from the prior lifespan, but defensively guarded so a partial
+       startup does not raise during teardown.
+    """
     config = AppConfig()
     from core.settings_store import apply_overrides
     apply_overrides(config)
-    app.state.ctx = build_context(config)
-    from apps.api import _mcp_state
-    _mcp_state.ctx = app.state.ctx
-    yield
-    app.state.ctx.vector_store.close()
-    app.state.ctx.conn.close()
+
+    crash_enabled = config.crash_report.enabled is True
+    # Track which lifecycle steps actually succeeded so the finally
+    # block does not call ``release`` / ``unregister`` for steps that
+    # never ran (avoiding spurious log noise + AttributeError chains).
+    locked = False
+    registered = False
+
+    try:
+        if crash_enabled:
+            # 1. Rotate the previous session log + open the redacted
+            #    JSON-lines file sink. ``rotate_last_session`` is invoked
+            #    inside ``configure_logging(logs_dir=...)`` and is a
+            #    no-op if no prior ``last-session.log`` exists.
+            configure_logging(logs_dir=config.logs_dir)
+
+            # 2. Stamp the lock with our PID and recover any unclean
+            #    prior session. ``acquire`` always writes our PID into
+            #    the lock (whether or not the prior was unclean) and
+            #    returns ``UncleanShutdown`` only when the prior PID
+            #    can be proven dead.
+            unclean = crash_lifecycle.acquire(config.running_lock_path)
+            locked = True
+            if unclean is not None:
+                # collect_pending_from_log_tail enforces opt-in + dedup
+                # internally. We still wrap to make absolutely certain
+                # that a forensics failure cannot abort startup.
+                try:
+                    crash_lifecycle.collect_pending_from_log_tail(
+                        unclean.prev_log_path,
+                        config.data_dir,
+                        config.crash_report,
+                    )
+                except Exception:
+                    logger.exception(
+                        "lifespan: collect_pending_from_log_tail failed"
+                    )
+
+            # 3. Install all crash traps. Pending and reported stores
+            #    both interpret their path arg as a *data dir* (they
+            #    derive ``crash-pending/`` and ``reported.txt`` from it
+            #    internally), so we pass the data_dir for both.
+            crash_collector.register(
+                app,
+                settings=config.crash_report,
+                pending_store_dir=config.data_dir,
+                reported_store_path=config.data_dir,
+            )
+            registered = True
+        else:
+            # Auto-detection is dormant; keep the stderr-only structlog
+            # config the rest of the codebase expects.
+            configure_logging()
+
+        app.state.ctx = build_context(config)
+        from apps.api import _mcp_state
+        _mcp_state.ctx = app.state.ctx
+        yield
+    finally:
+        # Each shutdown step is independently guarded so one failure
+        # cannot prevent the others from running.
+        if registered:
+            try:
+                crash_collector.unregister()
+            except Exception:
+                logger.exception("lifespan: crash_collector.unregister failed")
+        if locked:
+            try:
+                crash_lifecycle.release(config.running_lock_path)
+            except Exception:
+                logger.exception("lifespan: lifecycle.release failed")
+        ctx = getattr(app.state, "ctx", None)
+        if ctx is not None:
+            try:
+                ctx.vector_store.close()
+            except Exception:
+                logger.exception("lifespan: vector_store.close failed")
+            try:
+                ctx.conn.close()
+            except Exception:
+                logger.exception("lifespan: conn.close failed")
 
 
 def create_app(config: AppConfig | None = None) -> FastAPI:
@@ -133,9 +252,12 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(settings_router.router)
     app.include_router(prompts.router)
     app.include_router(events.router)
+    app.include_router(feedback_hub.router)
+    app.include_router(crash.router)
     app.mount("/mcp", _McpAsgiProxy())
 
     from pathlib import Path
+
     from starlette.responses import FileResponse
     web_dist = Path(__file__).parents[1] / "web" / "dist"
     if web_dist.is_dir():
