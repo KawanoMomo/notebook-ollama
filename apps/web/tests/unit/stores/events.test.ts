@@ -85,4 +85,41 @@ describe('events store — summary_status / adr_status patch', () => {
     expect(currentNotebookStore.sources[0].summary_status).toBe('generating');
     expect(currentNotebookStore.sources[0].adr_status).toBe('generating');
   });
+
+  it('ready イベントの summary 本文をストアへ反映する(再取得なしで表示できる)', () => {
+    currentNotebookStore.upsertSource(makeSource());
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: 'src1',
+      status: 'ready',
+      summary_status: 'ready',
+      summary: '要約本文です。',
+    });
+    expect(currentNotebookStore.sources[0].summary_status).toBe('ready');
+    expect(currentNotebookStore.sources[0].summary).toBe('要約本文です。');
+  });
+
+  it('ready イベントの adr_draft / adr_template / adr_confidence を反映する', () => {
+    currentNotebookStore.upsertSource(makeSource());
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: 'src1',
+      status: 'ready',
+      adr_status: 'ready',
+      adr_draft: '# ADR: 案 A の採用',
+      adr_template: 'madr',
+      adr_confidence: 'high',
+    });
+    expect(currentNotebookStore.sources[0].adr_status).toBe('ready');
+    expect(currentNotebookStore.sources[0].adr_draft).toBe('# ADR: 案 A の採用');
+    expect(currentNotebookStore.sources[0].adr_template).toBe('madr');
+    expect(currentNotebookStore.sources[0].adr_confidence).toBe('high');
+  });
+
+  it('summary 本文が無いペイロードでは既存の summary を維持する', () => {
+    currentNotebookStore.upsertSource(makeSource({ summary: '既存の要約' }));
+    eventsStore.start('nb1');
+    capturedOnEvent!({ source_id: 'src1', status: 'ready', summary_status: 'ready' });
+    expect(currentNotebookStore.sources[0].summary).toBe('既存の要約');
+  });
 });

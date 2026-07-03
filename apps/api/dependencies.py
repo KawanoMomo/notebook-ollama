@@ -323,6 +323,9 @@ def build_context(config: AppConfig) -> AppContext:
             conn=conn,
             llm=gateway,
             model=config.ollama.default_model,
+            # 設定変更(PUT /api/settings/ollama)は cfg.ollama を差し替えるため、
+            # 起動時の文字列キャプチャでは切替が反映されない。getter で実行時解決する。
+            model_getter=lambda: config.ollama.default_model,
             broker=sse_broker,
         )
     )
@@ -340,6 +343,7 @@ def build_context(config: AppConfig) -> AppContext:
             conn=conn,
             llm=gateway,
             model=config.ollama.default_model,
+            model_getter=lambda: config.ollama.default_model,
             broker=sse_broker,
         )
     )

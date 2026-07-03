@@ -50,6 +50,9 @@ class SummaryDeps:
     conn: sqlite3.Connection
     llm: _LLMLike
     model: str
+    # 実行時にモデル名を解決する getter。設定でLLM既定が切り替わっても
+    # プロセス再起動なしで反映するため、指定時は model より優先される。
+    model_getter: Callable[[], str] | None = None
     broker: _BrokerLike | None = None
     max_input_tokens: int = _DEFAULT_MAX_INPUT_TOKENS
     max_input_tokens_meeting: int = _DEFAULT_MAX_INPUT_TOKENS_MEETING
@@ -101,7 +104,7 @@ class SummaryJob:
         for attempt in range(1, self._deps.max_attempts + 1):
             try:
                 raw = await self._deps.llm.generate(
-                    model=self._deps.model,
+                    model=self._resolve_model(),
                     prompt=prompt,
                     options={"temperature": 0.2},
                 )
@@ -109,7 +112,8 @@ class SummaryJob:
                 if not text:
                     raise RuntimeError("empty LLM response")
                 sources_repo.update_source_summary(conn, source_id, summary=text)
-                await _publish(SummaryStatus.READY)
+                # 本文を同梱し、FE が再取得なしでガイドを即時更新できるようにする
+                await _publish(SummaryStatus.READY, summary=text)
                 log.info(
                     "summary_complete",
                     source_id=source_id,
@@ -142,6 +146,11 @@ class SummaryJob:
             attempts=self._deps.max_attempts,
             error=str(last_err),
         )
+
+    def _resolve_model(self) -> str:
+        if self._deps.model_getter is not None:
+            return self._deps.model_getter()
+        return self._deps.model
 
     def _build_prompt(self, kind: str, chunks: list) -> str:
         if kind == "recording":

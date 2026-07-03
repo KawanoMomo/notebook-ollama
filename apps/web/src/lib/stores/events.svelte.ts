@@ -65,6 +65,15 @@ export function createEventsStore(): EventsStore {
           ...(typeof ev.adr_status === 'string'
             ? { adr_status: ev.adr_status as Source['adr_status'] }
             : {}),
+          // READY イベントは本文を同梱する(BE契約)。再取得なしで即時表示する。
+          ...(typeof ev.summary === 'string' ? { summary: ev.summary } : {}),
+          ...(typeof ev.adr_draft === 'string' ? { adr_draft: ev.adr_draft } : {}),
+          ...(typeof ev.adr_template === 'string'
+            ? { adr_template: ev.adr_template as Source['adr_template'] }
+            : {}),
+          ...(typeof ev.adr_confidence === 'string'
+            ? { adr_confidence: ev.adr_confidence as Source['adr_confidence'] }
+            : {}),
         });
         if (prev !== ev.status) {
           const title = existing.title ?? existing.origin ?? "ソース";
