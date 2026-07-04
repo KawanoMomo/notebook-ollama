@@ -387,6 +387,14 @@ async def summarize_source(
     src = sources_repo.get_source(ctx.conn, source_id)
     if src.notebook_id != notebook_id:
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    # チャンク 0 件では SummaryJob が確実に失敗する。generating に遷移させる前に
+    # 拒否し、ユーザーへは変換(再試行)を促す。
+    if (src.chunk_count or 0) == 0:
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "source has no chunks to summarize",
+            remediation="先に変換(取込)を完了してください。録音は「再試行」で変換を再実行できます。",
+        )
     sources_repo.update_source_summary_status(
         ctx.conn,
         source_id,

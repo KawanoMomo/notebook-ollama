@@ -31,6 +31,21 @@
     guideExpanded = false, onGuideToggle, onSummarize, onGenerateAdr,
   }: Props = $props();
 
+  // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
+  // ソースでは確実に失敗するため、無効化してまず変換(再試行)を促す。
+  const summaryDisabled = $derived(
+    (source.chunk_count ?? 0) === 0 ||
+      source.status !== 'ready' ||
+      source.summary_status === 'generating',
+  );
+  const summaryButtonLabel = $derived(
+    source.summary_status === 'generating'
+      ? '要約を生成中…'
+      : (source.chunk_count ?? 0) === 0 || source.status !== 'ready'
+        ? '変換が完了してから要約できます'
+        : '要約を再生成',
+  );
+
   // ADR ボタンの状態(設計: docs/specs/2026-06-26-meeting-adr-templates.md ui_design)
   const adrDisabled = $derived(
     (source.chunk_count ?? 0) === 0 ||
@@ -276,8 +291,9 @@
         <button
           class="icon guide-regen"
           onclick={onSummarize}
-          aria-label="要約を再生成"
-          title="要約を再生成"
+          disabled={summaryDisabled}
+          aria-label={summaryButtonLabel}
+          title={summaryButtonLabel}
         >
           <RefreshCw size="12" />
         </button>
