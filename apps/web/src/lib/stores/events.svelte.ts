@@ -59,7 +59,8 @@ export function createEventsStore(): EventsStore {
           embedded,
           // 要約/ADRジョブの進行状態。ペイロードに含まれる場合のみ上書きし、
           // 含まれない従来イベント(取り込みパイプライン等)では既存値を維持する。
-          ...(typeof ev.summary_status === 'string'
+          // 明示 null は「中断→未生成へ復帰」の配信(cancel エンドポイント)。
+          ...(typeof ev.summary_status === 'string' || ev.summary_status === null
             ? { summary_status: ev.summary_status as Source['summary_status'] }
             : {}),
           ...(typeof ev.adr_status === 'string'

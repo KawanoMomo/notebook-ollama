@@ -22,13 +22,16 @@
     guideExpanded?: boolean;
     onGuideToggle?: () => void;
     onSummarize?: () => void;
+    // 生成中の要約ジョブを中断する(generating のときのみ表示)。任意。
+    onSummaryCancel?: () => void;
     // ADR(Architecture Decision Record)抽出。録音/ドキュメント横断。
     onGenerateAdr?: () => void;
   }
   let {
     source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
     onRename, onStopConversion,
-    guideExpanded = false, onGuideToggle, onSummarize, onGenerateAdr,
+    guideExpanded = false, onGuideToggle, onSummarize, onSummaryCancel,
+    onGenerateAdr,
   }: Props = $props();
 
   // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
@@ -317,7 +320,17 @@
           <div class="skeleton">
             <span></span><span></span><span></span>
           </div>
-          <p class="guide-hint"><Spinner size={12} /> 要約を生成中…</p>
+          <p class="guide-hint">
+            <Spinner size={12} /> 要約を生成中…
+            {#if onSummaryCancel}
+              <button
+                class="guide-cancel"
+                onclick={onSummaryCancel}
+                aria-label="要約を中断"
+                title="要約を中断"
+              >中断</button>
+            {/if}
+          </p>
         {:else if source.summary_status === 'error'}
           <p class="guide-err">
             <AlertCircle size="12" color="var(--color-error)" />
@@ -558,6 +571,19 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
+  }
+  .guide-cancel {
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-fg-muted);
+    border-radius: var(--radius-sm, 4px);
+    font-size: inherit;
+    padding: 0 var(--space-1);
+    cursor: pointer;
+  }
+  .guide-cancel:hover {
+    color: var(--color-error);
+    border-color: var(--color-error);
   }
   .guide-err {
     margin: 0;

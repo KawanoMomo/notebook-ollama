@@ -19,6 +19,7 @@ from apps.api.schemas.source_content import (
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.hashing import sha256_bytes
 from core.ingestion.parsers import get_parser
+from core.logging import get_logger
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import (
     delete_chunks_for_source,
@@ -27,6 +28,8 @@ from core.storage.chunks_repo import (
 )
 
 router = APIRouter(prefix="/api/notebooks", tags=["sources"])
+
+log = get_logger("api.sources")
 
 
 _KIND_BY_EXT = {
@@ -404,6 +407,51 @@ async def summarize_source(
     if summary_runner is not None:
         background.add_task(summary_runner, source_id)
     return _to_schema(sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir)
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/summarize/cancel",
+    status_code=200,
+    response_model=Source,
+)
+async def cancel_summarize(
+    request: Request,
+    notebook_id: str,
+    source_id: str,
+) -> Source:
+    """実行中の要約ジョブを中断し、summary_status を未生成(None)へ戻す。
+
+    実行タスクが見つからなくても summary_status が generating なら None に
+    リセットする(サーバ再起動等で残留したスピナー状態の救済)。
+    generating でなければ何もしない(冪等)。
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+
+    registry = getattr(ctx, "summary_tasks", None)
+    cancelled = registry.cancel(source_id) if registry is not None else False
+
+    if cancelled or src.summary_status == sources_repo.SummaryStatus.GENERATING:
+        src = sources_repo.update_source_summary_status(
+            ctx.conn, source_id, status=None
+        )
+        # FE がリロードなしでスピナーを畳めるよう、明示 null を配信する
+        await ctx.sse.publish(
+            f"notebook:{src.notebook_id}",
+            {
+                "source_id": source_id,
+                "status": src.status.value,
+                "summary_status": None,
+            },
+        )
+        log.info(
+            "summary_cancelled",
+            source_id=source_id,
+            task_cancelled=cancelled,
+        )
+    return _to_schema(src, ctx.config.sources_dir)
 
 
 @router.post(

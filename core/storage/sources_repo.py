@@ -178,12 +178,13 @@ def update_source_summary_status(
     conn: sqlite3.Connection,
     source_id: str,
     *,
-    status: SummaryStatus,
+    status: SummaryStatus | None,
 ) -> SourceRecord:
+    """summary_status を更新する。None は「未生成」への復帰(中断時)。"""
     get_source(conn, source_id)
     conn.execute(
         "UPDATE sources SET summary_status=?, updated_at=? WHERE id=?",
-        (status.value, _now(), source_id),
+        (status.value if status is not None else None, _now(), source_id),
     )
     return get_source(conn, source_id)
 

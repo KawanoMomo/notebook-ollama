@@ -79,6 +79,54 @@ def test_summarize_rejects_source_without_chunks(client):
     assert after.summary_status is None
 
 
+def test_cancel_resets_stale_generating_to_none(client):
+    """generating のまま実行タスクが無い(サーバ再起動等)場合でも、cancel で
+    未生成(None)へ復旧できる。UI の無限スピナー状態の救済手段を兼ねる。"""
+    ctx = client.app.state.ctx
+    nb = client.post("/api/notebooks", json={"name": "N"}).json()
+    src = _make_recording_source(ctx, nb["id"])
+    sources_repo.update_source_summary_status(
+        ctx.conn, src.id, status=SummaryStatus.GENERATING
+    )
+
+    r = client.post(
+        f"/api/notebooks/{nb['id']}/sources/{src.id}/summarize/cancel"
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["summary_status"] is None
+
+    after = sources_repo.get_source(ctx.conn, src.id)
+    assert after.summary_status is None
+
+
+def test_cancel_is_noop_when_not_generating(client):
+    """generating でないソースへの cancel は現状維持(冪等)。"""
+    ctx = client.app.state.ctx
+    nb = client.post("/api/notebooks", json={"name": "N"}).json()
+    src = _make_recording_source(ctx, nb["id"])
+    sources_repo.update_source_summary_status(
+        ctx.conn, src.id, status=SummaryStatus.READY
+    )
+
+    r = client.post(
+        f"/api/notebooks/{nb['id']}/sources/{src.id}/summarize/cancel"
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["summary_status"] == "ready"
+
+
+def test_cancel_404_when_source_not_in_notebook(client):
+    ctx = client.app.state.ctx
+    nb_a = client.post("/api/notebooks", json={"name": "A"}).json()
+    nb_b = client.post("/api/notebooks", json={"name": "B"}).json()
+    src = _make_recording_source(ctx, nb_a["id"])
+
+    r = client.post(
+        f"/api/notebooks/{nb_b['id']}/sources/{src.id}/summarize/cancel"
+    )
+    assert r.status_code == 404
+
+
 def test_summarize_404_when_source_not_in_notebook(client):
     ctx = client.app.state.ctx
     nb_a = client.post("/api/notebooks", json={"name": "A"}).json()

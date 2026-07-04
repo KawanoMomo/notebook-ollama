@@ -122,4 +122,15 @@ describe('events store — summary_status / adr_status patch', () => {
     capturedOnEvent!({ source_id: 'src1', status: 'ready', summary_status: 'ready' });
     expect(currentNotebookStore.sources[0].summary).toBe('既存の要約');
   });
+
+  it('summary_status が明示 null のペイロード(中断)で未生成へ戻す', () => {
+    currentNotebookStore.upsertSource(makeSource()); // summary_status: 'generating'
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: 'src1',
+      status: 'ready',
+      summary_status: null,
+    });
+    expect(currentNotebookStore.sources[0].summary_status).toBeNull();
+  });
 });

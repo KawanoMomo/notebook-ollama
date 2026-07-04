@@ -50,6 +50,12 @@ export const sourcesApi = {
       `/api/notebooks/${notebookId}/sources/${sourceId}/summarize`,
       { method: 'POST' },
     ),
+  /** 実行中の要約ジョブを中断(summary_status を未生成 None に戻す)。 */
+  cancelSummary: (notebookId: string, sourceId: string) =>
+    request<Source>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/summarize/cancel`,
+      { method: 'POST' },
+    ),
   /** ADR 抽出ジョブを起動(Decision Gate → 抽出 or スキップ)。 */
   generateAdr: (notebookId: string, sourceId: string) =>
     request<Source>(

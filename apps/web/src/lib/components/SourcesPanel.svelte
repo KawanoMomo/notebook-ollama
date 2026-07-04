@@ -202,6 +202,16 @@
     }
   }
 
+  async function onSummaryCancel(s: Source) {
+    try {
+      const updated = await sourcesApi.cancelSummary(notebookId, s.id);
+      currentNotebookStore.upsertSource(updated);
+      pushToast('要約を中断しました', 'info');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function onGenerateAdr(s: Source) {
     try {
       const updated = await sourcesApi.generateAdr(notebookId, s.id);
@@ -295,6 +305,7 @@
         guideExpanded={guideOpen.has(s.id)}
         onGuideToggle={() => toggleGuide(s.id)}
         onSummarize={() => onSummarize(s)}
+        onSummaryCancel={() => onSummaryCancel(s)}
         onGenerateAdr={() => onGenerateAdr(s)}
       />
     {/each}
