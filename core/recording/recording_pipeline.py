@@ -17,6 +17,7 @@ try/except エラーハンドリングのパターンをミラーしている。
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import sqlite3
 import threading
@@ -186,7 +187,10 @@ class RecordingPipeline:
             system_transcripts: list[Any] = []
 
             if mic_wav is not None:
-                mic_raw = transcriber.transcribe(
+                # CPU/GPUバウンドの同期STTはワーカースレッドへオフロードし、
+                # イベントループを塞がない(issue #11: 変換中に全API無応答)。
+                mic_raw = await asyncio.to_thread(
+                    transcriber.transcribe,
                     mic_wav, channel=_MIC_CHANNEL, speaker_id=_MIC_SPEAKER,
                     session_id=source_id,
                 )
@@ -199,7 +203,8 @@ class RecordingPipeline:
                 speaker_channel[_MIC_SPEAKER] = _MIC_CHANNEL
 
             if system_wav is not None:
-                system_transcripts = transcriber.transcribe(
+                system_transcripts = await asyncio.to_thread(
+                    transcriber.transcribe,
                     system_wav, channel=_SYSTEM_CHANNEL, speaker_id=_SYSTEM_SPEAKER,
                     session_id=source_id,
                 )
@@ -219,7 +224,7 @@ class RecordingPipeline:
                         label="話者分離中", progress=0.35,
                         status=SourceStatus.PARSING.value,
                     )
-                    diar = diarizer.diarize(system_wav)
+                    diar = await asyncio.to_thread(diarizer.diarize, system_wav)
                     merged = merge(system_transcripts, diar)
                     # merge() は spk_NNN / spk_unknown を speaker_id に割り当てる。
                     # 出現順で 相手1, 相手2, ... に決定論的にマップする。
