@@ -67,7 +67,24 @@ describe('SourceCard recording stop/play', () => {
     await fireEvent.click(play);
     const audio = container.querySelector('audio');
     expect(audio).not.toBeNull();
+    // 既定はミックス(両チャンネル合成)。主動線のため初期選択もミックス。
     expect(audio?.getAttribute('src')).toBe(
+      '/api/notebooks/nb1/sources/src1/audio?channel=mix',
+    );
+  });
+
+  it('places the ミックス tab leftmost and switches to mic via あなた', async () => {
+    const { container } = render(
+      SourceCard,
+      baseProps(makeSource({ status: 'ready', chunk_count: 5, has_audio: true })),
+    );
+    await fireEvent.click(screen.getByLabelText('録音を再生'));
+    const tabs = Array.from(container.querySelectorAll('.player-tabs .tab')).map(
+      (b) => b.textContent?.trim(),
+    );
+    expect(tabs).toEqual(['ミックス', 'あなた', '相手']);
+    await fireEvent.click(screen.getByText('あなた'));
+    expect(container.querySelector('audio')?.getAttribute('src')).toBe(
       '/api/notebooks/nb1/sources/src1/audio?channel=mic',
     );
   });

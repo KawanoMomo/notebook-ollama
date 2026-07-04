@@ -208,15 +208,64 @@ def update_source_adr_status(
     conn: sqlite3.Connection,
     source_id: str,
     *,
-    status: AdrStatus,
+    status: AdrStatus | None,
 ) -> SourceRecord:
-    """ADR 抽出ジョブの状態だけ更新する(本文は変更しない)。"""
+    """ADR 抽出ジョブの状態だけ更新する(本文は変更しない)。None は未生成へ復帰。"""
     get_source(conn, source_id)
     conn.execute(
         "UPDATE sources SET adr_status=?, updated_at=? WHERE id=?",
-        (status.value, _now(), source_id),
+        (status.value if status is not None else None, _now(), source_id),
     )
     return get_source(conn, source_id)
+
+
+_TRANSIENT_SOURCE_STATUSES = (
+    SourceStatus.PENDING,
+    SourceStatus.PARSING,
+    SourceStatus.CHUNKING,
+    SourceStatus.EMBEDDING,
+)
+
+_INTERRUPTED_MSG = "サーバ再起動により処理が中断されました。「再試行」で再開できます。"
+
+
+def reconcile_stale_sources(conn: sqlite3.Connection) -> dict[str, int]:
+    """起動時に、前プロセスで中断されたジョブの status 残骸を整理する。
+
+    起動直後はいかなるジョブも実行されていないことが保証されるため、
+    遷移中 status は全て「中断された」ものとして倒す:
+
+    - source.status: pending/parsing/chunking/embedding → error(中断メッセージ)
+    - summary_status: generating → None(未生成)
+    - adr_status: generating → None(未生成)
+
+    これをしないと、UI 上は「入室しただけで変換/要約が勝手に走っている」
+    ように見える(2026-07-04 実機フィードバック)。
+    """
+    now = _now()
+    placeholders = ",".join("?" for _ in _TRANSIENT_SOURCE_STATUSES)
+    cur = conn.execute(
+        f"UPDATE sources SET status=?, error_msg=?, updated_at=? "
+        f"WHERE status IN ({placeholders})",
+        (
+            SourceStatus.ERROR.value,
+            _INTERRUPTED_MSG,
+            now,
+            *(s.value for s in _TRANSIENT_SOURCE_STATUSES),
+        ),
+    )
+    n_sources = cur.rowcount
+    cur = conn.execute(
+        "UPDATE sources SET summary_status=NULL, updated_at=? WHERE summary_status=?",
+        (now, SummaryStatus.GENERATING.value),
+    )
+    n_summaries = cur.rowcount
+    cur = conn.execute(
+        "UPDATE sources SET adr_status=NULL, updated_at=? WHERE adr_status=?",
+        (now, AdrStatus.GENERATING.value),
+    )
+    n_adrs = cur.rowcount
+    return {"sources": n_sources, "summaries": n_summaries, "adrs": n_adrs}
 
 
 def update_source_adr(

@@ -114,14 +114,21 @@
   }
 
   async function onReembed(s: Source) {
+    // クリック受付の即時フィードバック: API 応答を待たず parsing 表示へ切り替え、
+    // 変換ステータスパネルと停止ボタンを即座に出す(気付けない問題への対処)。
+    currentNotebookStore.upsertSource({ ...s, status: 'parsing' });
+    pushToast('変換を開始しました', 'info');
     try {
       await sourcesApi.recordingRetry(notebookId, s.id);
       // retry は {source_id,status} を返すため Source 全体を取り直して反映する。
       const fresh = await sourcesApi.list(notebookId);
       const updated = fresh.find((x) => x.id === s.id);
       if (updated) currentNotebookStore.upsertSource(updated);
-      pushToast('再生成を開始しました', 'info');
     } catch (e) {
+      // 失敗(409: 既に実行中 等)は実状態へ巻き戻してからエラー表示
+      const fresh = await sourcesApi.list(notebookId).catch(() => null);
+      const updated = fresh?.find((x) => x.id === s.id);
+      if (updated) currentNotebookStore.upsertSource(updated);
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }

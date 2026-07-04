@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
 from core.exceptions import AppError
+from core.recording.audio_export import AudioExportError, mix_audio
 from core.storage import sources_repo
 
 router = APIRouter(prefix="/api/notebooks", tags=["audio"])
@@ -33,6 +34,38 @@ def _resolve_audio_path(base: Path, channel: str) -> Path | None:
     return None
 
 
+async def _resolve_mix_path(base: Path) -> Path | None:
+    """ミックス音声のパスを解決する。
+
+    - mic / system の片方しか無ければそのチャンネルをそのまま返す(合成不要)。
+    - 両方あれば mix.m4a キャッシュを返す。キャッシュが無い、または入力より
+      古い場合は ffmpeg (amix) で生成してから返す。
+    - どちらも無ければ None。
+    """
+    mic = _resolve_audio_path(base, "mic")
+    system = _resolve_audio_path(base, "system")
+    if mic is None and system is None:
+        return None
+    if mic is None or system is None:
+        return mic or system
+
+    dst = base / "mix.m4a"
+    try:
+        fresh = dst.exists() and dst.stat().st_mtime >= max(
+            mic.stat().st_mtime, system.stat().st_mtime
+        )
+    except OSError:
+        fresh = False
+    if not fresh:
+        try:
+            await mix_audio(mic, system, dst)
+        except AudioExportError as exc:
+            raise HTTPException(
+                status_code=500, detail=f"failed to mix audio: {exc}"
+            ) from exc
+    return dst
+
+
 @router.get("/{notebook_id}/sources/{source_id}/audio")
 async def get_source_audio(
     request: Request, notebook_id: str, source_id: str, channel: str = "mic"
@@ -40,9 +73,10 @@ async def get_source_audio(
     """Stream a recording source's audio with HTTP Range support.
 
     Serves ``sources_dir/<source_id>/<channel>.{m4a,wav}`` so an HTML5 <audio>
-    element can play and seek. channel=mic (you) / system (others).
+    element can play and seek. channel=mix (合成) / mic (you) / system (others).
+    mix は初回リクエスト時に ffmpeg で合成して mix.m4a にキャッシュする。
     """
-    if channel not in ("mic", "system"):
+    if channel not in ("mix", "mic", "system"):
         raise HTTPException(status_code=400, detail="invalid channel")
 
     ctx = request.app.state.ctx
@@ -54,7 +88,10 @@ async def get_source_audio(
         raise HTTPException(status_code=404, detail="source not in notebook")
 
     base = ctx.config.sources_dir / source_id
-    audio_path = _resolve_audio_path(base, channel)
+    if channel == "mix":
+        audio_path = await _resolve_mix_path(base)
+    else:
+        audio_path = _resolve_audio_path(base, channel)
     if audio_path is None:
         raise HTTPException(status_code=404, detail="audio file not found")
 

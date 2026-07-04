@@ -30,6 +30,33 @@ async def convert_audio(src: Path, dst: Path, *, fmt: str, bitrate_kbps: int) ->
     return dst
 
 
+def build_mix_cmd(mic: Path, system: Path, dst: Path) -> list[str]:
+    """mic / system 2チャンネルを 1 本に合成する ffmpeg コマンド。
+
+    amix は入力数で音量を平均化するため、volume=2 で会話音量へ戻す
+    (両者の同時発話はほぼ無いので、クリップは実用上問題にならない)。
+    """
+    return [
+        "ffmpeg", "-y",
+        "-i", str(mic),
+        "-i", str(system),
+        "-filter_complex", "amix=inputs=2:duration=longest,volume=2",
+        "-c:a", "aac", "-b:a", "96k",
+        str(dst),
+    ]
+
+
+async def mix_audio(mic: Path, system: Path, dst: Path) -> Path:
+    """mic + system をミックスして dst (AAC/.m4a) を生成する。"""
+    cmd = build_mix_cmd(mic, system, dst)
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    _, err = await proc.communicate()
+    if proc.returncode != 0 or not dst.exists():  # noqa: ASYNC240
+        raise AudioExportError(err.decode("utf-8", "ignore")[-500:])
+    return dst
+
+
 def delete_if_exists(path: Path) -> None:
     if path.exists():
         path.unlink()

@@ -191,6 +191,14 @@ async def lifespan(app: FastAPI):
             configure_logging()
 
         app.state.ctx = build_context(config)
+        # --- 起動時リコンシリエーション -------------------------------------
+        # 前プロセスで中断されたジョブの status 残骸(pending/parsing 等、
+        # summary/adr の generating)を整理する。放置すると UI 上は「入室した
+        # だけで変換が勝手に走っている」ように見える(2026-07-04 実機FB)。
+        from core.storage.sources_repo import reconcile_stale_sources
+        _recon = reconcile_stale_sources(app.state.ctx.conn)
+        if any(_recon.values()):
+            logger.info("startup_reconcile_stale_sources counts=%s", _recon)
         # --- Sprint 3 / Task 3.4: chosen-backend-plan startup banner ----------
         # Logs the resolved BackendPlan ids (and the HwProfile that produced them)
         # so the chosen acceleration path is visible in the startup log without

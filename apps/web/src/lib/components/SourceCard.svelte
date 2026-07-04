@@ -124,7 +124,8 @@
   // インラインの小さな <audio> を開閉するだけの最小 UI。
   const canPlay = $derived(source.kind === 'recording' && source.has_audio === true);
   let showPlayer = $state(false);
-  let playChannel = $state<'mic' | 'system'>('mic');
+  // ミックス(両チャンネル合成)が主動線。既定選択もミックス。
+  let playChannel = $state<'mix' | 'mic' | 'system'>('mix');
 
   // インライン題名編集。鉛筆クリックで editing=true、Enter/blur で確定、Esc で取消。
   // 確定値が空 or 変更なしなら API を呼ばない (no-op)。
@@ -259,6 +260,9 @@
 {#if showPlayer && canPlay}
   <div class="player">
     <div class="player-tabs">
+      <button class="tab" class:active={playChannel === 'mix'} onclick={() => (playChannel = 'mix')}>
+        ミックス
+      </button>
       <button class="tab" class:active={playChannel === 'mic'} onclick={() => (playChannel = 'mic')}>
         あなた
       </button>
