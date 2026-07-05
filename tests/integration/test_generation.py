@@ -23,9 +23,11 @@ class FakeRetrieval:
 
 
 class FakeGateway:
-    async def chat_stream(self, *, model, messages, options=None):
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
         for tok in ["回", "答", "[^1]"]:
             yield tok
+        if meta is not None:
+            meta["done_reason"] = "stop"
 
 
 @pytest.mark.asyncio
@@ -99,3 +101,62 @@ async def test_generation_forwards_source_ids_to_retrieval():
     ):
         pass
     assert retrieval.received_source_ids == ["SRC_X"]
+
+
+class TruncatingGateway:
+    """num_predict 上限で打ち切られた Ollama 応答(done_reason=length)を模す。"""
+
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
+        for tok in ["回答の", "途中"]:
+            yield tok
+        if meta is not None:
+            meta["done_reason"] = "length"
+
+
+def _run_args(**overrides):
+    base = dict(
+        notebook_id="nb",
+        model="qwen3:1.7b",
+        question="質問",
+        history=[],
+        num_ctx=8192,
+        context_budget_ratio=0.8,
+        response_budget_tokens=1024,
+        retrieval_top_k=8,
+        min_history_turns=1,
+    )
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_generation_marks_truncated_answer_with_visible_note():
+    """done_reason=length の打ち切りを無言にしない(2026-07-05 実機FB:
+    要約プロンプトの回答が文の途中で止まり、原因が見えなかった)。"""
+    svc = GenerationService(
+        deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=TruncatingGateway())
+    )
+    events: list[GenerationEvent] = []
+    async for ev in svc.run(**_run_args()):
+        events.append(ev)
+
+    final = next(e for e in events if e.kind == "done")
+    assert final.data["truncated"] is True
+    assert "上限" in final.data["answer"]
+    # 注記は token イベントとしても流れる(FE 変更なしで画面と履歴に残る)
+    token_texts = [e.data.get("text", "") for e in events if e.kind == "token"]
+    assert any("上限" in t for t in token_texts)
+
+
+@pytest.mark.asyncio
+async def test_generation_no_note_when_completed_normally():
+    svc = GenerationService(
+        deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=FakeGateway())
+    )
+    events: list[GenerationEvent] = []
+    async for ev in svc.run(**_run_args()):
+        events.append(ev)
+
+    final = next(e for e in events if e.kind == "done")
+    assert final.data["truncated"] is False
+    assert "上限" not in final.data["answer"]

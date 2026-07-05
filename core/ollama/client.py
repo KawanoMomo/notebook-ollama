@@ -60,7 +60,11 @@ class OllamaClient:
         model: str,
         messages: list[dict[str, str]],
         options: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
+        """トークンを逐次 yield する。meta が渡された場合、最終チャンクの
+        done_reason("stop" / "length" 等)を meta["done_reason"] に書き込む。
+        num_predict 上限による打ち切り検知に使う。"""
         payload = {"model": model, "messages": messages, "stream": True}
         if options:
             payload["options"] = options
@@ -92,6 +96,8 @@ class OllamaClient:
                         if content:
                             yield content
                         if chunk.get("done"):
+                            if meta is not None:
+                                meta["done_reason"] = chunk.get("done_reason")
                             return
             except httpx.HTTPError as exc:
                 raise AppError(

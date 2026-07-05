@@ -37,7 +37,9 @@ class OllamaSettings(BaseModel):
 
 class GenerationSettings(BaseModel):
     context_budget_ratio: float = 0.8
-    response_budget_tokens: int = 1024
+    # 応答の num_predict 上限。思考モデル(qwen3 等)は thinking トークンも
+    # ここを消費するため、1024 では議事録等の長出力が途中で切れる(2026-07-05 実機FB)。
+    response_budget_tokens: int = 2048
 
 
 class RetrievalSettings(BaseModel):
