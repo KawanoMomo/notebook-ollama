@@ -19,9 +19,13 @@ export interface ConversationStore {
   readonly warning: string | null;
   readonly lastBeatAt: number | null;
   load(notebookId: string, conversationId: string): Promise<void>;
+  /** ノートを開いた時に、そのノートの最新会話を復元する(履歴のノートスコープ化)。 */
+  loadLatest(notebookId: string): Promise<void>;
   ensureConversation(notebookId: string): Promise<Conversation>;
   send(notebookId: string, content: string, sourceIds?: string[]): Promise<void>;
   cancel(): void;
+  /** 会話・メッセージ・ストリーミング状態を全クリアする(ノート切替時に呼ぶ)。 */
+  reset(): void;
   renameSpeakerInSource(sourceId: string, fromLabel: string, toLabel: string): void;
 }
 
@@ -95,11 +99,40 @@ export function createConversationStore(api = chatApi): ConversationStore {
       messages = items;
       // conversation metadata isn't fetched here; caller may set separately
     },
+    async loadLatest(notebookId) {
+      // そのノートの最新会話 1 件を復元する。無ければ何もしない(空のまま)。
+      // 呼び出し前に reset() 済みであること想定(+page.svelte の $effect が担保)。
+      const convs = await api.listConversations(notebookId);
+      if (convs.length === 0) return;
+      const latest = convs[0]; // list_conversations は updated_at DESC で返る(BE契約)
+      const items = await api.listMessages(notebookId, latest.id);
+      conversation = latest;
+      messages = items;
+    },
     async ensureConversation(notebookId) {
-      if (conversation) return conversation;
+      // 別ノートの会話を保持したまま呼ばれた場合は新規発行に切替
+      // (BE の 404 ガードに頼らず FE 側で防ぐ二重ガード)。
+      if (conversation && conversation.notebook_id === notebookId) {
+        return conversation;
+      }
       conversation = await api.createConversation(notebookId);
       messages = [];
       return conversation;
+    },
+    reset() {
+      // ノート切替時: 送信中なら abort し、状態を全クリア。
+      abortController?.abort();
+      stopBeatWatch();
+      abortController = null;
+      conversation = null;
+      messages = [];
+      streaming = false;
+      streamingText = "";
+      streamingHits = [];
+      thinkingChars = 0;
+      error = null;
+      warning = null;
+      lastBeatAt = null;
     },
     async send(notebookId, content, sourceIds) {
       void requestPermissionOnce();
