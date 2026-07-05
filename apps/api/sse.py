@@ -19,5 +19,18 @@ class SseBroker:
         self._subs.get(topic, set()).discard(q)
 
     async def publish(self, topic: str, payload: dict[str, Any]) -> None:
+        # 開発者モード mirror(spec §8.3)。disabled 時は enabled チェック 1 回で
+        # 抜ける。Dev 側の失敗は push_dev_entry 内で握り潰される(NFR-2)。
+        from core.dev_logs.broker import broker as _dev_broker
+        from core.dev_logs.ring import ring as _dev_ring
+        from core.dev_logs.sink import push_dev_entry
+        push_dev_entry(
+            ring=_dev_ring,
+            broker=_dev_broker,
+            level="info",
+            source="events",
+            msg=topic,
+            payload={"topic": topic, "payload": payload},
+        )
         for q in list(self._subs.get(topic, set())):
             await q.put(payload)

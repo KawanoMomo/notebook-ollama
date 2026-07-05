@@ -66,6 +66,19 @@ def apply_overrides(config) -> None:
             # 不正な settings.json で起動をクラッシュさせない (既定値で続行)。
             log.warning("settings_override_invalid", section="ollama")
 
+    dev = ov.get("dev")
+    if isinstance(dev, dict) and dev:
+        # 開発者モード設定を復元する(容量はクランプ)。不正値でも起動を止めない。
+        from core.dev_logs.ring import clamp_capacity
+        merged = {**config.dev.model_dump(), **dev}
+        try:
+            merged["log_capacity_bytes"] = clamp_capacity(
+                int(merged.get("log_capacity_bytes", config.dev.log_capacity_bytes))
+            )
+            config.dev = config.dev.__class__(**merged)
+        except Exception:
+            log.warning("settings_override_invalid", section="dev")
+
     generation = ov.get("generation")
     if isinstance(generation, dict) and generation:
         # 生成設定 (response_budget_tokens / context_budget_ratio) を復元する。

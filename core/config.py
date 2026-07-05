@@ -35,6 +35,17 @@ class OllamaSettings(BaseModel):
     text_embed_backend: Literal["auto", "ollama-bge-m3-cpu"] = "auto"
 
 
+class DevModeSettings(BaseModel):
+    """開発者モード(spec: docs/specs/2026-07-02-developer-mode-design.md)。
+
+    enabled は既定 OFF。ON でも Dev API は localhost 限定(§5.2)。
+    log_capacity_bytes は 1MB..200MB にクランプして採用する(§9.2 E7)。
+    """
+
+    enabled: bool = False
+    log_capacity_bytes: int = 20 * 1024 * 1024
+
+
 class GenerationSettings(BaseModel):
     context_budget_ratio: float = 0.8
     # 応答の num_predict 上限。思考モデル(qwen3 等)は thinking トークンも
@@ -112,6 +123,7 @@ class AppConfig(BaseSettings):
     mcp: McpSettings = Field(default_factory=McpSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
     crash_report: CrashReportSettings = Field(default_factory=CrashReportSettings)
+    dev: DevModeSettings = Field(default_factory=DevModeSettings)
 
     @property
     def metadata_db_path(self) -> Path:

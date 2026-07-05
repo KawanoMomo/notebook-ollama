@@ -163,7 +163,12 @@ def configure_logging(
     handler = logging.StreamHandler(target)
     handler.setFormatter(logging.Formatter("%(message)s"))
     root = logging.getLogger()
-    root.handlers = [handler]
+    # 開発者モードの吸い口(uvicorn アクセスログ・例外)。ring が disabled の
+    # 間は emit 先頭の 1 チェックで抜けるため常設してよい(NFR-1)。
+    from core.dev_logs.broker import broker as _dev_broker
+    from core.dev_logs.ring import ring as _dev_ring
+    from core.dev_logs.sink import DevSinkHandler
+    root.handlers = [handler, DevSinkHandler(ring=_dev_ring, broker=_dev_broker)]
     root.setLevel(level.upper())
 
     processors: list[Processor] = [
@@ -173,6 +178,11 @@ def configure_logging(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
     ]
+    # 開発者モード: structlog イベントの吸い口(素通し processor、NFR-1)
+    from core.dev_logs.sink import make_dev_structlog_processor
+    processors.append(
+        make_dev_structlog_processor(ring=_dev_ring, broker=_dev_broker)
+    )
     if logs_dir is not None:
         logs_dir = Path(logs_dir)
         # 起動時の世代退避: 前回セッションの last-session.log を .prev に押し出す
