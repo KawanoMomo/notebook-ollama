@@ -155,32 +155,43 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     # 壁時計→WAV の写像が非線形になるため、タイムスタンプ方式は採らない)。
     sess.extras["mute_state"] = MuteState()
 
-    mic_lc = sys_lc = None
-    live_active = False
+    # 字幕は「モデルがロードでき次第」開始する参照 holder。録音の PCM 取得は
+    # このロードを待たずに始まる(2026-07-05 実機FB: 録音開始が遅い)。
+    # faster-whisper large-v3 の初回ロードは数GB/数十秒かかるため、
+    # start_recording の HTTP 応答がそれに引きずられていた。
+    lc_ref: dict[str, Any] = {"mic": None, "sys": None}
+    live_active = bool(body.live_caption)  # 予定として ON。実際の起動は非同期
+
     if body.live_caption:
-        try:
-            tr = _get_transcriber(request)
-            epoch = _time.perf_counter()
-            a = ctx.config.audio
-            mic_lc = LiveCaption(
-                transcriber=tr, on_caption=push_to_queue, label="あなた",
-                epoch=epoch, id_prefix="mic", agc_enabled=a.agc_enabled,
-            )
-            sys_lc = LiveCaption(
-                transcriber=tr, on_caption=push_to_queue, label="相手",
-                epoch=epoch, id_prefix="sys", agc_enabled=a.agc_enabled,
-            )
-            mic_lc.start()
-            sys_lc.start()
-            sess.extras["live_captions"] = [mic_lc, sys_lc]
-            live_active = True
-        except Exception as exc:
-            push_to_queue({
-                "type": "error",
-                "msg": f"live caption init failed: {type(exc).__name__}: {exc}",
-            })
-            mic_lc = sys_lc = None
-            live_active = False
+        import asyncio as _asyncio
+
+        async def _init_live_captions_async() -> None:
+            try:
+                # モデルロードはブロッキングなのでワーカースレッドへ
+                tr = await _asyncio.to_thread(_get_transcriber, request)
+                epoch = _time.perf_counter()
+                a = ctx.config.audio
+                mic_lc = LiveCaption(
+                    transcriber=tr, on_caption=push_to_queue, label="あなた",
+                    epoch=epoch, id_prefix="mic", agc_enabled=a.agc_enabled,
+                )
+                sys_lc = LiveCaption(
+                    transcriber=tr, on_caption=push_to_queue, label="相手",
+                    epoch=epoch, id_prefix="sys", agc_enabled=a.agc_enabled,
+                )
+                mic_lc.start()
+                sys_lc.start()
+                lc_ref["mic"] = mic_lc
+                lc_ref["sys"] = sys_lc
+                sess.extras["live_captions"] = [mic_lc, sys_lc]
+                push_to_queue({"type": "live_caption_ready"})
+            except Exception as exc:
+                push_to_queue({
+                    "type": "error",
+                    "msg": f"live caption init failed: {type(exc).__name__}: {exc}",
+                })
+
+        _asyncio.create_task(_init_live_captions_async())
 
     mic_meter = LevelMeter("mic", push_to_queue, min_interval_ms=50)
     sys_meter = LevelMeter("system", push_to_queue, min_interval_ms=50)
@@ -195,15 +206,19 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         if mute_state.is_muted("mic"):
             return
         mic_meter(samples)
-        if mic_lc is not None:
-            mic_lc.accept(samples)
+        # lc_ref は非同期の字幕初期化タスクが完了した瞬間から None でなくなる。
+        # それまでのフレームは字幕には流れないが、録音 WAV には書かれている。
+        lc = lc_ref["mic"]
+        if lc is not None:
+            lc.accept(samples)
 
     def on_system_chunk(samples):
         if mute_state.is_muted("system"):
             return
         sys_meter(samples)
-        if sys_lc is not None:
-            sys_lc.accept(samples)
+        lc = lc_ref["sys"]
+        if lc is not None:
+            lc.accept(samples)
 
     try:
         sess.recorder.start(
@@ -217,7 +232,7 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         # so the registry is freed (otherwise active_id stays non-None forever and
         # every future POST returns 409), mark the source failed, and clean up the
         # empty session dir. Also stop any live-caption workers we started above.
-        for _lc in (mic_lc, sys_lc):
+        for _lc in (lc_ref.get("mic"), lc_ref.get("sys")):
             if _lc is not None:
                 with contextlib.suppress(Exception):
                     _lc.stop()
