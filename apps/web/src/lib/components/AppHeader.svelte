@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Megaphone, Settings } from '@lucide/svelte';
   import { feedbackHubStore } from '$lib/stores/feedbackHub.svelte';
+  import { devmode } from '$lib/stores/devmode.svelte';
   interface Props {
     title?: string;
     children?: import('svelte').Snippet;
@@ -9,7 +10,7 @@
 </script>
 
 <header>
-  <a href="/" class="brand">
+  <a href="/" class="brand" onclick={() => devmode.registerLogoClick()}>
     {title}
   </a>
   <div class="actions">

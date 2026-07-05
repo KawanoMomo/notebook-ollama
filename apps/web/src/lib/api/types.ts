@@ -207,6 +207,13 @@ export interface AppSettings {
    * settings store 側で `?? DEFAULT_CRASH_REPORT` でフォールバックする。
    */
   crash_report?: CrashReportSettings;
+  /** 開発者モード(spec 2026-07-02)。旧BEでは無いこともあるため optional。 */
+  dev?: DevSettings;
+}
+
+export interface DevSettings {
+  enabled: boolean;
+  log_capacity_bytes: number;
 }
 
 export interface Stats {
