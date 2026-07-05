@@ -40,6 +40,18 @@ class OllamaTimeoutsUpdate(BaseModel):
     chat_read_timeout_seconds: float = Field(ge=5, le=86400)
 
 
+class GenerationSettingsUpdate(BaseModel):
+    """PUT /settings/generation の入力。
+
+    response_budget_tokens は num_predict にそのまま渡る応答上限。
+    思考モデルは thinking もこの予算を消費するため下限は 64 とし、
+    誤入力ガードとして 32768 を上限にする。
+    """
+
+    response_budget_tokens: int = Field(ge=64, le=32768)
+    context_budget_ratio: float | None = Field(default=None, gt=0.1, lt=0.95)
+
+
 class AudioSettingsSchema(BaseModel):
     mic_device_index: int | None = None
     system_device_index: int | None = None

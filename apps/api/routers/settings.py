@@ -18,6 +18,7 @@ from apps.api.schemas.settings import (
     CrashReportSettingsUpdate,
     EmbeddingSwitchRequest,
     GenerationSettingsSchema,
+    GenerationSettingsUpdate,
     HwProfileSchema,
     OllamaSettingsSchema,
     OllamaSettingsUpdate,
@@ -261,6 +262,42 @@ async def put_ollama_timeouts(
         "request_timeout_seconds": cfg.ollama.request_timeout_seconds,
         "chat_read_timeout_seconds": cfg.ollama.chat_read_timeout_seconds,
     }
+
+
+@router.put("/settings/generation", response_model=GenerationSettingsSchema)
+async def put_generation_settings(
+    request: Request, body: GenerationSettingsUpdate
+) -> GenerationSettingsSchema:
+    """生成設定(応答トークン上限 等)を更新する。
+
+    response_budget_tokens は num_predict にそのまま渡る。思考モデルの
+    thinking もこの予算を消費するため、長出力が「上限打ち切り」になる場合に
+    UI から拡大する経路(2026-07-05 実機FB: 表示だけあって変更できなかった)。
+    変更は in-memory cfg と settings.json の両方に反映し、次回起動時は
+    settings.json の値が既定を上書きする(env > settings.json > 既定)。
+    """
+    cfg = request.app.state.ctx.config
+    update: dict = {"response_budget_tokens": body.response_budget_tokens}
+    if body.context_budget_ratio is not None:
+        update["context_budget_ratio"] = body.context_budget_ratio
+    cfg.generation = cfg.generation.model_copy(update=update)
+
+    from core.settings_store import load_overrides, save_section
+    existing = load_overrides(cfg.data_dir).get("generation")
+    existing = existing if isinstance(existing, dict) else {}
+    save_section(
+        cfg.data_dir,
+        "generation",
+        {
+            **existing,
+            "response_budget_tokens": cfg.generation.response_budget_tokens,
+            "context_budget_ratio": cfg.generation.context_budget_ratio,
+        },
+    )
+    return GenerationSettingsSchema(
+        context_budget_ratio=cfg.generation.context_budget_ratio,
+        response_budget_tokens=cfg.generation.response_budget_tokens,
+    )
 
 
 _REINDEX_TOPIC = "embedding_reindex"
