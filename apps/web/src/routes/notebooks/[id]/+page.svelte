@@ -60,11 +60,13 @@
     }
   }
 
-  // when notebook changes, reset conversation (clear messages, drop current conv ref)
+  // when notebook changes, reset conversation and restore this notebook's latest
+  // conversation from BE (2026-07-05 実機FB: 前ノートの履歴が残って見えた)。
   $effect(() => {
-    void data.notebookId;
-    // ConversationStore singleton retains across pages; clear it for new notebook
-    conversationStore.cancel();
+    const nb = data.notebookId;
+    // Singleton store is shared across pages — clear it, then reload for this notebook.
+    conversationStore.reset();
+    void conversationStore.loadLatest(nb);
   });
 
   // Prevent browser default (opening PDFs/text in a new tab) when files are

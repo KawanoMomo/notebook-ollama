@@ -136,6 +136,76 @@ describe('conversation store', () => {
     ]);
   });
 
+  // --- ノートスコープ(2026-07-05 実機FB) --------------------------------
+  describe('ノートスコープ', () => {
+    it('reset() で conversation / messages / streaming 状態が空に戻る', async () => {
+      const api = {
+        createConversation: vi.fn().mockResolvedValue(conv),
+        listConversations: vi.fn().mockResolvedValue([]),
+        listMessages: vi.fn().mockResolvedValue([]),
+        sendMessage: vi.fn(),
+      };
+      const store = createConversationStore(api as never);
+      await store.ensureConversation('nb1');
+      expect(store.conversation?.id).toBe('c1');
+      store.reset();
+      expect(store.conversation).toBeNull();
+      expect(store.messages).toEqual([]);
+      expect(store.streamingText).toBe('');
+      expect(store.thinkingChars).toBe(0);
+      expect(store.error).toBeNull();
+    });
+
+    it('ensureConversation は別ノートを渡されたら新規会話を作る(reset 忘れ二重ガード)', async () => {
+      const convA: Conversation = { ...conv, id: 'c-A', notebook_id: 'A' };
+      const convB: Conversation = { ...conv, id: 'c-B', notebook_id: 'B' };
+      const api = {
+        createConversation: vi.fn().mockResolvedValueOnce(convA).mockResolvedValueOnce(convB),
+        listConversations: vi.fn().mockResolvedValue([]),
+        listMessages: vi.fn().mockResolvedValue([]),
+        sendMessage: vi.fn(),
+      };
+      const store = createConversationStore(api as never);
+      const first = await store.ensureConversation('A');
+      const second = await store.ensureConversation('B');
+      expect(first.id).toBe('c-A');
+      expect(second.id).toBe('c-B');
+      expect(api.createConversation).toHaveBeenCalledTimes(2);
+    });
+
+    it('loadLatest はそのノートの最新会話と過去メッセージを復元する', async () => {
+      const seed = { ...conv, id: 'c-X', notebook_id: 'nb1' };
+      const msgs = [
+        { id: 'm1', conversation_id: 'c-X', role: 'assistant', content: 'hi',
+          citations: [], model: null, created_at: 't' },
+      ];
+      const api = {
+        createConversation: vi.fn(),
+        listConversations: vi.fn().mockResolvedValue([seed, { ...seed, id: 'c-Y' }]),
+        listMessages: vi.fn().mockResolvedValue(msgs),
+        sendMessage: vi.fn(),
+      };
+      const store = createConversationStore(api as never);
+      await store.loadLatest('nb1');
+      expect(store.conversation?.id).toBe('c-X');
+      expect(store.messages.map((m) => m.content)).toEqual(['hi']);
+      expect(api.listMessages).toHaveBeenCalledWith('nb1', 'c-X');
+    });
+
+    it('loadLatest はノートに会話が無ければ何もしない', async () => {
+      const api = {
+        createConversation: vi.fn(),
+        listConversations: vi.fn().mockResolvedValue([]),
+        listMessages: vi.fn(),
+        sendMessage: vi.fn(),
+      };
+      const store = createConversationStore(api as never);
+      await store.loadLatest('nb-empty');
+      expect(store.conversation).toBeNull();
+      expect(api.listMessages).not.toHaveBeenCalled();
+    });
+  });
+
   it('cancel() で abort され streaming/監視が止まる', async () => {
     let resolveGen!: () => void;
     const gate = new Promise<void>((r) => (resolveGen = r));

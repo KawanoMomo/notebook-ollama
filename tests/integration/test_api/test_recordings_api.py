@@ -134,3 +134,43 @@ def test_stop_recording_wrong_notebook_returns_404(client):
     # original notebook can still stop it
     r_ok = client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
     assert r_ok.status_code == 200
+
+
+# --- 録音開始と字幕モデルロードの分離 (2026-07-05 実機FB) --------------
+# 録音ボタンを押した瞬間に PCM 取得は始まってほしい。faster-whisper の
+# 初回ロード(数GB, 数十秒)を待って 200 を返すのは UX として NG。
+class _SlowLoadingTranscriber:
+    """初回インスタンス化に時間がかかる faster-whisper を模す。"""
+
+    load_calls: list[float] = []
+
+    def __init__(self):
+        import time
+        _SlowLoadingTranscriber.load_calls.append(time.perf_counter())
+        time.sleep(0.5)  # モデルロード相当
+
+
+def test_start_recording_returns_before_transcriber_load(tmp_path, monkeypatch):
+    """live_caption=True でも、応答は transcriber ロードを待たずに返る。"""
+    import time as _t
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
+    app = create_app()
+    _SlowLoadingTranscriber.load_calls.clear()
+    with TestClient(app) as c:
+        c.app.state.ctx.recorder_factory = lambda session_dir: _FakeRecorder(session_dir)
+        c.app.state.ctx.transcriber_factory = _SlowLoadingTranscriber
+        c.app.state.ctx.diarizer_factory = lambda: None
+        nb = _create_nb(c)
+
+        t0 = _t.perf_counter()
+        r = c.post(f"/api/notebooks/{nb}/recordings", json={"live_caption": True})
+        elapsed = _t.perf_counter() - t0
+
+        assert r.status_code == 200, r.text
+        # モデルロードは 0.5s。応答はそれを待たず 0.3s 以内に返るべき
+        assert elapsed < 0.3, (
+            f"start_recording が transcriber ロードを待っている: {elapsed:.3f}s"
+        )
+        # 後始末: セッションを閉じる
+        rid = r.json()["recording_id"]
+        c.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
