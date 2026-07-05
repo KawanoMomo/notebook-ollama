@@ -6,6 +6,18 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class DevSettingsSchema(BaseModel):
+    enabled: bool
+    log_capacity_bytes: int
+
+
+class DevSettingsUpdate(BaseModel):
+    """PUT /settings/dev の入力。容量は 1MB..200MB へクランプして採用(§9.2 E7)。"""
+
+    enabled: bool
+    log_capacity_bytes: int | None = None
+
+
 class GenerationSettingsSchema(BaseModel):
     context_budget_ratio: float
     response_budget_tokens: int
@@ -114,6 +126,7 @@ class AppSettingsSchema(BaseModel):
     retrieval: RetrievalSettingsSchema
     audio: AudioSettingsSchema
     crash_report: CrashReportSettingsSchema | None = None
+    dev: DevSettingsSchema | None = None
 
 
 class EmbeddingSwitchRequest(BaseModel):

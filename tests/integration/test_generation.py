@@ -160,3 +160,31 @@ async def test_generation_no_note_when_completed_normally():
     final = next(e for e in events if e.kind == "done")
     assert final.data["truncated"] is False
     assert "上限" not in final.data["answer"]
+
+
+class ThinkingGateway:
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
+        from core.ollama.client import ThinkingChunk
+
+        yield ThinkingChunk("思考中の独り言")
+        yield "回答"
+        if meta is not None:
+            meta["done_reason"] = "stop"
+
+
+@pytest.mark.asyncio
+async def test_generation_emits_thinking_events_but_excludes_from_answer():
+    """thinking はイベントとして流れ、本文・保存内容には含めない(2026-07-05)。"""
+    svc = GenerationService(
+        deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=ThinkingGateway())
+    )
+    events: list[GenerationEvent] = []
+    async for ev in svc.run(**_run_args()):
+        events.append(ev)
+
+    kinds = [e.kind for e in events]
+    assert "thinking" in kinds
+    assert kinds.index("thinking") < kinds.index("token")
+    final = next(e for e in events if e.kind == "done")
+    assert final.data["answer"] == "回答"
+    assert "思考中の独り言" not in final.data["answer"]

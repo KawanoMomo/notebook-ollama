@@ -13,6 +13,8 @@ export interface ConversationStore {
   readonly streaming: boolean;
   readonly streamingText: string;
   readonly streamingHits: RetrievalHit[];
+  /** 思考モデルの thinking フェーズ累計文字数(0=非思考)。 */
+  readonly thinkingChars: number;
   readonly error: string | null;
   readonly warning: string | null;
   readonly lastBeatAt: number | null;
@@ -29,6 +31,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
   let streaming = $state(false);
   let streamingText = $state("");
   let streamingHits = $state<RetrievalHit[]>([]);
+  let thinkingChars = $state(0);
   let error = $state<string | null>(null);
   let warning = $state<string | null>(null);
   let lastBeatAt = $state<number | null>(null);
@@ -72,6 +75,9 @@ export function createConversationStore(api = chatApi): ConversationStore {
     get streamingText() {
       return streamingText;
     },
+    get thinkingChars() {
+      return thinkingChars;
+    },
     get streamingHits() {
       return streamingHits;
     },
@@ -111,6 +117,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
       messages = [...messages, userMsg];
       streaming = true;
       streamingText = "";
+      thinkingChars = 0;
       streamingHits = [];
       error = null;
       warning = null;
@@ -132,6 +139,8 @@ export function createConversationStore(api = chatApi): ConversationStore {
             // beat() 済み。接続生存のみ確認
           } else if (ev.kind === "retrieval") {
             streamingHits = ev.hits;
+          } else if (ev.kind === "thinking") {
+            thinkingChars += ev.text.length;
           } else if (ev.kind === "token") {
             streamingText += ev.text;
           } else if (ev.kind === "done") {

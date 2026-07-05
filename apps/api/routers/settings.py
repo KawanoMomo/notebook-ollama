@@ -17,6 +17,8 @@ from apps.api.schemas.settings import (
     CrashReportSettingsSchema,
     CrashReportSettingsUpdate,
     EmbeddingSwitchRequest,
+    DevSettingsSchema,
+    DevSettingsUpdate,
     GenerationSettingsSchema,
     GenerationSettingsUpdate,
     HwProfileSchema,
@@ -86,6 +88,10 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             enabled=cfg.crash_report.enabled,
             auto_prompt=cfg.crash_report.auto_prompt,
             opted_in_at=cfg.crash_report.opted_in_at,
+        ),
+        dev=DevSettingsSchema(
+            enabled=cfg.dev.enabled,
+            log_capacity_bytes=cfg.dev.log_capacity_bytes,
         ),
     )
 
@@ -297,6 +303,51 @@ async def put_generation_settings(
     return GenerationSettingsSchema(
         context_budget_ratio=cfg.generation.context_budget_ratio,
         response_budget_tokens=cfg.generation.response_budget_tokens,
+    )
+
+
+@router.put("/settings/dev", response_model=DevSettingsSchema)
+async def put_dev_settings(
+    request: Request, body: DevSettingsUpdate
+) -> DevSettingsSchema:
+    """開発者モードの ON/OFF と保持容量を更新する(spec §9.2 / §11 S2, S5)。
+
+    - 容量は 1MB..200MB にクランプして採用し、採用値を返す(範囲外でも 400 にしない)
+    - ON 遷移: DevLogRing.enable(容量) — 収集はこの瞬間から始まる(FR-6)
+    - OFF 遷移: ring.disable → broker へ shutdown 配信(購読側は自動クローズ)
+    - ON のまま容量変更: ring.resize(縮小時は古い側から即時 drop)
+    """
+    from core.dev_logs.broker import broker as dev_broker
+    from core.dev_logs.ring import clamp_capacity
+    from core.dev_logs.ring import ring as dev_ring
+
+    cfg = request.app.state.ctx.config
+    was_enabled = cfg.dev.enabled
+    capacity = clamp_capacity(
+        body.log_capacity_bytes
+        if body.log_capacity_bytes is not None
+        else cfg.dev.log_capacity_bytes
+    )
+    cfg.dev = cfg.dev.model_copy(
+        update={"enabled": body.enabled, "log_capacity_bytes": capacity}
+    )
+
+    if body.enabled and not was_enabled:
+        dev_ring.enable(capacity_bytes=capacity)
+    elif not body.enabled and was_enabled:
+        dev_ring.disable()
+        dev_broker.shutdown_all()
+    elif body.enabled:
+        dev_ring.resize(capacity_bytes=capacity)
+
+    from core.settings_store import save_section
+    save_section(
+        cfg.data_dir,
+        "dev",
+        {"enabled": cfg.dev.enabled, "log_capacity_bytes": cfg.dev.log_capacity_bytes},
+    )
+    return DevSettingsSchema(
+        enabled=cfg.dev.enabled, log_capacity_bytes=cfg.dev.log_capacity_bytes
     )
 
 

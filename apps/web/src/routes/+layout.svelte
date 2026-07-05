@@ -15,6 +15,8 @@
   import { feedbackHubStore } from '$lib/stores/feedbackHub.svelte';
   import { crashReportsStore } from '$lib/stores/crashReports.svelte';
   import { settingsStore } from '$lib/stores/settings.svelte';
+  import { devmode } from '$lib/stores/devmode.svelte';
+  import DevPanel from '$lib/components/DevPanel.svelte';
   import { noticesStore } from '$lib/stores/notices.svelte';
   import { crashApi, type CrashReportInput } from '$lib/api/crash';
 
@@ -258,6 +260,13 @@
   // contract greppable.
   void getOptInState;
 
+  // 開発者モード: BE 設定値を devmode ストアへ同期する(OFF 遷移で
+  // unlocked / panelOpen が強制リセットされる。spec §5.1 / §10.1)。
+  $effect(() => {
+    const s = settingsStore.settings;
+    if (s !== null) devmode.syncEnabled(s.dev?.enabled ?? false);
+  });
+
   // 各遷移完了時に「設定以外」の現在パスを記録し、設定からの戻り先にする。
   afterNavigate((nav) => {
     const path = nav.to?.url.pathname;
@@ -314,6 +323,10 @@
 -->
 {#if optInOpen}
   <OptInDialog onDecide={handleOptInDecide} />
+{/if}
+
+{#if devmode.panelOpen}
+  <DevPanel />
 {/if}
 
 <style>

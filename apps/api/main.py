@@ -45,6 +45,9 @@ from core.logging import configure_logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+# 開発者モードの tail フックをプロセスで 1 回だけ登録するためのフラグ
+_dev_tail_installed = False
+
 
 class _McpAsgiProxy:
     """Lazy proxy that builds the mcp sse_app from _mcp_state.ctx on first call.
@@ -199,6 +202,23 @@ async def lifespan(app: FastAPI):
         _recon = reconcile_stale_sources(app.state.ctx.conn)
         if any(_recon.values()):
             logger.info("startup_reconcile_stale_sources counts=%s", _recon)
+        # --- 開発者モード 起動配線(spec §11 S1/S2) --------------------------
+        # broker に event loop を渡し、設定が ON で永続化されていれば収集を開始。
+        # tail は購読者 0→1 で開始、1→0 で停止(I12)。フックはプロセスで 1 回だけ。
+        import asyncio as _asyncio
+        from core.dev_logs.broker import broker as _dev_broker
+        from core.dev_logs.ring import ring as _dev_ring
+        _dev_broker.set_loop(_asyncio.get_running_loop())
+        _cfg_dev = app.state.ctx.config.dev
+        if _cfg_dev.enabled:
+            _dev_ring.enable(capacity_bytes=_cfg_dev.log_capacity_bytes)
+        global _dev_tail_installed
+        if not _dev_tail_installed:
+            from core.dev_logs.tail import OllamaServerLogTail
+            _tail = OllamaServerLogTail(ring=_dev_ring, broker=_dev_broker)
+            _dev_broker.on_first_sub(_tail.start)
+            _dev_broker.on_last_unsub(_tail.stop)
+            _dev_tail_installed = True
         # --- Sprint 3 / Task 3.4: chosen-backend-plan startup banner ----------
         # Logs the resolved BackendPlan ids (and the HwProfile that produced them)
         # so the chosen acceleration path is visible in the startup log without
@@ -257,6 +277,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
         status_map = {
             "input.invalid": 400,
+            "dev.unauthorized": 403,
             "input.payload_too_large": 413,
             "input.unsupported_media": 415,
             "ingestion.unsupported_kind": 400,
@@ -281,6 +302,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(models_router.router)
     app.include_router(settings_router.router)
+    from apps.api.routers import dev as dev_router
+    app.include_router(dev_router.router)
     app.include_router(prompts.router)
     app.include_router(events.router)
     app.include_router(feedback_hub.router)

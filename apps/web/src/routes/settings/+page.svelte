@@ -147,6 +147,30 @@
       genDraft.budget !== settingsStore.settings.generation.response_budget_tokens,
   );
 
+  async function saveDevMode(enabled: boolean) {
+    try {
+      await settingsApi.putDev(
+        enabled,
+        settingsStore.settings?.dev?.log_capacity_bytes,
+      );
+      await settingsStore.load();
+      pushToast(enabled ? '開発者モードを有効にしました' : '開発者モードを無効にしました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function saveDevCapacity(mb: number) {
+    try {
+      const enabled = settingsStore.settings?.dev?.enabled ?? false;
+      await settingsApi.putDev(enabled, Math.round(mb * 1048576));
+      await settingsStore.load();
+      pushToast('開発ログ容量を更新しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function saveGeneration() {
     if (!genDraft) return;
     savingGen = true;
@@ -496,6 +520,36 @@
             <dd>{settingsStore.settings.retrieval.top_k_max}</dd>
             <dt>min_history_turns</dt>
             <dd>{settingsStore.settings.retrieval.min_history_turns}</dd>
+          </dl>
+          <h3 style="margin-top: var(--space-5)">開発者モード</h3>
+          <dl>
+            <dt>開発者モード</dt>
+            <dd>
+              <input
+                type="checkbox"
+                checked={settingsStore.settings.dev?.enabled ?? false}
+                onchange={(e) => saveDevMode((e.target as HTMLInputElement).checked)}
+                aria-label="開発者モード"
+              />
+              <p class="t-hint">
+                ON にすると、アプリロゴを 3 秒以内に 7 回クリックで Dev パネルが開きます
+                (localhost のみ)。ログ収集は ON にした瞬間から始まります。
+              </p>
+            </dd>
+            <dt>開発ログ保持容量 (MB)</dt>
+            <dd>
+              <input
+                class="num"
+                type="number"
+                min="1"
+                max="200"
+                step="1"
+                value={Math.round((settingsStore.settings.dev?.log_capacity_bytes ?? 20971520) / 1048576)}
+                onchange={(e) => saveDevCapacity(Number((e.target as HTMLInputElement).value))}
+                aria-label="dev_log_capacity_mb"
+              />
+              <p class="t-hint">1〜200 MB。超過分は古いログから捨てられます(再起動で消えます)。</p>
+            </dd>
           </dl>
         {:else if section === 'storage'}
           <h3>ストレージ</h3>
