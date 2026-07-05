@@ -43,11 +43,12 @@ class OllamaGateway:
         model: str,
         messages: list[dict[str, str]],
         options: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         await self._chat_lock.acquire()
         try:
             async for tok in self._client.chat_stream(
-                model=model, messages=messages, options=options
+                model=model, messages=messages, options=options, meta=meta
             ):
                 yield tok
         finally:

@@ -214,5 +214,41 @@ async def test_prompt_not_marked_when_no_truncation(conn):
     assert "抜粋" not in prompt
 
 
+@pytest.mark.asyncio
+async def test_ready_publish_includes_summary_text(conn):
+    """READY の SSE payload に要約本文が載る(FE が再取得なしで即時表示する契約)。
+
+    不具合: summary_complete 後も SSE に本文が無く、FE は
+    「要約はまだ生成されていません」を表示し続けた(2026-07-04 実機報告)。
+    """
+    src = _make_source_with_chunks(conn, chunks=["aaa bbb"])
+    llm = _FakeLLM(["要約本文です。"])
+    broker = _FakeBroker()
+    job = SummaryJob(deps=SummaryDeps(conn=conn, llm=llm, model="llm", broker=broker))
+
+    await job.run(source_id=src.id)
+
+    ready = [p for (_t, p) in broker.events if p.get("summary_status") == "ready"]
+    assert ready, "ready イベントが publish されていない"
+    assert ready[-1].get("summary") == "要約本文です。"
+
+
+@pytest.mark.asyncio
+async def test_model_getter_overrides_static_model(conn):
+    """model_getter があれば実行時のモデル名を使う(起動時キャプチャの固定を回避)。"""
+    src = _make_source_with_chunks(conn, chunks=["aaa"])
+    llm = _FakeLLM(["ok"])
+    job = SummaryJob(
+        deps=SummaryDeps(
+            conn=conn,
+            llm=llm,
+            model="stale-model",
+            model_getter=lambda: "fresh-model",
+        )
+    )
+    await job.run(source_id=src.id)
+    assert llm.calls[0]["model"] == "fresh-model"
+
+
 async def _no_sleep(_seconds: float) -> None:
     return None

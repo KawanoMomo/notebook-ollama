@@ -34,7 +34,12 @@ class _RetrievalLike(Protocol):
 
 class _GatewayLike(Protocol):
     def chat_stream(
-        self, *, model: str, messages: list[dict[str, str]], options: dict[str, Any] | None = None
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        options: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]: ...
 
 
@@ -141,13 +146,32 @@ class GenerationService:
         messages.append({"role": "user", "content": user_prompt})
 
         buffer: list[str] = []
+        stream_meta: dict[str, Any] = {}
         async for tok in self._deps.ollama.chat_stream(
             model=model,
             messages=messages,
             options={"num_ctx": num_ctx, "num_predict": response_budget_tokens},
+            meta=stream_meta,
         ):
             buffer.append(tok)
             yield GenerationEvent(kind="token", data={"text": tok})
+
+        # num_predict 上限による打ち切り(done_reason=length)を無言にしない。
+        # 思考モデル(qwen3 等)は thinking トークンも予算を消費するため、
+        # 見かけの回答が短くても上限に到達しうる(2026-07-05 実機FB)。
+        truncated = stream_meta.get("done_reason") == "length"
+        if truncated:
+            note = (
+                "\n\n---\n⚠️ 応答が出力トークン上限"
+                f"({response_budget_tokens})に達したため打ち切られました。"
+            )
+            buffer.append(note)
+            yield GenerationEvent(kind="token", data={"text": note})
+            log.warning(
+                "generation_truncated",
+                model=model,
+                response_budget_tokens=response_budget_tokens,
+            )
 
         answer = "".join(buffer)
         citations = build_citations(answer=answer, specs=spec_by_n)
@@ -158,5 +182,6 @@ class GenerationService:
                 "citations": citations,
                 "model_used": model,
                 "dropped_history": budget.dropped_history,
+                "truncated": truncated,
             },
         )

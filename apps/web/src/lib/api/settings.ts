@@ -34,6 +34,15 @@ export const settingsApi = {
         body: JSON.stringify({ request_timeout_seconds, chat_read_timeout_seconds }),
       },
     ),
+  /** 生成設定の更新(応答トークン上限 = num_predict)。 */
+  putGeneration: (response_budget_tokens: number) =>
+    request<{ context_budget_ratio: number; response_budget_tokens: number }>(
+      '/api/settings/generation',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ response_budget_tokens }),
+      },
+    ),
   /**
    * クラッシュレポート設定の更新 (spec §7.3 / Sprint 7 Task 7.2)。
    *

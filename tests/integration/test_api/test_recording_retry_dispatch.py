@@ -128,3 +128,27 @@ def test_retry_404_when_source_in_other_notebook(client):
     src_id = _seed_recording(client, nb1, with_audio=True)
     r = client.post(f"/api/notebooks/{nb2}/recordings/{src_id}/retry")
     assert r.status_code == 404, r.text
+
+
+@pytest.mark.parametrize("busy", ["parsing", "chunking", "embedding"])
+def test_retry_409_while_conversion_in_progress(client, busy):
+    """変換の遷移中 status では retry を 409 で拒否する(二重起動ガード)。
+
+    2026-07-04 実機で再試行の2連打により同一ソースへ2本のパイプラインが
+    同時ディスパッチされていた。起動時リコンシリエーションにより、実行時に
+    遷移中 status = 本当に実行中とみなせる。
+    """
+    nb = _create_nb(client)
+    pipeline = _FakePipeline()
+    client.app.state.ctx.recording_pipeline = pipeline
+    src_id = _seed_recording(client, nb, with_audio=True)
+    ctx = client.app.state.ctx
+    sources_repo.update_source_status(
+        ctx.conn, src_id, status=sources_repo.SourceStatus(busy)
+    )
+
+    r = client.post(f"/api/notebooks/{nb}/recordings/{src_id}/retry")
+    assert r.status_code == 409, r.text
+    assert "変換" in r.json()["detail"]
+    # パイプラインはディスパッチされない
+    assert pipeline.calls == []

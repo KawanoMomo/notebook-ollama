@@ -47,6 +47,9 @@ class AdrDeps:
     conn: sqlite3.Connection
     llm: _LLMLike
     model: str
+    # 実行時にモデル名を解決する getter。設定でLLM既定が切り替わっても
+    # プロセス再起動なしで反映するため、指定時は model より優先される。
+    model_getter: Callable[[], str] | None = None
     broker: _BrokerLike | None = None
     max_input_tokens: int = _DEFAULT_MAX_INPUT_TOKENS
     max_attempts: int = _DEFAULT_MAX_ATTEMPTS
@@ -156,8 +159,13 @@ class AdrJob:
             template=template,
             confidence=confidence,
         )
+        # 本文を同梱し、FE が再取得なしでガイドを即時更新できるようにする。
+        # キー名は Source スキーマ(adr_draft/adr_template/adr_confidence)に揃える。
         await _publish(
-            AdrStatus.READY, template=template, confidence=confidence
+            AdrStatus.READY,
+            adr_draft=body,
+            adr_template=template,
+            adr_confidence=confidence,
         )
         log.info(
             "adr_complete",
@@ -167,12 +175,17 @@ class AdrJob:
             chars=len(body),
         )
 
+    def _resolve_model(self) -> str:
+        if self._deps.model_getter is not None:
+            return self._deps.model_getter()
+        return self._deps.model
+
     async def _llm_with_retry(self, prompt: str) -> str:
         last_err: Exception | None = None
         for attempt in range(1, self._deps.max_attempts + 1):
             try:
                 raw = await self._deps.llm.generate(
-                    model=self._deps.model,
+                    model=self._resolve_model(),
                     prompt=prompt,
                     options={"temperature": 0.2},
                 )

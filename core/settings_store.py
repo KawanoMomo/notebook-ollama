@@ -66,6 +66,16 @@ def apply_overrides(config) -> None:
             # 不正な settings.json で起動をクラッシュさせない (既定値で続行)。
             log.warning("settings_override_invalid", section="ollama")
 
+    generation = ov.get("generation")
+    if isinstance(generation, dict) and generation:
+        # 生成設定 (response_budget_tokens / context_budget_ratio) を復元する。
+        # audio / ollama と同じ規約: 丸ごとマージし、不正値でも起動を止めない。
+        merged = {**config.generation.model_dump(), **generation}
+        try:
+            config.generation = config.generation.__class__(**merged)
+        except Exception:
+            log.warning("settings_override_invalid", section="generation")
+
     crash_report = ov.get(_CRASH_REPORT_SECTION)
     if isinstance(crash_report, dict) and crash_report:
         # crash_report セクションを既定値にマージ適用する (audio / ollama と同じ規約)。

@@ -7,7 +7,7 @@ class _FakeClient:
     def __init__(self) -> None:
         self.chat_calls: list[tuple[str, list[dict], dict | None]] = []
 
-    async def chat_stream(self, *, model, messages, options=None):
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
         await asyncio.sleep(0)
         self.chat_calls.append((model, list(messages), options))
         for tok in ["Hel", "lo", " world"]:

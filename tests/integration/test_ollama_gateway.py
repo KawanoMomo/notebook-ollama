@@ -15,7 +15,7 @@ class FakeClient:
         self.embed_calls.append((model, text, options))
         return [0.0, 1.0]
 
-    async def chat_stream(self, *, model, messages, options=None):
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
         await asyncio.sleep(0.01)
         self.chat_calls.append((model, list(messages)))
         for tok in ["a", "b"]:

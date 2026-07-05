@@ -16,7 +16,7 @@ def test_get_settings_returns_defaults(client):
     r = client.get("/api/settings")
     assert r.status_code == 200
     s = r.json()
-    assert s["generation"]["response_budget_tokens"] == 1024
+    assert s["generation"]["response_budget_tokens"] == 2048
     assert s["retrieval"]["top_k"] == 8
 
 

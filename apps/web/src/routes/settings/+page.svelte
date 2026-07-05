@@ -130,6 +130,37 @@
     }
   }
 
+  // --- 生成設定(応答トークン上限) ---
+  let genDraft = $state<{ budget: number } | null>(null);
+  let savingGen = $state(false);
+
+  $effect(() => {
+    const g = settingsStore.settings?.generation;
+    if (g && genDraft === null) {
+      genDraft = { budget: g.response_budget_tokens };
+    }
+  });
+
+  const genDirty = $derived(
+    genDraft !== null &&
+      settingsStore.settings !== null &&
+      genDraft.budget !== settingsStore.settings.generation.response_budget_tokens,
+  );
+
+  async function saveGeneration() {
+    if (!genDraft) return;
+    savingGen = true;
+    try {
+      await settingsApi.putGeneration(genDraft.budget);
+      await settingsStore.load();
+      pushToast('生成設定を更新しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    } finally {
+      savingGen = false;
+    }
+  }
+
   async function confirmSwitch() {
     if (!switchTarget) return;
     const target = switchTarget;
@@ -425,9 +456,38 @@
           <dl>
             <dt>context_budget_ratio</dt>
             <dd>{settingsStore.settings.generation.context_budget_ratio}</dd>
-            <dt>response_budget_tokens</dt>
-            <dd>{settingsStore.settings.generation.response_budget_tokens}</dd>
+            <dt>response_budget_tokens(応答トークン上限)</dt>
+            <dd>
+              {#if genDraft}
+                <input
+                  class="num"
+                  type="number"
+                  min="64"
+                  max="32768"
+                  step="256"
+                  bind:value={genDraft.budget}
+                  aria-label="response_budget_tokens"
+                />
+                <p class="t-hint">
+                  思考モデル(qwen3 等)は思考トークンもこの上限を消費します。
+                  回答末尾に「上限に達したため打ち切られました」が出る場合は拡大してください。
+                </p>
+              {:else}
+                {settingsStore.settings.generation.response_budget_tokens}
+              {/if}
+            </dd>
           </dl>
+          {#if genDirty}
+            <div class="emb-actions">
+              <button
+                class="emb-btn primary"
+                onclick={saveGeneration}
+                disabled={savingGen}
+              >
+                {savingGen ? '保存中…' : '生成設定を保存'}
+              </button>
+            </div>
+          {/if}
           <h3 style="margin-top: var(--space-5)">検索</h3>
           <dl>
             <dt>top_k</dt>

@@ -22,14 +22,32 @@
     guideExpanded?: boolean;
     onGuideToggle?: () => void;
     onSummarize?: () => void;
+    // 生成中の要約ジョブを中断する(generating のときのみ表示)。任意。
+    onSummaryCancel?: () => void;
     // ADR(Architecture Decision Record)抽出。録音/ドキュメント横断。
     onGenerateAdr?: () => void;
   }
   let {
     source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
     onRename, onStopConversion,
-    guideExpanded = false, onGuideToggle, onSummarize, onGenerateAdr,
+    guideExpanded = false, onGuideToggle, onSummarize, onSummaryCancel,
+    onGenerateAdr,
   }: Props = $props();
+
+  // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
+  // ソースでは確実に失敗するため、無効化してまず変換(再試行)を促す。
+  const summaryDisabled = $derived(
+    (source.chunk_count ?? 0) === 0 ||
+      source.status !== 'ready' ||
+      source.summary_status === 'generating',
+  );
+  const summaryButtonLabel = $derived(
+    source.summary_status === 'generating'
+      ? '要約を生成中…'
+      : (source.chunk_count ?? 0) === 0 || source.status !== 'ready'
+        ? '変換が完了してから要約できます'
+        : '要約を再生成',
+  );
 
   // ADR ボタンの状態(設計: docs/specs/2026-06-26-meeting-adr-templates.md ui_design)
   const adrDisabled = $derived(
@@ -106,7 +124,8 @@
   // インラインの小さな <audio> を開閉するだけの最小 UI。
   const canPlay = $derived(source.kind === 'recording' && source.has_audio === true);
   let showPlayer = $state(false);
-  let playChannel = $state<'mic' | 'system'>('mic');
+  // ミックス(両チャンネル合成)が主動線。既定選択もミックス。
+  let playChannel = $state<'mix' | 'mic' | 'system'>('mix');
 
   // インライン題名編集。鉛筆クリックで editing=true、Enter/blur で確定、Esc で取消。
   // 確定値が空 or 変更なしなら API を呼ばない (no-op)。
@@ -241,6 +260,9 @@
 {#if showPlayer && canPlay}
   <div class="player">
     <div class="player-tabs">
+      <button class="tab" class:active={playChannel === 'mix'} onclick={() => (playChannel = 'mix')}>
+        ミックス
+      </button>
       <button class="tab" class:active={playChannel === 'mic'} onclick={() => (playChannel = 'mic')}>
         あなた
       </button>
@@ -276,8 +298,9 @@
         <button
           class="icon guide-regen"
           onclick={onSummarize}
-          aria-label="要約を再生成"
-          title="要約を再生成"
+          disabled={summaryDisabled}
+          aria-label={summaryButtonLabel}
+          title={summaryButtonLabel}
         >
           <RefreshCw size="12" />
         </button>
@@ -301,7 +324,17 @@
           <div class="skeleton">
             <span></span><span></span><span></span>
           </div>
-          <p class="guide-hint"><Spinner size={12} /> 要約を生成中…</p>
+          <p class="guide-hint">
+            <Spinner size={12} /> 要約を生成中…
+            {#if onSummaryCancel}
+              <button
+                class="guide-cancel"
+                onclick={onSummaryCancel}
+                aria-label="要約を中断"
+                title="要約を中断"
+              >中断</button>
+            {/if}
+          </p>
         {:else if source.summary_status === 'error'}
           <p class="guide-err">
             <AlertCircle size="12" color="var(--color-error)" />
@@ -542,6 +575,19 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
+  }
+  .guide-cancel {
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-fg-muted);
+    border-radius: var(--radius-sm, 4px);
+    font-size: inherit;
+    padding: 0 var(--space-1);
+    cursor: pointer;
+  }
+  .guide-cancel:hover {
+    color: var(--color-error);
+    border-color: var(--color-error);
   }
   .guide-err {
     margin: 0;

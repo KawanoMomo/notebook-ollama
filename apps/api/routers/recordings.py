@@ -362,6 +362,18 @@ async def retry_recording(
         raise HTTPException(status_code=404, detail="source not in notebook")
     if src.kind != "recording":
         raise HTTPException(status_code=422, detail="source is not a recording")
+    # 二重起動ガード: 遷移中 status は実行中の変換があるとみなして拒否する
+    # (起動時リコンシリエーションにより、実行時の遷移中 status は生きている)。
+    # 再試行ボタンの連打で同一ソースへ複数パイプラインが走るのを防ぐ。
+    if src.status in (
+        sources_repo.SourceStatus.PARSING,
+        sources_repo.SourceStatus.CHUNKING,
+        sources_repo.SourceStatus.EMBEDDING,
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="変換は既に実行中です。停止してから再試行してください。",
+        )
 
     base = ctx.config.sources_dir / source_id
     mic_audio = _resolve_audio_path(base, "mic") if base.is_dir() else None
