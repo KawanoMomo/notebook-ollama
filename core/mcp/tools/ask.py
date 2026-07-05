@@ -87,12 +87,16 @@ async def ask_tool(
         {"role": "system", "content": SYSTEM_PROMPT + "\n" + style_hint},
         {"role": "user", "content": user_prompt},
     ]
+    from core.ollama.client import ThinkingChunk
+
     buffer: list[str] = []
     async for tok in ollama.chat_stream(
         model=chosen_model,
         messages=messages,
         options={"num_ctx": num_ctx, "num_predict": config.generation.response_budget_tokens},
     ):
+        if isinstance(tok, ThinkingChunk):
+            continue  # 思考は回答に含めない
         buffer.append(tok)
     answer = "".join(buffer)
     citations = [

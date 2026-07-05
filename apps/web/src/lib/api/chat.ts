@@ -4,6 +4,7 @@ import type { Citation, Conversation, Message, RetrievalHit } from './types';
 export type ChatEvent =
   | { kind: 'retrieval'; hits: RetrievalHit[] }
   | { kind: 'token'; text: string }
+  | { kind: 'thinking'; text: string }
   | {
       kind: 'done';
       answer: string;

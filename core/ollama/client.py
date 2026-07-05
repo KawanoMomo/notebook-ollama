@@ -19,6 +19,14 @@ def _emit_dev(level: str, msg: str, payload: dict) -> None:
 
 
 
+class ThinkingChunk(str):
+    """思考モデル(qwen3 等)の message.thinking チャンク。
+
+    content と同じ str としてストリームに流れるが、型で区別できる。
+    回答本文には含めない(gateway.generate / GenerationService が除外)。
+    """
+
+
 class OllamaClient:
     def __init__(
         self,
@@ -110,7 +118,16 @@ class OllamaClient:
                         if not line:
                             continue
                         chunk = json.loads(line)
-                        content = chunk.get("message", {}).get("content", "")
+                        message = chunk.get("message", {})
+                        thinking = message.get("thinking", "")
+                        if thinking:
+                            # 思考フェーズの可視化(2026-07-05 実機FB: 思考中は
+                            # content が 1 つも来ず「チャットが出ない」ように見える)
+                            _emit_dev("debug", "chat thinking",
+                                      {"phase": "thinking", "model": model,
+                                       "text": thinking})
+                            yield ThinkingChunk(thinking)
+                        content = message.get("content", "")
                         if content:
                             _chunks += 1
                             _emit_dev("debug", "chat chunk",

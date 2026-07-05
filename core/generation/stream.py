@@ -145,6 +145,8 @@ class GenerationService:
             messages.append({"role": "assistant", "content": turn.assistant})
         messages.append({"role": "user", "content": user_prompt})
 
+        from core.ollama.client import ThinkingChunk
+
         buffer: list[str] = []
         stream_meta: dict[str, Any] = {}
         async for tok in self._deps.ollama.chat_stream(
@@ -153,6 +155,12 @@ class GenerationService:
             options={"num_ctx": num_ctx, "num_predict": response_budget_tokens},
             meta=stream_meta,
         ):
+            if isinstance(tok, ThinkingChunk):
+                # 思考モデルの thinking フェーズ。本文には含めず、FE が
+                # 「思考中…」を表示できるよう別イベントで流す(2026-07-05 実機FB:
+                # 重いモデルでは思考が数分続き、無言に見えていた)。
+                yield GenerationEvent(kind="thinking", data={"text": str(tok)})
+                continue
             buffer.append(tok)
             yield GenerationEvent(kind="token", data={"text": tok})
 

@@ -89,3 +89,23 @@ async def test_chat_stream_without_meta_still_streams(monkeypatch):
     c = OllamaClient(endpoint="http://fake")
     toks = [t async for t in c.chat_stream(model="m", messages=[])]
     assert toks == ["abc"]
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_yields_thinking_chunks_typed(monkeypatch):
+    """message.thinking は ThinkingChunk 型で yield され、content と区別できる。"""
+    from core.ollama.client import ThinkingChunk
+
+    lines = [
+        json.dumps({"message": {"thinking": "うーん"}, "done": False}),
+        json.dumps({"message": {"thinking": "考え中"}, "done": False}),
+        json.dumps({"message": {"content": "答え"}, "done": False}),
+        json.dumps({"done": True, "done_reason": "stop"}),
+    ]
+    _install_fake(monkeypatch, lines)
+    c = OllamaClient(endpoint="http://fake")
+    toks = [t async for t in c.chat_stream(model="m", messages=[])]
+    assert toks == ["うーん", "考え中", "答え"]
+    assert isinstance(toks[0], ThinkingChunk)
+    assert isinstance(toks[1], ThinkingChunk)
+    assert not isinstance(toks[2], ThinkingChunk)
