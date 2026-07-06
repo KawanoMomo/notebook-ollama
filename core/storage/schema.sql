@@ -70,3 +70,28 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
+
+-- ソース親子リンク(汎用基盤)。子は親を1つだけ持つ(UNIQUE child)。
+-- relation: 'presentation'(発表モード自動) | 'manual'(手動)。将来種別追加可。
+CREATE TABLE IF NOT EXISTS source_links (
+  id TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
+  parent_source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  child_source_id TEXT NOT NULL UNIQUE REFERENCES sources(id) ON DELETE CASCADE,
+  relation TEXT NOT NULL,
+  meta TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_source_links_parent ON source_links(parent_source_id);
+CREATE INDEX IF NOT EXISTS idx_source_links_notebook ON source_links(notebook_id);
+
+-- 録音タイムラインの汎用マーカー(案C)。kind='page' のとき value=ページ番号(文字列)。
+-- at_ms は録音タイムライン(live caption と同一 epoch 基準)上の時刻。
+CREATE TABLE IF NOT EXISTS source_markers (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  value TEXT NOT NULL,
+  at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_source_markers_source ON source_markers(source_id, at_ms);
