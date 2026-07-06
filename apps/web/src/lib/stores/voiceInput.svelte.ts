@@ -36,6 +36,11 @@ export function createVoiceInputStore(deps: Deps = {}) {
   let queue: Promise<void> = Promise.resolve();
   let failures = 0;
   let vad: ReturnType<typeof createVad> | null = null;
+  // ハンズフリー: セッション単位のキャンセルトークンと世代番号。
+  // 手動オフは発話中の最終区間を変換してから終わる(Claude Code の tap-to-stop と同型)ため
+  // トークンを立てない。強制オフ(3 連続失敗・stopAll)はトークンを立てて破棄する。
+  let hfCancel: { value: boolean } | null = null;
+  let hfGen = 0;
 
   function collect(samples: Float32Array, sr: number) {
     sampleRate = sr;
@@ -102,6 +107,7 @@ export function createVoiceInputStore(deps: Deps = {}) {
     /** タップ確定: バッファ破棄(文字挿入は呼び出し側 ChatInput が行う)。 */
     pttTapCancel() {
       stopMic();
+      clearTimers(); // 'recording' 中の誤順序呼び出しでもタイマーをリークさせない
       chunks = [];
       status = 'idle';
     },
@@ -135,26 +141,32 @@ export function createVoiceInputStore(deps: Deps = {}) {
     /** ハンズフリーのオン/オフ。オン中は VAD が発話区間ごとに直列 POST。 */
     async handsFreeToggle() {
       if (status === 'handsfree') {
+        // 手動オフ: 先に flush して発話中の最終区間をキューに確定させる。
+        // キャンセルトークンは立てないため、この区間は変換され onText に届く。
         vad?.flush();
-        stopMic();
         vad = null;
+        stopMic();
         status = 'idle';
         return;
       }
       if (status !== 'idle') return;
       failures = 0;
       status = 'handsfree';
+      const cancelled = { value: false };
+      hfCancel = cancelled;
+      const myGen = ++hfGen;
       const localVad = createVad({
         sampleRate: 16000,
         onSegment: (samples) => {
           const sr = sampleRate;
           queue = queue.then(async () => {
-            if (status !== 'handsfree') return;
+            if (cancelled.value) return;
             try {
               await transcribeAndEmitHandsFree(samples, sr);
             } catch (e) {
               failures += 1;
               if (failures >= HANDSFREE_MAX_FAILURES) {
+                cancelled.value = true; // 強制オフ: 残キュー区間は破棄
                 cb.onError(
                   `変換に${HANDSFREE_MAX_FAILURES}回連続で失敗したためハンズフリーを停止しました: ` +
                   (e instanceof Error ? e.message : String(e)),
@@ -175,9 +187,10 @@ export function createVoiceInputStore(deps: Deps = {}) {
           sampleRate = 16000;
           localVad.push(sr === 16000 ? samples : resampleLinear(samples, sr, 16000));
         });
-        // 許可プロンプト待ちの間にオフへトグル済みなら、遅延解決した
-        // キャプチャを即停止して破棄する(マイクストリームのリーク防止)
-        if (status !== 'handsfree') {
+        // 許可プロンプト待ちの間にオフへトグル済み、または別セッションが
+        // 開始済み(オフ→オン→オンの二重採用)なら、遅延解決したキャプチャを
+        // 即停止して破棄する(マイクストリームのリーク防止)
+        if (myGen !== hfGen || status !== 'handsfree') {
           m.stop();
           return;
         }
@@ -191,8 +204,9 @@ export function createVoiceInputStore(deps: Deps = {}) {
       }
     },
 
-    /** モード切替・unmount 時の後始末。 */
+    /** モード切替・unmount 時の後始末。キュー済みのハンズフリー区間も破棄する。 */
     stopAll() {
+      if (hfCancel) hfCancel.value = true;
       stopMic();
       clearTimers();
       vad = null;

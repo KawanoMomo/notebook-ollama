@@ -109,6 +109,15 @@ describe('voiceInput store — ハンズフリー', () => {
     expect(deps.stop).toHaveBeenCalled();
   });
 
+  it('手動オフ時は発話中の最終区間が破棄されず変換される', async () => {
+    await store.handsFreeToggle();
+    deps.feed(1000);               // 発話のみ(無音なし → VAD は発話区間の途中)
+    await store.handsFreeToggle(); // 手動オフ: flush された最終区間は変換される
+    expect(store.status).toBe('idle');
+    await vi.waitFor(() => expect(texts).toEqual(['認識結果']));
+    expect(deps.transcribe).toHaveBeenCalledTimes(1);
+  });
+
   it('POST は直列化される(先行が解決するまで次を送らない)', async () => {
     let release!: (v: { text: string; duration_ms: number }) => void;
     deps.transcribe.mockImplementationOnce(
