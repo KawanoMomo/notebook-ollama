@@ -30,6 +30,7 @@ from apps.api.routers import (  # noqa: E402
     recording_ws,
     recordings,
     sources,
+    stt,
 )
 from apps.api.routers import (  # noqa: E402
     models as models_router,
@@ -273,6 +274,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(models_router.router)
     app.include_router(settings_router.router)
+    app.include_router(stt.router)
     app.include_router(prompts.router)
     app.include_router(events.router)
     app.include_router(feedback_hub.router)
