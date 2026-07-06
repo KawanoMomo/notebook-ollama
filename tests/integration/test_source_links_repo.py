@@ -49,6 +49,42 @@ def test_set_parent_replaces_existing_parent(tmp_path):
     assert list_child_links(conn, a.id) == []
 
 
+def test_set_parent_meta_defaults_to_none(tmp_path):
+    conn, nb, a, b, _ = _ctx(tmp_path)
+    set_parent(conn, notebook_id=nb.id, parent_source_id=a.id,
+               child_source_id=b.id, relation="manual")
+    assert get_parent_link(conn, b.id).meta is None
+
+
+def test_set_parent_unknown_source_raises_and_keeps_existing_link(tmp_path):
+    conn, nb, a, b, _ = _ctx(tmp_path)
+    original = set_parent(conn, notebook_id=nb.id, parent_source_id=a.id,
+                          child_source_id=b.id, relation="manual")
+    with pytest.raises(AppError):
+        set_parent(conn, notebook_id=nb.id, parent_source_id="no-such-id",
+                   child_source_id=b.id, relation="manual")
+    kept = get_parent_link(conn, b.id)
+    assert kept is not None
+    assert kept.id == original.id
+    assert kept.parent_source_id == a.id
+
+
+def test_set_parent_cross_notebook_rejected(tmp_path):
+    conn, nb, _, b, _ = _ctx(tmp_path)
+    other = create_notebook(conn, name="other")
+    outsider = create_source(conn, notebook_id=other.id, kind="pdf", title="他所")
+    with pytest.raises(AppError):
+        set_parent(conn, notebook_id=nb.id, parent_source_id=outsider.id,
+                   child_source_id=b.id, relation="manual")
+
+
+def test_set_parent_unknown_relation_rejected(tmp_path):
+    conn, nb, a, b, _ = _ctx(tmp_path)
+    with pytest.raises(AppError):
+        set_parent(conn, notebook_id=nb.id, parent_source_id=a.id,
+                   child_source_id=b.id, relation="bogus")
+
+
 def test_set_parent_rejects_self_link(tmp_path):
     conn, nb, a, _, _ = _ctx(tmp_path)
     with pytest.raises(AppError):
