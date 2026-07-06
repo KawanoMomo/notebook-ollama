@@ -174,6 +174,13 @@ export interface AudioSettings {
   auto_title: boolean;
 }
 
+export type VoiceInputMode = 'off' | 'push_to_talk' | 'hands_free';
+
+export interface VoiceInputSettings {
+  mode: VoiceInputMode;
+  ptt_key: string;
+}
+
 /**
  * クラッシュレポート機能のユーザ設定 (spec §7.3)。
  *
@@ -207,6 +214,7 @@ export interface AppSettings {
    * settings store 側で `?? DEFAULT_CRASH_REPORT` でフォールバックする。
    */
   crash_report?: CrashReportSettings;
+  voice_input?: VoiceInputSettings | null;
 }
 
 export interface Stats {
