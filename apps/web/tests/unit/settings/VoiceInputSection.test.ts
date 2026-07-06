@@ -10,19 +10,22 @@ vi.mock('$lib/api/settings', () => ({
   },
 }));
 
-const state: { voice_input: { mode: string; ptt_key: string } | null } = {
-  voice_input: { mode: 'push_to_talk', ptt_key: 'Space' },
+// settings 全体を null にできる形にする(ロード前ゲートのテスト用)。
+const state: {
+  settings: { voice_input: { mode: string; ptt_key: string } | null } | null;
+} = {
+  settings: { voice_input: { mode: 'push_to_talk', ptt_key: 'Space' } },
 };
 vi.mock('$lib/stores/settings.svelte', () => ({
   settingsStore: {
-    get settings() { return { voice_input: state.voice_input }; },
+    get settings() { return state.settings; },
     load: vi.fn(async () => {}),
   },
 }));
 
 beforeEach(() => {
   putVoiceInput.mockClear();
-  state.voice_input = { mode: 'push_to_talk', ptt_key: 'Space' };
+  state.settings = { voice_input: { mode: 'push_to_talk', ptt_key: 'Space' } };
 });
 
 describe('VoiceInputSection', () => {
@@ -60,5 +63,12 @@ describe('VoiceInputSection', () => {
     render(VoiceInputSection);
     await fireEvent.click(screen.getByRole('radio', { name: /無効/ }));
     expect(screen.getByRole('button', { name: /Space/ })).toBeDisabled();
+  });
+
+  it('設定ロード前は読み込み中表示で編集UIを出さない', () => {
+    state.settings = null;
+    render(VoiceInputSection);
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByText(/読み込み中/)).toBeInTheDocument();
   });
 });
