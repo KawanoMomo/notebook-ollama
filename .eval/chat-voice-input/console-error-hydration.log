@@ -1,0 +1,41 @@
+console.error observed once during the evaluation session (non-deterministic, could not
+reliably reproduce with repeated fresh navigations to "/" afterward — tried 3x, 0/3 repro).
+
+First observed: appeared in the console history (level=error, all=true query) after the
+AC6 push-to-talk hold/release test. Exact triggering navigation not pinpointed; most
+likely candidate is one of the earlier full-page reloads where the crash-report opt-in
+dialog (OptInDialog / CrashReportSection) is server-rendered without knowledge of prior
+client dismissal state, causing an SSR/CSR mismatch during hydration of +layout.svelte.
+
+[WARNING] Failed to hydrate:  TypeError: Cannot read properties of undefined (reading 'call')
+
+	in <unknown>
+	in <unknown>
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at get_next_sibling (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:4958:25)
+    at remove_effect_dom (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:3942:39)
+    at destroy_effect (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:3912:5)
+    at create_effect (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:3691:7)
+    at branch (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:3863:10)
+    at http://localhost:5174/node_modules/.vite/deps/chunk-6NKNHBUE.js?v=40ac04c5:332:17
+    at update_reaction (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:4202:18)
+    at update_effect (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:4343:21)
+    at create_effect (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:3689:7)
+    at block (http://localhost:5174/node_modules/.vite/deps/chunk-3VEUQRIF.js?v=40ac04c5:3849:17)
+    @ http://localhost:5174/node_modules/@sveltejs/kit/src/runtime/client/client.js?v=03c1973d:3355
+
+Followed by an un-leveled duplicate entry with the same TypeError stack (browser console
+often logs the caught hydration failure twice: once as the SvelteKit dev-mode warning,
+once as the underlying thrown error).
+
+Assessment: this error is scoped to +layout.svelte / root layout hydration, not to any
+voice-input component (VoiceInputSection.svelte, ChatInput.svelte, voiceInput.svelte.ts,
+pttKey.ts). It appears app-shell-wide and pre-existing-likely rather than caused by the
+voice-input feature branch. However, per the evaluator's strict PASS gate
+("console.log に error レベルのメッセージが 0件"), its mere presence during the session
+blocks an automated-verification PASS regardless of causal attribution. Reported here for
+transparency; recommend triage as a separate defect (possibly OptInDialog SSR/CSR state
+mismatch) rather than blocking this feature's acceptance criteria substantively.

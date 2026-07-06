@@ -1,0 +1,17 @@
+AC2 Toast DOM evidence
+======================
+Method: browser_evaluate — clicked .savebtn programmatically and polled DOM for
+`.toast` element immediately afterward (single round-trip, no inter-call latency).
+
+Result (raw tool output):
+{
+  "found": "音声入力設定を保存しました"
+}
+
+Note: Toast.svelte auto-dismisses after 3000ms (setTimeout). Due to inherent
+round-trip latency between separate Playwright MCP tool invocations
+(click -> screenshot), screenshot captures taken via separate tool calls
+consistently missed the toast window. DOM-level polling within a single
+browser_evaluate call confirms the toast fires with the expected success
+message immediately after save, which is treated as valid evidence for AC2's
+Toast requirement.
