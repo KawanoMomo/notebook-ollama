@@ -10,6 +10,7 @@
   import { openReindexEvents } from '$lib/api/reindexEvents';
   import Spinner from '$lib/components/Spinner.svelte';
   import AudioSettingsSection from '$lib/components/settings/AudioSettingsSection.svelte';
+  import VoiceInputSection from '$lib/components/settings/VoiceInputSection.svelte';
   import PromptsSection from '$lib/components/settings/PromptsSection.svelte';
   import AccelerationPanel from '$lib/components/settings/AccelerationPanel.svelte';
   import CrashReportSection from '$lib/components/settings/CrashReportSection.svelte';
@@ -17,7 +18,15 @@
   import type { ModelInfo } from '$lib/api/types';
 
   let section = $state<
-    'models' | 'accel' | 'gen' | 'prompts' | 'audio' | 'storage' | 'modelsList' | 'crash'
+    | 'models'
+    | 'accel'
+    | 'gen'
+    | 'prompts'
+    | 'audio'
+    | 'voice'
+    | 'storage'
+    | 'modelsList'
+    | 'crash'
   >('audio');
 
   // --- 埋め込みモデル切替 (section==='models') の state ---
@@ -243,6 +252,17 @@
         </svg>
         音声・録音
       </button>
+      <button
+        class="nitem"
+        class:active={section === 'voice'}
+        onclick={() => (section = 'voice')}
+      >
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="2" width="6" height="12" rx="3" />
+          <path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8" />
+        </svg>
+        音声入力
+      </button>
 
       <div class="grp" style="margin-top:6px">フィードバック</div>
       <button
@@ -282,6 +302,8 @@
     <div class="scontent">
       {#if section === 'audio'}
         <AudioSettingsSection />
+      {:else if section === 'voice'}
+        <VoiceInputSection />
       {:else if section === 'prompts'}
         <PromptsSection />
       {:else if section === 'accel'}
