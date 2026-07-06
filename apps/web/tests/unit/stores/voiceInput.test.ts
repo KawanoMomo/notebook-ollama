@@ -122,6 +122,20 @@ describe('voiceInput store — ハンズフリー', () => {
     await vi.waitFor(() => expect(deps.transcribe).toHaveBeenCalledTimes(2));
   });
 
+  it('許可待ち中にオフへトグルされたら遅延解決したキャプチャを即停止する', async () => {
+    let resolveCapture!: (m: { stop: typeof deps.stop }) => void;
+    deps.capture.mockImplementationOnce(
+      () => new Promise<{ stop: typeof deps.stop }>((res) => { resolveCapture = res; }),
+    );
+    const turningOn = store.handsFreeToggle(); // getUserMedia 許可プロンプト待ち相当(await しない)
+    await store.handsFreeToggle();             // 待ち中にオフへトグル
+    expect(store.status).toBe('idle');
+    resolveCapture({ stop: deps.stop });       // 遅延解決
+    await turningOn;
+    expect(deps.stop).toHaveBeenCalled();      // 解決済みキャプチャは即停止(リーク防止)
+    expect(store.status).toBe('idle');
+  });
+
   it('3 連続失敗で自動オフ + onError', async () => {
     deps.transcribe.mockRejectedValue(new Error('503'));
     await store.handsFreeToggle();

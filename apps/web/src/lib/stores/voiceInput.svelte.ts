@@ -171,10 +171,17 @@ export function createVoiceInputStore(deps: Deps = {}) {
       try {
         // VAD は 16k 前提の時間パラメータで生成しているため、キャプチャ実レート
         // (44.1k/48k)のチャンクは push 前に 16k へリサンプルして統一する。
-        mic = await capture((samples, sr) => {
+        const m = await capture((samples, sr) => {
           sampleRate = 16000;
           localVad.push(sr === 16000 ? samples : resampleLinear(samples, sr, 16000));
         });
+        // 許可プロンプト待ちの間にオフへトグル済みなら、遅延解決した
+        // キャプチャを即停止して破棄する(マイクストリームのリーク防止)
+        if (status !== 'handsfree') {
+          m.stop();
+          return;
+        }
+        mic = m;
       } catch (e) {
         vad = null;
         status = 'idle';
