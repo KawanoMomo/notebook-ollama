@@ -48,7 +48,10 @@ def _to_wav_16k_mono(src: Path, dst: Path) -> None:
         "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
         str(dst),
     ]
-    proc = subprocess.run(cmd, capture_output=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=60)
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=422, detail="audio conversion timed out") from exc
     if proc.returncode != 0 or not dst.exists():
         raise HTTPException(status_code=422, detail="audio conversion failed")
 
@@ -62,8 +65,14 @@ def _resolve_transcriber(request: Request):
 
 
 @router.post("/transcribe")
-async def transcribe(request: Request, file: UploadFile) -> dict:
-    data = await file.read()
+def transcribe(request: Request, file: UploadFile) -> dict:
+    # 意図的に sync def: ffmpeg 変換(subprocess.run)と transcribe 推論は
+    # 数秒かかる CPU/GPU 処理。async def のまま await すると single-worker
+    # uvicorn のイベントループを占有し、SSE や live-caption WS が詰まる。
+    # sync def は FastAPI が自動でスレッドプールにオフロードするため、
+    # イベントループをブロックしない。共有 Transcriber は _serial_lock で
+    # 直列化済みなのでスレッドプール実行でも安全。
+    data = file.file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="audio exceeds 20MB limit")
 

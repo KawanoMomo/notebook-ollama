@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import io
 import wave
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 from apps.api.main import create_app
+from apps.api.routers import stt
 
 
 def _wav_bytes(sample_rate: int = 16000, ms: int = 500) -> bytes:
@@ -97,3 +99,57 @@ def test_transcribe_returns_503_when_extra_missing(client):
 
     assert r.status_code == 503
     assert "recording" in r.json()["detail"]
+
+
+def test_transcribe_returns_503_when_ffmpeg_missing(client, monkeypatch):
+    """非16kHz入力は ffmpeg 変換分岐(_to_wav_16k_mono)に入る。ffmpeg 不在なら 503。"""
+    client.app.state.ctx.transcriber_factory = lambda: FakeTranscriber(["x"])
+    monkeypatch.setattr(stt.shutil, "which", lambda name: None)
+
+    r = _post_wav(client, _wav_bytes(sample_rate=8000, ms=200))
+
+    assert r.status_code == 503
+    assert "ffmpeg" in r.json()["detail"]
+
+
+def test_transcribe_returns_422_when_conversion_fails(client, monkeypatch):
+    """ffmpeg はあるが変換コマンドが失敗(returncode != 0)したら 422。"""
+    client.app.state.ctx.transcriber_factory = lambda: FakeTranscriber(["x"])
+    monkeypatch.setattr(stt.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(
+        stt.subprocess,
+        "run",
+        lambda *a, **kw: SimpleNamespace(returncode=1, stdout=b"", stderr=b"boom"),
+    )
+
+    r = _post_wav(client, _wav_bytes(sample_rate=8000, ms=200))
+
+    assert r.status_code == 422
+
+
+def test_transcribe_converts_non_16k_input(client, monkeypatch):
+    """変換が成功した場合、変換後 16kHz WAV が transcriber に渡り duration_ms も
+    変換後ファイル基準になることを検証する(_to_wav_16k_mono 分岐の実質カバレッジ)。
+    """
+    fake = FakeTranscriber(["へんかんできた"])
+    client.app.state.ctx.transcriber_factory = lambda: fake
+
+    converted_ms = 750
+
+    def _fake_run(cmd, *, capture_output=True, timeout=None):
+        dst = Path(cmd[-1])
+        dst.write_bytes(_wav_bytes(sample_rate=16000, ms=converted_ms))
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(stt.shutil, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(stt.subprocess, "run", _fake_run)
+
+    r = _post_wav(client, _wav_bytes(sample_rate=8000, ms=200))
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["text"] == "へんかんできた"
+    assert body["duration_ms"] == converted_ms
+    assert len(fake.calls) == 1
+    called_wav_path = Path(fake.calls[0]["wav_path"])
+    assert called_wav_path.name == "input16k.wav"
