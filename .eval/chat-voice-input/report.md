@@ -55,3 +55,18 @@ SSR/CSR 不一致疑い、dev モードで観測)」として追跡する。証�
 
 本ディレクトリ(`.eval/chat-voice-input/`)配下の AC1〜AC8 の .png、
 console-*.log、network-full-session.json を参照。
+
+## 追補: 最終レビュー修正(acbc255)後の焦点再検証 — PASS 5/5
+
+最終ブランチレビューで検出された Important 2 件の修正後、focused 再検証を実施:
+
+| # | 検証内容 | 判定 | 証拠 |
+|---|---|---|---|
+| R1 | ボタンフォーカス中の Space が奪われない(defaultPrevented=false、ボタンが実際に activation) | PASS | recheck-acbc255-R1-button-space-activation.png |
+| R2 | textarea で Space 単押し→空白挿入・録音なし(回帰) | PASS | recheck-acbc255-R2-space-tap-textarea-no-recording.png |
+| R3 | Space 長押し→録音中(赤パルス・aria-pressed・経過秒)→解放で復帰(色トークン化後の見た目含む) | PASS | recheck-acbc255-R3-space-hold-recording-red.png / -R3-space-release-idle.png |
+| R4 | getUserMedia 呼び出しカウント: タップ 3 回で 0、長押し 1 回で 1(マイク誤起動修正の実証) | PASS | recheck-acbc255-R4-hold-gumcalls-1.png |
+| R5 | コンソール Errors=0, Warnings=0 | PASS | (console_messages 出力) |
+
+検証前に設定が既定(プッシュトゥトーク/Space)であることを確認済み
+(recheck-acbc255-00-settings-default-confirmed.png)。
