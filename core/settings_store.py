@@ -78,6 +78,15 @@ def apply_overrides(config) -> None:
         except Exception:
             log.warning("settings_override_invalid", section=_CRASH_REPORT_SECTION)
 
+    voice_input = ov.get("voice_input")
+    if isinstance(voice_input, dict) and voice_input:
+        # audio / ollama と同じ規約: 丸ごとマージし、不正値でも起動を止めない。
+        merged = {**config.voice_input.model_dump(), **voice_input}
+        try:
+            config.voice_input = config.voice_input.__class__(**merged)
+        except Exception:
+            log.warning("settings_override_invalid", section="voice_input")
+
 
 def load_crash_report(data_dir: Path) -> CrashReportSettings:
     """settings.json から crash_report セクションだけを取り出して

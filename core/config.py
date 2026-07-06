@@ -91,6 +91,16 @@ class AudioSettings(BaseModel):
     speaker_embed_backend: Literal["auto", "sherpa-onnx-cpu"] = "auto"
 
 
+class VoiceInputSettings(BaseModel):
+    """チャット音声入力(spec 2026-07-05-chat-voice-input-design §5)。
+
+    - mode: off / push_to_talk(既定) / hands_free
+    - ptt_key: KeyboardEvent.code の単一キー文字列(既定 "Space")
+    """
+    mode: Literal["off", "push_to_talk", "hands_free"] = "push_to_talk"
+    ptt_key: str = "Space"
+
+
 def _default_data_dir() -> Path:
     return Path.home() / ".notebook-ollama"
 
@@ -110,6 +120,7 @@ class AppConfig(BaseSettings):
     mcp: McpSettings = Field(default_factory=McpSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
     crash_report: CrashReportSettings = Field(default_factory=CrashReportSettings)
+    voice_input: VoiceInputSettings = Field(default_factory=VoiceInputSettings)
 
     @property
     def metadata_db_path(self) -> Path:
