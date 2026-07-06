@@ -35,21 +35,18 @@ export function createPttKeyTracker(opts: PttKeyTrackerOptions) {
   return {
     /** true を返したら呼び出し側は e.preventDefault() する。 */
     handleKeydown(e: KeyboardEvent): boolean {
-      // Global constraints first: repeat / isComposing / modifiers / code mismatch
+      if (pressed) {
+        // 押下中の repeat は消費だけして状態は変えない(Space 連打入力の抑止)
+        return e.code === opts.code && e.repeat;
+      }
       if (
-        e.repeat ||
         e.code !== opts.code ||
+        e.repeat ||
         e.isComposing ||
         e.ctrlKey || e.altKey || e.metaKey || e.shiftKey
       ) {
         return false;
       }
-
-      // 既に押下中は重複を無視
-      if (pressed) {
-        return false;
-      }
-
       pressed = true;
       holding = false;
       opts.onEvent({ type: 'pressStart' });

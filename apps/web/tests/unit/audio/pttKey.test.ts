@@ -39,12 +39,18 @@ describe('createPttKeyTracker', () => {
     expect(events.map((e) => e.type)).toEqual(['pressStart', 'holdStart', 'holdEnd']);
   });
 
-  it('repeat イベントは無視して false を返す', () => {
+  it('押下中の同一キー repeat は消費する(true)が状態は変えない', () => {
     tracker.handleKeydown(keyEvent());
-    expect(tracker.handleKeydown(keyEvent({ repeat: true }))).toBe(false);
+    expect(tracker.handleKeydown(keyEvent({ repeat: true }))).toBe(true);
     vi.advanceTimersByTime(300);
     tracker.handleKeyup(keyEvent());
+    expect(events.map((e) => e.type)).toEqual(['pressStart', 'holdStart', 'holdEnd']);
     expect(events.filter((e) => e.type === 'pressStart')).toHaveLength(1);
+  });
+
+  it('未押下時の repeat は不介入(false)', () => {
+    expect(tracker.handleKeydown(keyEvent({ repeat: true }))).toBe(false);
+    expect(events).toHaveLength(0);
   });
 
   it('IME 変換中(isComposing)は不介入', () => {
