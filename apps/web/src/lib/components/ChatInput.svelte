@@ -73,15 +73,22 @@
       code,
       onEvent: (ev) => {
         if (mode === 'push_to_talk') {
-          if (ev.type === 'pressStart') voiceInputStore.pttPressStart();
-          else if (ev.type === 'tap') {
-            voiceInputStore.pttTapCancel();
-            // タップは通常入力: textarea フォーカス中なら 1 打鍵分を挿入
+          if (ev.type === 'pressStart') {
+            // キャプチャは長押し確定(holdStart)まで開始しない(spec §4 改訂: Fix 2)。
+            // タップかもしれない段階で getUserMedia を叩くと、通常タイピング中の
+            // 単打鍵のたびにマイクインジケーターが点滅してしまうため。
+          } else if (ev.type === 'tap') {
+            // タップは通常入力: 何も開始していないので pttTapCancel は呼ばない。
+            // textarea フォーカス中なら 1 打鍵分を挿入
             if (textareaEl && document.activeElement === textareaEl) {
               value = insertAtCursor(textareaEl, keyChar(code));
             }
-          } else if (ev.type === 'holdStart') voiceInputStore.pttHoldStart();
-          else if (ev.type === 'holdEnd') void voiceInputStore.pttHoldEnd();
+          } else if (ev.type === 'holdStart') {
+            // 長押し確定した瞬間にキャプチャ開始→即録音状態へ(pttPressStart が
+            // 'capturing' をセットし、pttHoldStart がその場で 'recording' へ進める)
+            voiceInputStore.pttPressStart();
+            voiceInputStore.pttHoldStart();
+          } else if (ev.type === 'holdEnd') void voiceInputStore.pttHoldEnd();
         } else if (mode === 'hands_free') {
           // ハンズフリーは長押しでトグル(タップは通常入力のまま)
           if (ev.type === 'tap' && textareaEl && document.activeElement === textareaEl) {
@@ -102,8 +109,21 @@
     return ''; // F9 等の非印字キーは挿入なし
   }
 
+  /** チャット textarea 以外のインタラクティブ要素にフォーカス中は PTT フックを介入させない
+   *  (Fix 1: SourcesPanel のボタン等が Space で反応できなくなる問題の回避)。 */
+  const INTERACTIVE_SELECTOR =
+    'button, a[href], input, select, textarea, [contenteditable="true"], [role="button"]';
+  function isForeignInteractiveTarget(e: KeyboardEvent): boolean {
+    const el = e.target as HTMLElement | null;
+    if (!el || typeof el.closest !== 'function') return false;
+    const interactive = el.closest(INTERACTIVE_SELECTOR);
+    if (!interactive) return false; // document.body 等は素通しで PTT フック対象
+    return interactive !== textareaEl; // チャット textarea 自身は対象内
+  }
+
   function onDocKeydown(e: KeyboardEvent) {
     if (voiceMode === 'off') return;
+    if (isForeignInteractiveTarget(e)) return;
     if (tracker.handleKeydown(e)) e.preventDefault();
   }
   function onDocKeyup(e: KeyboardEvent) {
@@ -259,8 +279,8 @@
     cursor: pointer;
   }
   .mic.active {
-    border-color: #dc2626;
-    color: #dc2626;
+    border-color: var(--color-error);
+    color: var(--color-error);
     animation: mic-pulse 1.2s ease-in-out infinite;
   }
   .mic:disabled {
@@ -268,8 +288,8 @@
     cursor: default;
   }
   @keyframes mic-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.35); }
-    50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15); }
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-error) 35%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-error) 15%, transparent); }
   }
   :global(.mic .spin) {
     animation: mic-spin 1s linear infinite;

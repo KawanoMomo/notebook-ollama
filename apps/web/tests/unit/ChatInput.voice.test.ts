@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import ChatInput from '$lib/components/ChatInput.svelte';
 
@@ -86,5 +86,88 @@ describe('ChatInput 音声入力', () => {
     render(ChatInput, { props: baseProps });
     screen.getByRole('button', { name: '音声入力' }).click();
     expect(voiceMock.handsFreeToggle).toHaveBeenCalled();
+  });
+
+  describe('PTT キーフックの対象範囲・キャプチャ開始タイミング(Fix 1 / Fix 2)', () => {
+    beforeEach(() => {
+      // 前のテストで蓄積した呼び出し履歴(pttPressStart 等)を持ち越さない
+      vi.clearAllMocks();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      document.body.querySelectorAll('[data-test-foreign-btn]').forEach((el) => el.remove());
+    });
+
+    it('インタラクティブ要素フォーカス中はSpaceを奪わない', () => {
+      render(ChatInput, { props: baseProps });
+      const foreignButton = document.createElement('button');
+      foreignButton.setAttribute('data-test-foreign-btn', '');
+      document.body.appendChild(foreignButton);
+      foreignButton.focus();
+
+      const keydown = new KeyboardEvent('keydown', {
+        code: 'Space',
+        bubbles: true,
+        cancelable: true,
+      });
+      foreignButton.dispatchEvent(keydown);
+
+      expect(keydown.defaultPrevented).toBe(false);
+      expect(voiceMock.pttPressStart).not.toHaveBeenCalled();
+      expect(voiceMock.pttHoldStart).not.toHaveBeenCalled();
+    });
+
+    it('長押し確定までキャプチャを開始しない', () => {
+      vi.useFakeTimers();
+      render(ChatInput, { props: baseProps });
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      textarea.focus();
+
+      const keydown = new KeyboardEvent('keydown', {
+        code: 'Space',
+        bubbles: true,
+        cancelable: true,
+      });
+      textarea.dispatchEvent(keydown);
+      expect(voiceMock.pttPressStart).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(250);
+      expect(voiceMock.pttPressStart).toHaveBeenCalledTimes(1);
+      expect(voiceMock.pttHoldStart).toHaveBeenCalledTimes(1);
+
+      const keyup = new KeyboardEvent('keyup', {
+        code: 'Space',
+        bubbles: true,
+        cancelable: true,
+      });
+      textarea.dispatchEvent(keyup);
+      expect(voiceMock.pttHoldEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('タップではストアを一切呼ばない', () => {
+      vi.useFakeTimers();
+      render(ChatInput, { props: baseProps });
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      textarea.focus();
+
+      const keydown = new KeyboardEvent('keydown', {
+        code: 'Space',
+        bubbles: true,
+        cancelable: true,
+      });
+      textarea.dispatchEvent(keydown);
+      vi.advanceTimersByTime(100);
+
+      const keyup = new KeyboardEvent('keyup', {
+        code: 'Space',
+        bubbles: true,
+        cancelable: true,
+      });
+      textarea.dispatchEvent(keyup);
+
+      expect(voiceMock.pttPressStart).not.toHaveBeenCalled();
+      expect(voiceMock.pttTapCancel).not.toHaveBeenCalled();
+      expect(keydown.defaultPrevented).toBe(true);
+    });
   });
 });
