@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import shutil
 import time as _time
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
@@ -16,9 +17,12 @@ from apps.api.schemas.recording import (
     StartRecording,
 )
 from core.exceptions import AppError
+from core.ids import new_id
 from core.recording.session import RecordingBusyError
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import delete_chunks_for_source
+from core.storage.source_links_repo import set_parent
+from core.storage.source_markers_repo import MarkerRecord, insert_markers
 
 router = APIRouter(tags=["recordings"])
 
@@ -307,12 +311,17 @@ def _dispatch_recording_pipeline(
     source_id: str,
     mic_audio,
     system_audio,
+    auto_title_enabled: bool | None = None,
 ) -> None:
     """録音オフラインパイプラインを background task として投入する(stop / retry 共通)。
 
     mic_audio / system_audio は解決済みの Path | None。少なくとも一方は非 None で
     あること(呼び出し側で検証)。現行 AudioSettings と共有 transcriber/diarizer を
     流用し、source を PARSING にしてから dispatch する。
+
+    auto_title_enabled: None なら設定値 (a.auto_title) をそのまま使う(通常録音・
+    retry は従来どおり)。発表モードの stop は確定タイトルを LLM に上書きさせない
+    ため False を明示的に渡す。
     """
     ctx = request.app.state.ctx
     a = ctx.config.audio
@@ -337,7 +346,7 @@ def _dispatch_recording_pipeline(
         storage_format=a.storage_format,
         storage_bitrate_kbps=a.storage_bitrate_kbps,
         keep_audio=a.keep_audio,
-        auto_title_enabled=a.auto_title,
+        auto_title_enabled=a.auto_title if auto_title_enabled is None else auto_title_enabled,
     )
 
 
@@ -365,11 +374,34 @@ async def stop_recording(
     # オフラインのタイムスタンプ除外は不要(下流の STT がミュート区間=無音から何も
     # 起こさない)。
 
+    # --- 発表モード: マーカー永続化 + 自動リンク + タイトル確定 (spec §6 終了フロー) --
+    # dispatch より前に行う — pipeline がページ割当時に source_markers を読むため。
+    src_id = sess.extras.get("source_id", "")
+    raw_markers = sess.extras.get("markers", [])
+    if raw_markers:
+        insert_markers(ctx.conn, [
+            MarkerRecord(id=new_id(), source_id=src_id,
+                         kind=m["kind"], value=m["value"], at_ms=m["at_ms"])
+            for m in raw_markers
+        ])
+    presentation_parent_id = sess.extras.get("presentation_source_id")
+    auto_title = ctx.config.audio.auto_title
+    if presentation_parent_id:
+        parent = sources_repo.get_source(ctx.conn, presentation_parent_id)
+        set_parent(
+            ctx.conn, notebook_id=notebook_id,
+            parent_source_id=presentation_parent_id, child_source_id=src_id,
+            relation="presentation", meta={"presented_at": date.today().isoformat()},
+        )
+        sources_repo.update_source_title(
+            ctx.conn, src_id, f"{parent.title} 発表 {date.today():%Y-%m-%d}"
+        )
+        auto_title = False  # 発表タイトルを LLM 推論で上書きさせない
+
     # --- Dispatch the offline RAG ingestion pipeline as a background task -----
     mic_wav = _resolve_wav(paths.get("mic"))
     system_wav = _resolve_wav(paths.get("system"))
 
-    src_id = sess.extras.get("source_id")
     _dispatch_recording_pipeline(
         request,
         background,
@@ -377,6 +409,7 @@ async def stop_recording(
         source_id=src_id,
         mic_audio=mic_wav,
         system_audio=system_wav,
+        auto_title_enabled=auto_title,
     )
     return {
         "recording_id": rid,

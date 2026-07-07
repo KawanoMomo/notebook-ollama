@@ -32,9 +32,11 @@ from core.recording.audio_export import convert_audio, delete_if_exists, ext_for
 from core.recording.chunking import chunk_segments
 from core.recording.merger import merge
 from core.recording.name_inference import infer_names
+from core.recording.page_assign import page_for
 from core.recording.segment_correct import Segment, correct_segments_aligned
 from core.recording.title_inference import infer_title
 from core.storage.chunks_repo import ChunkRecord, insert_chunks
+from core.storage.source_markers_repo import list_markers
 from core.storage.sources_repo import (
     SourceStatus,
     update_source_status,
@@ -334,6 +336,14 @@ class RecordingPipeline:
                 label="埋め込み中", progress=0.8, status=SourceStatus.EMBEDDING.value,
             )
 
+            # 発表モードの page マーカー(at_ms 昇順)。無ければ page は従来どおり
+            # 全チャンク None のまま(page_for が None を返す)。
+            page_markers = [
+                (m.at_ms, int(m.value))
+                for m in list_markers(conn, source_id, kind="page")
+                if m.value.isdigit()
+            ]
+
             records: list[ChunkRecord] = []
             vectors: list[ChunkVector] = []
             for chunk in chunks:
@@ -345,15 +355,16 @@ class RecordingPipeline:
                 # channel も一意。rename 後の話者ラベルから channel を引く。
                 channel = speaker_channel.get(chunk.speaker, _SYSTEM_CHANNEL)
                 chunk_id = new_id()
+                page = page_for(chunk.start_ms, page_markers)
                 records.append(ChunkRecord(
                     id=chunk_id, source_id=source_id, notebook_id=notebook_id,
-                    ord=chunk.ord, page=None, heading_path=None, text=chunk.text,
+                    ord=chunk.ord, page=page, heading_path=None, text=chunk.text,
                     token_count=chunk.token_count, start_ms=chunk.start_ms,
                     end_ms=chunk.end_ms, speaker=chunk.speaker,
                 ))
                 vectors.append(ChunkVector(
                     id=chunk_id, vector=vec, notebook_id=notebook_id,
-                    source_id=source_id, source_kind="recording", page=None,
+                    source_id=source_id, source_kind="recording", page=page,
                     heading_path=None, ord=chunk.ord, start_ms=chunk.start_ms,
                     end_ms=chunk.end_ms, speaker=chunk.speaker, channel=channel,
                 ))
