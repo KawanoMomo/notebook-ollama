@@ -29,7 +29,7 @@ export interface RecordingStore {
   readonly micMuted: boolean;
   readonly systemMuted: boolean;
   readonly error: string | null;
-  start(notebookId: string): Promise<void>;
+  start(notebookId: string, opts?: { presentationSourceId?: string }): Promise<void>;
   stop(): Promise<void>;
   toggleLiveCaption(): void;
   toggleMute(channel: MuteChannel): void;
@@ -288,14 +288,20 @@ export function createRecordingStore(
     get error() {
       return error;
     },
-    async start(nbId) {
+    async start(nbId, opts = {}) {
       if (recording || starting) return;
       error = null;
       // optimistic pending: API 応答を待たずにボタンを即座に反応させる。
       // 失敗時は finally で戻り、recording は false のままなのでロールバック不要。
       starting = true;
       try {
-        const started = await api.start(nbId, { live_caption: liveCaptionEnabled });
+        // 発表モード(presentation.svelte.ts から透過): opts.presentationSourceId が
+        // undefined なら JSON.stringify がキーごと落とすため、backend の通常録音
+        // パス(presentation_source_id 省略 = null 扱い)に落ちる。
+        const started = await api.start(nbId, {
+          live_caption: liveCaptionEnabled,
+          presentation_source_id: opts.presentationSourceId,
+        });
         recording = true;
         recordingId = started.recording_id;
         sourceId = started.source_id;

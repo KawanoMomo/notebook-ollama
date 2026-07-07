@@ -65,6 +65,8 @@ export interface Source {
   page_count: number | null;
   chunk_count: number | null;
   has_audio?: boolean;
+  /** 発表モード: スライドページ抽出済み (pdf/pptx)。backend: `has_slides`。 */
+  has_slides?: boolean;
   /** Transient field populated from SSE during the embedding phase. */
   embedded?: number | null;
   duration_ms?: number | null;
@@ -376,4 +378,33 @@ export interface FeedbackInput {
   body: string;
   sentiment?: Sentiment | null;
   screenshot_b64?: string | null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 発表モード (プレゼンテーション連動録音)                                      */
+/* backend: apps/api/routers/links.py, apps/api/routers/recordings.py         */
+/* -------------------------------------------------------------------------- */
+
+/** ソース親子リンク。backend: `apps/api/schemas/source.py::SourceLink`。 */
+export interface SourceLink {
+  id: string;
+  notebook_id: string;
+  parent_source_id: string;
+  child_source_id: string;
+  relation: 'presentation' | 'manual';
+  meta: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/**
+ * 進行中の録音セッション照会結果 (リロード復帰用、spec §6 中断・異常系)。
+ * backend: `apps/api/schemas/recording.py::ActiveRecording`。
+ * セッションが無い場合、backend は 204 を返し `client.ts` の `request<T>` は
+ * `undefined` を返す。
+ */
+export interface ActiveRecording {
+  recording_id: string;
+  source_id: string;
+  presentation_source_id: string | null;
+  last_page: number | null;
 }
