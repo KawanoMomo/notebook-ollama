@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import contextlib
 import shutil
+import time as _time
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 
 from apps.api.routers.audio import _resolve_audio_path
-from apps.api.schemas.recording import RecordingStarted, StartRecording
+from apps.api.schemas.recording import (
+    ActiveRecording,
+    MarkerCreate,
+    RecordingStarted,
+    StartRecording,
+)
+from core.exceptions import AppError
 from core.recording.session import RecordingBusyError
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import delete_chunks_for_source
@@ -107,6 +115,23 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     ctx = request.app.state.ctx
     _require_recording_pipeline(ctx)
     notebooks_repo.get_notebook(ctx.conn, notebook_id)
+
+    # 発表モード: presentation_source_id はセッション/ソース作成前に検証する。
+    # ここで弾けば後始末(セッション pop・sources 行削除)が不要になり、
+    # RecordingBusyError と同種の後始末パターンを増やさずに済む。
+    if body.presentation_source_id is not None:
+        try:
+            parent = sources_repo.get_source(ctx.conn, body.presentation_source_id)
+        except AppError as exc:
+            raise HTTPException(
+                status_code=400, detail="presentation source not found"
+            ) from exc
+        if parent.notebook_id != notebook_id or parent.kind not in ("pdf", "pptx"):
+            raise HTTPException(
+                status_code=400,
+                detail="presentation source must be a pdf/pptx in the same notebook",
+            )
+
     src = sources_repo.create_source(
         ctx.conn, notebook_id=notebook_id, kind="recording", title=None, origin="録音"
     )
@@ -123,13 +148,18 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(status_code=409, detail=str(e)) from e
     sess.extras["source_id"] = src.id
+    # 発表モード/マーカー用の共有タイムライン基準。live_caption の有無に依存させない
+    # (マーカー at_ms とチャンク start_ms が同一 epoch 上に乗ることが spec §11 の要件)。
+    sess.extras["epoch"] = _time.perf_counter()
+    sess.extras["markers"] = []
+    if body.presentation_source_id is not None:
+        sess.extras["presentation_source_id"] = body.presentation_source_id
 
     # --- Live caption wiring (PREVIEW ONLY) -------------------------------
     # Captions produced here are a low-latency preview; the high-accuracy RAG
     # transcript is built later by the offline pipeline. We accumulate caption
     # messages in live_segments for that future offline persistence step.
     import queue as _queue
-    import time as _time
 
     from core.recording.levels import LevelMeter
     from core.recording.live_caption import LiveCaption
@@ -169,7 +199,7 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
             try:
                 # モデルロードはブロッキングなのでワーカースレッドへ
                 tr = await _asyncio.to_thread(_get_transcriber, request)
-                epoch = _time.perf_counter()
+                epoch = sess.extras["epoch"]
                 a = ctx.config.audio
                 mic_lc = LiveCaption(
                     transcriber=tr, on_caption=push_to_queue, label="あなた",
@@ -248,6 +278,7 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
     return RecordingStarted(
         recording_id=sess.id, source_id=src.id, status="recording",
         live_caption=live_active,
+        presentation_source_id=sess.extras.get("presentation_source_id"),
     )
 
 
@@ -448,6 +479,44 @@ async def cancel_recording(request: Request, notebook_id: str, source_id: str):
             status=sources_repo.SourceStatus.ERROR, error_msg="変換を停止しました",
         )
     return {"source_id": source_id, "status": "error", "cancelled": True}
+
+
+@router.post("/api/notebooks/{notebook_id}/recordings/{rid}/markers")
+async def add_marker(
+    request: Request, notebook_id: str, rid: str, body: MarkerCreate
+) -> dict:
+    """録音タイムラインへの汎用マーカー記録(spec §6)。at_ms はサーバー算出。
+
+    永続化は Task 3 の役割(source_markers への書き込み)。ここでは
+    ``sess.extras["markers"]`` に積むだけの in-memory 記録に留める。
+    """
+    ctx = request.app.state.ctx
+    sess = ctx.recordings.get(rid)
+    if sess is None or sess.notebook_id != notebook_id:
+        raise HTTPException(status_code=404, detail="recording session not found")
+    at_ms = int((_time.perf_counter() - sess.extras["epoch"]) * 1000)
+    sess.extras["markers"].append({"kind": body.kind, "value": body.value, "at_ms": at_ms})
+    return {"at_ms": at_ms}
+
+
+@router.get("/api/notebooks/{notebook_id}/recordings/active")
+async def get_active_recording(request: Request, notebook_id: str) -> Response:
+    """進行中の録音セッション照会(リロード復帰用、spec §6 中断・異常系)。"""
+    ctx = request.app.state.ctx
+    rid = ctx.recordings.active_id
+    if rid is None:
+        return Response(status_code=204)
+    sess = ctx.recordings.get(rid)
+    if sess is None or sess.notebook_id != notebook_id:
+        return Response(status_code=204)
+    pages = [m for m in sess.extras.get("markers", []) if m["kind"] == "page"]
+    body = ActiveRecording(
+        recording_id=sess.id,
+        source_id=sess.extras.get("source_id", ""),
+        presentation_source_id=sess.extras.get("presentation_source_id"),
+        last_page=int(pages[-1]["value"]) if pages else None,
+    )
+    return JSONResponse(content=body.model_dump())
 
 
 @router.put("/api/notebooks/{notebook_id}/recordings/{rid}/live-gain")
