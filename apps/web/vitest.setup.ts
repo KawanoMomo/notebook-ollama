@@ -8,6 +8,34 @@
  * pipeline can call `.finished`, `.cancel()`, `.commitStyles()` without throwing.
  */
 
+/**
+ * Minimal DOMMatrix polyfill.
+ *
+ * jsdom does not implement the CSS Geometry Interfaces (DOMMatrix/DOMPoint/DOMRect).
+ * pdfjs-dist (SlideView.svelte's dependency) evaluates `const SCALE_MATRIX = new DOMMatrix();`
+ * at module top-level, so merely `import('pdfjs-dist')` throws `DOMMatrix is not defined`
+ * under jsdom — before any actual canvas rendering is attempted. Real PDF rendering is not
+ * exercised in jsdom (see SlideView.smoke.test.ts); this stub exists only so the module can
+ * be imported and its exports asserted on.
+ */
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  class DOMMatrixPolyfill {
+    a = 1;
+    b = 0;
+    c = 0;
+    d = 1;
+    e = 0;
+    f = 0;
+    constructor(init?: string | number[]) {
+      if (Array.isArray(init) && init.length >= 6) {
+        [this.a, this.b, this.c, this.d, this.e, this.f] = init;
+      }
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).DOMMatrix = DOMMatrixPolyfill;
+}
+
 if (typeof Element !== 'undefined' && !Element.prototype.animate) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (Element.prototype as any).animate = function animate(): Animation {
