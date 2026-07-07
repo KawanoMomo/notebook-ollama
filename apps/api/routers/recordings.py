@@ -494,6 +494,13 @@ async def add_marker(
     sess = ctx.recordings.get(rid)
     if sess is None or sess.notebook_id != notebook_id:
         raise HTTPException(status_code=404, detail="recording session not found")
+    # page マーカーの value は last_page 復元(active 照会)で int 化されるため、
+    # 書き込み時点で数値文字列であることを保証する(非数値の混入は照会側の恒久 500 化)。
+    if body.kind == "page" and not body.value.isdigit():
+        raise HTTPException(
+            status_code=422,
+            detail="page marker value must be a positive integer string",
+        )
     at_ms = int((_time.perf_counter() - sess.extras["epoch"]) * 1000)
     sess.extras["markers"].append({"kind": body.kind, "value": body.value, "at_ms": at_ms})
     return {"at_ms": at_ms}
@@ -509,12 +516,24 @@ async def get_active_recording(request: Request, notebook_id: str) -> Response:
     sess = ctx.recordings.get(rid)
     if sess is None or sess.notebook_id != notebook_id:
         return Response(status_code=204)
-    pages = [m for m in sess.extras.get("markers", []) if m["kind"] == "page"]
+    # last_page は防御的に算出する: 末尾から遡って最初に int 化できる page マーカーを
+    # 採用し、無ければ None。書き込み側で 422 弾き済みだが、このエンドポイントは
+    # リロード復帰の生命線なので読み取り側でも例外経路を残さない
+    # (isdigit は "³" 等 int() が拒む Unicode 数字を通すため、try/except が最終防壁)。
+    last_page: int | None = None
+    for m in reversed(sess.extras.get("markers", [])):
+        if m["kind"] != "page":
+            continue
+        try:
+            last_page = int(m["value"])
+        except (ValueError, TypeError):
+            continue
+        break
     body = ActiveRecording(
         recording_id=sess.id,
         source_id=sess.extras.get("source_id", ""),
         presentation_source_id=sess.extras.get("presentation_source_id"),
-        last_page=int(pages[-1]["value"]) if pages else None,
+        last_page=last_page,
     )
     return JSONResponse(content=body.model_dump())
 

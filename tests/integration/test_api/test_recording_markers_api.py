@@ -98,6 +98,45 @@ def test_start_with_unknown_presentation_source_400(client):
     assert r.status_code in (400, 404)
 
 
+def test_page_marker_rejects_non_numeric_value(client):
+    """kind=page の非数値 value は 422。以降の active 照会が 500 にならないこと。"""
+    nb = _make_notebook(client)
+    rid = _start(client, nb).json()["recording_id"]
+
+    r = client.post(
+        f"/api/notebooks/{nb}/recordings/{rid}/markers",
+        json={"kind": "page", "value": "abc"},
+    )
+    assert r.status_code == 422
+
+    # リロード復帰用エンドポイントはクラッシュしない(500 禁止)
+    r = client.get(f"/api/notebooks/{nb}/recordings/active")
+    assert r.status_code == 200
+    assert r.json()["last_page"] is None
+
+    # 正常マーカー後は last_page が復活する
+    client.post(
+        f"/api/notebooks/{nb}/recordings/{rid}/markers",
+        json={"kind": "page", "value": "7"},
+    )
+    r = client.get(f"/api/notebooks/{nb}/recordings/active")
+    assert r.status_code == 200
+    assert r.json()["last_page"] == 7
+
+
+def test_add_marker_cross_notebook_404(client):
+    """別ノートブックの notebook_id 経由では既存 rid にマーカーを打てない。"""
+    nb = _make_notebook(client)
+    other_nb = _make_notebook(client)
+    rid = _start(client, nb).json()["recording_id"]
+
+    r = client.post(
+        f"/api/notebooks/{other_nb}/recordings/{rid}/markers",
+        json={"kind": "page", "value": "1"},
+    )
+    assert r.status_code == 404
+
+
 def test_active_returns_session_info_and_last_page(client):
     nb = _make_notebook(client)
     pdf_id = _upload_pdf(client, nb)
