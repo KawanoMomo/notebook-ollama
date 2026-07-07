@@ -2,6 +2,7 @@
   import { Plus, Mic, Check, Minus } from '@lucide/svelte';
   import SourceCard from './SourceCard.svelte';
   import SourceUploadModal from './SourceUploadModal.svelte';
+  import ParentPickerModal from './ParentPickerModal.svelte';
   import RecordingControls from './RecordingControls.svelte';
   import Button from './Button.svelte';
   import Spinner from './Spinner.svelte';
@@ -11,6 +12,7 @@
   import { sourcesApi } from '$lib/api/sources';
   import { pushToast } from './Toast.svelte';
   import { computeBulkState } from './SourcesPanel.bulk';
+  import { orderWithChildren } from '$lib/utils/sourceTree';
   import type { Source } from '$lib/api/types';
 
   interface Props {
@@ -32,6 +34,14 @@
         ? (s.title ?? s.origin ?? '').toLowerCase().includes(filter.toLowerCase())
         : true,
     ),
+  );
+
+  // 検索フィルタ入力中(query 非空)はツリー無効=フラット表示(depth 全て 0)。
+  // 未入力時のみ親子ツリー順に並べ替える。
+  let rows = $derived(
+    filter.trim()
+      ? filteredSources.map((s) => ({ source: s, depth: 0 as const }))
+      : orderWithChildren(filteredSources, currentNotebookStore.links),
   );
 
   // 仕様 §2.2: フィルタ中は表示中ソースのみを対象にしたトライステート/カウントを出す。
@@ -254,6 +264,74 @@
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }
+
+  // 親ソース設定モーダル。開いている対象(子)を保持する(null なら閉じている)。
+  let parentPickerFor = $state<Source | null>(null);
+
+  // id を起点に、リンクを辿った子孫(直接の子だけでなく多段も)の ID 集合を返す。
+  // ParentPickerModal の候補から「自身と自身の子孫」を除外するために使う。
+  function descendantIdsOf(id: string): Set<string> {
+    const childrenMap = new Map<string, string[]>();
+    for (const l of currentNotebookStore.links) {
+      const arr = childrenMap.get(l.parent_source_id) ?? [];
+      arr.push(l.child_source_id);
+      childrenMap.set(l.parent_source_id, arr);
+    }
+    const result = new Set<string>();
+    const stack = [id];
+    const visited = new Set<string>([id]);
+    while (stack.length > 0) {
+      const cur = stack.pop() as string;
+      for (const c of childrenMap.get(cur) ?? []) {
+        if (visited.has(c)) continue;
+        visited.add(c);
+        result.add(c);
+        stack.push(c);
+      }
+    }
+    return result;
+  }
+
+  let parentPickerCandidates = $derived.by(() => {
+    const child = parentPickerFor;
+    if (!child) return [];
+    const excluded = descendantIdsOf(child.id);
+    excluded.add(child.id);
+    return currentNotebookStore.sources.filter((s) => !excluded.has(s.id));
+  });
+
+  function openParentPicker(s: Source) {
+    parentPickerFor = s;
+  }
+
+  function closeParentPicker() {
+    parentPickerFor = null;
+  }
+
+  async function pickParent(parentId: string) {
+    const child = parentPickerFor;
+    closeParentPicker();
+    if (!child) return;
+    try {
+      await currentNotebookStore.setParent(child.id, parentId);
+      pushToast('親ソースを設定しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  function hasParent(id: string): boolean {
+    return currentNotebookStore.links.some((l) => l.child_source_id === id);
+  }
+
+  async function onRemoveParent(s: Source) {
+    try {
+      await currentNotebookStore.removeParent(s.id);
+      pushToast('リンクを解除しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
 </script>
 
 <div
@@ -309,9 +387,11 @@
     <span class="bulk-count">{bulk.label}</span>
   </button>
   <div class="list">
-    {#each filteredSources as s (s.id)}
+    {#each rows as row (row.source.id)}
+      {@const s = row.source}
       <SourceCard
         source={s}
+        depth={row.depth}
         selected={currentNotebookStore.selectedSourceIds.has(s.id)}
         onToggle={() => currentNotebookStore.toggleSelected(s.id)}
         onSelect={() => toggleGuideAndSelect(s)}
@@ -326,6 +406,8 @@
         onSummaryCancel={() => onSummaryCancel(s)}
         onGenerateAdr={() => onGenerateAdr(s)}
         onStartPresentation={() => onStartPresentation(s)}
+        onSetParent={() => openParentPicker(s)}
+        onRemoveParent={hasParent(s.id) ? () => onRemoveParent(s) : undefined}
       />
     {/each}
     {#if filteredSources.length === 0}
@@ -347,6 +429,14 @@
     {notebookId}
     onClose={() => (showUpload = false)}
     onUploaded={(s) => currentNotebookStore.upsertSource(s)}
+  />
+{/if}
+
+{#if parentPickerFor}
+  <ParentPickerModal
+    candidates={parentPickerCandidates}
+    onPick={pickParent}
+    onClose={closeParentPicker}
   />
 {/if}
 

@@ -33,10 +33,15 @@ function makeSource(id: string, overrides: Partial<Source> = {}): Source {
   };
 }
 
-function makeStore(sources: Source[]) {
+function makeStore(sources: Source[], links: any[] = []) {
   const nbApi = { get: vi.fn().mockResolvedValue(fakeNotebook) } as any;
   const srcApi = { list: vi.fn().mockResolvedValue(sources) } as any;
-  return { store: createCurrentNotebookStore(nbApi, srcApi), nbApi, srcApi };
+  const lnkApi = {
+    list: vi.fn().mockResolvedValue(links),
+    setParent: vi.fn(),
+    removeParent: vi.fn(),
+  } as any;
+  return { store: createCurrentNotebookStore(nbApi, srcApi, lnkApi), nbApi, srcApi, lnkApi };
 }
 
 describe('currentNotebookStore — default-all-selected', () => {
@@ -167,5 +172,39 @@ describe('currentNotebookStore.activeJobs', () => {
       makeJobSource({ title: null, origin: '録音', status: 'parsing' }),
     );
     expect(store.activeJobs[0].label).toBe('録音: 取り込み中');
+  });
+});
+
+describe('currentNotebookStore.links', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('load() は links を並行取得してストアに反映する', async () => {
+    const links = [
+      {
+        id: 'l1',
+        notebook_id: 'nb1',
+        parent_source_id: 'a',
+        child_source_id: 'b',
+        relation: 'manual' as const,
+        meta: null,
+        created_at: 't',
+      },
+    ];
+    const { store, lnkApi } = makeStore([makeSource('a'), makeSource('b')], links);
+    await store.load('nb1');
+    expect(lnkApi.list).toHaveBeenCalledWith('nb1');
+    expect(store.links).toEqual(links);
+    // ソース表示は壊れていない
+    expect(store.sources).toHaveLength(2);
+    expect(store.error).toBeNull();
+  });
+
+  it('linksApi.list が reject しても links=[] に degrade し、ソース表示は継続する', async () => {
+    const { store, lnkApi } = makeStore([makeSource('a'), makeSource('b')]);
+    lnkApi.list.mockRejectedValueOnce(new Error('links unavailable'));
+    await store.load('nb1');
+    expect(store.links).toEqual([]);
+    expect(store.sources).toHaveLength(2);
+    expect(store.error).toBeNull();
   });
 });

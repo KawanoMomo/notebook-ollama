@@ -1,6 +1,7 @@
-import type { Notebook, Source } from '$lib/api/types';
+import type { Notebook, Source, SourceLink } from '$lib/api/types';
 import { notebooksApi } from '$lib/api/notebooks';
 import { sourcesApi } from '$lib/api/sources';
+import { linksApi } from '$lib/api/links';
 
 /** JobStatusBar に表示する進行中ジョブ1件。 */
 export interface ActiveJob {
@@ -17,6 +18,8 @@ export interface CurrentNotebookStore {
   readonly error: string | null;
   /** 進行中ジョブ一覧(取り込み/要約/ADR)。JobStatusBar が購読する。 */
   readonly activeJobs: ActiveJob[];
+  /** ソース親子の手動リンク一覧(発表モード/ツリー表示用)。 */
+  readonly links: SourceLink[];
   load(id: string): Promise<void>;
   update(patch: { default_model?: string | null }): Promise<void>;
   clear(): void;
@@ -26,14 +29,20 @@ export interface CurrentNotebookStore {
   clearSelection(): void;
   /** 全選択。引数がある場合はその ID 集合のみを選択(フィルタ中の全選択に使う)。 */
   selectAll(ids?: readonly string[]): void;
+  /** child の親を parent に設定する(既存があれば付け替え)。例外は呼び出し元へ伝播。 */
+  setParent(childId: string, parentId: string): Promise<void>;
+  /** child の親子リンクを解除する。例外は呼び出し元へ伝播。 */
+  removeParent(childId: string): Promise<void>;
 }
 
 export function createCurrentNotebookStore(
   nbApi = notebooksApi,
   srcApi = sourcesApi,
+  lnkApi = linksApi,
 ): CurrentNotebookStore {
   let notebook = $state<Notebook | null>(null);
   let sources = $state<Source[]>([]);
+  let links = $state<SourceLink[]>([]);
   let selected = $state<Set<string>>(new Set());
   // 既存ソース ID の集合(upsertSource で新規/既存を判定するため、selected と別管理する)。
   // toggleSelected で selected から外しても、ここには残るので「2 度目の upsert で自動選択」
@@ -82,13 +91,21 @@ export function createCurrentNotebookStore(
     get activeJobs() {
       return activeJobs;
     },
+    get links() {
+      return links;
+    },
     async load(id) {
       loading = true;
       error = null;
       try {
-        const [nb, ss] = await Promise.all([nbApi.get(id), srcApi.list(id)]);
+        // links は notebook/sources と並行取得するが、失敗してもソース表示を
+        // 壊さないよう自前で catch して [] に degrade してから Promise.all に渡す
+        // (Promise.all にそのまま渡すと links の reject で全体が失敗してしまう)。
+        const linksPromise = lnkApi.list(id).catch(() => [] as SourceLink[]);
+        const [nb, ss, ls] = await Promise.all([nbApi.get(id), srcApi.list(id), linksPromise]);
         notebook = nb;
         sources = ss;
+        links = ls;
         // 仕様 §2.1: ノート切替・初回ロード時は全選択にリセット(永続化なし)。
         selected = new Set(ss.map((s) => s.id));
         knownIds = new Set(ss.map((s) => s.id));
@@ -110,6 +127,7 @@ export function createCurrentNotebookStore(
     clear() {
       notebook = null;
       sources = [];
+      links = [];
       selected = new Set();
       knownIds = new Set();
       error = null;
@@ -161,6 +179,20 @@ export function createCurrentNotebookStore(
       const next = new Set(selected);
       for (const id of ids) next.add(id);
       selected = next;
+    },
+    async setParent(childId, parentId) {
+      const nbId = notebook?.id;
+      if (!nbId) return;
+      // linksApi 呼び出しの例外はここで飲み込まず呼び出し元(パネル側)へ伝播させ、
+      // toast 表示等の UI 判断に委ねる。
+      await lnkApi.setParent(nbId, childId, parentId);
+      links = await lnkApi.list(nbId);
+    },
+    async removeParent(childId) {
+      const nbId = notebook?.id;
+      if (!nbId) return;
+      await lnkApi.removeParent(nbId, childId);
+      links = await lnkApi.list(nbId);
     },
   };
 }

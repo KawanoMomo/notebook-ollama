@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
   import { sourcesApi } from '$lib/api/sources';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog, Presentation } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog, Presentation, Link, Unlink } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -28,12 +28,21 @@
     onGenerateAdr?: () => void;
     // 発表モード開始(pdf/pptx のみ)。任意(パネル側が配線しない限りボタンは出さない)。
     onStartPresentation?: () => void;
+    // 親子ツリー表示のインデント段数(v1: 0 or 1)。SourcesPanel が
+    // orderWithChildren の結果から渡す。カード内部の見た目は不変。
+    depth?: number;
+    // 親ソースを設定する(全ソース種別で表示、任意配線)。
+    onSetParent?: () => void;
+    // 親子リンクを解除する(親を持つソースのみ表示するかは呼び出し元の判断=
+    // prop を渡すかどうかで制御する)。
+    onRemoveParent?: () => void;
   }
   let {
     source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
     onRename, onStopConversion,
     guideExpanded = false, onGuideToggle, onSummarize, onSummaryCancel,
     onGenerateAdr, onStartPresentation,
+    depth = 0, onSetParent, onRemoveParent,
   }: Props = $props();
 
   // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
@@ -174,7 +183,11 @@
   }
 </script>
 
-<div class="card-wrap" class:converting={showConvStatus}>
+<div
+  class="card-wrap"
+  class:converting={showConvStatus}
+  style:margin-left={depth > 0 ? '16px' : undefined}
+>
 <div class="card" class:err={source.status === 'error'}>
   <input
     type="checkbox"
@@ -269,6 +282,26 @@
         title={presentationTitle}
       >
         <Presentation size="14" />
+      </button>
+    {/if}
+    {#if onSetParent}
+      <button
+        class="icon"
+        onclick={onSetParent}
+        aria-label="親ソースを設定"
+        title="親ソースを設定"
+      >
+        <Link size="14" />
+      </button>
+    {/if}
+    {#if onRemoveParent}
+      <button
+        class="icon"
+        onclick={onRemoveParent}
+        aria-label="リンクを解除"
+        title="リンクを解除"
+      >
+        <Unlink size="14" />
       </button>
     {/if}
     <button class="icon danger" onclick={onDelete} aria-label="削除">
