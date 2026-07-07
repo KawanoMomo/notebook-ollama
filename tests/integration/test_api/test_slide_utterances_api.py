@@ -98,6 +98,65 @@ def test_slide_utterances_groups_by_page_ascending(client):
     }
 
 
+def test_slide_utterances_excludes_non_recording_children(client):
+    """録音以外の子(手動リンクの PDF 子など)は逆引き対象外。
+
+    手動リンク UI は任意ソースを子にできるため、PDF 親に PDF 子をリンクすると
+    文書チャンク(page 非null・start_ms/speaker は None)が偽の「発言」として
+    混入しうる。契約は「child(kind=recording)を辿り」— 録音子の items のみ返す。
+    """
+    nb = _nb(client)
+    ctx = client.app.state.ctx
+    from core.storage.chunks_repo import ChunkRecord, insert_chunks
+    from core.storage.source_links_repo import set_parent
+    from core.storage.sources_repo import create_source
+
+    parent = create_source(
+        ctx.conn, notebook_id=nb, kind="pdf", origin="deck.pdf",
+        title="資料A", content_hash="parent_mixed",
+    )
+    rec = create_source(
+        ctx.conn, notebook_id=nb, kind="recording", origin="talk.mp3",
+        title="録音1", content_hash="rec_mixed",
+    )
+    pdf_child = create_source(
+        ctx.conn, notebook_id=nb, kind="pdf", origin="appendix.pdf",
+        title="別紙PDF", content_hash="pdf_child_mixed",
+    )
+    set_parent(
+        ctx.conn, notebook_id=nb, parent_source_id=parent.id,
+        child_source_id=rec.id, relation="presentation",
+    )
+    set_parent(
+        ctx.conn, notebook_id=nb, parent_source_id=parent.id,
+        child_source_id=pdf_child.id, relation="manual",
+    )
+
+    insert_chunks(ctx.conn, [
+        # 録音子: 正当な「発言」
+        ChunkRecord(id="d" * 26, source_id=rec.id, notebook_id=nb, ord=0,
+                    page=1, heading_path=None, text="録音の発言", token_count=1,
+                    start_ms=0, end_ms=1000, speaker="あなた"),
+        # PDF 子: page 付き文書チャンク(start_ms/speaker は None)— 混入してはならない
+        ChunkRecord(id="e" * 26, source_id=pdf_child.id, notebook_id=nb, ord=0,
+                    page=1, heading_path="第1章", text="文書本文", token_count=1,
+                    start_ms=None, end_ms=None, speaker=None),
+        ChunkRecord(id="f" * 26, source_id=pdf_child.id, notebook_id=nb, ord=1,
+                    page=2, heading_path="第2章", text="文書本文2", token_count=1,
+                    start_ms=None, end_ms=None, speaker=None),
+    ])
+
+    r = client.get(f"/api/notebooks/{nb}/sources/{parent.id}/slide-utterances")
+    assert r.status_code == 200
+    body = r.json()
+
+    # 録音子の items のみ: PDF 子由来の page=2 グループも項目も存在しない
+    assert [g["page"] for g in body] == [1]
+    items = body[0]["items"]
+    assert [it["chunk_id"] for it in items] == ["d" * 26]
+    assert all(it["child_source_id"] == rec.id for it in items)
+
+
 def test_slide_utterances_no_children_returns_empty_list(client):
     """子リンクが無いスライド資料は [] を返す。"""
     nb = _nb(client)

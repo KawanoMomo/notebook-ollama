@@ -108,9 +108,12 @@ async def slide_utterances(
 
     source_id はスライド資料(kind∈{pdf,pptx})のみ許可、それ以外は 400。
     NB 不一致/未知 source_id は 404(sources.py の get_source_content と同パターン)。
-    source_links で子(全 relation)を辿り、各子の list_chunks_for_source から
-    page が非 NULL のチャンクを集めてページ昇順にグループ化する。items は
-    (child_source_id, start_ms) 順。子ゼロ/該当チャンクゼロなら [] を返す。
+    source_links で子(全 relation)を辿り、kind=recording の子のみ対象に
+    list_chunks_for_source から page が非 NULL のチャンクを集めてページ昇順に
+    グループ化する。手動リンクは任意ソースを子にできるため、PDF 等の非録音子の
+    文書チャンク(page 非 null・start_ms/speaker は None)を偽の「発言」として
+    返さない。items は (child_source_id, start_ms) 順。子ゼロ/該当チャンク
+    ゼロなら [] を返す。
     """
     ctx = request.app.state.ctx
     src = sources_repo.get_source(ctx.conn, source_id)
@@ -125,6 +128,8 @@ async def slide_utterances(
     by_page: dict[int, list[SlideUtteranceItem]] = {}
     for link in source_links_repo.list_child_links(ctx.conn, source_id):
         child = sources_repo.get_source(ctx.conn, link.child_source_id)
+        if child.kind != "recording":
+            continue
         for c in list_chunks_for_source(ctx.conn, link.child_source_id):
             if c.page is None:
                 continue

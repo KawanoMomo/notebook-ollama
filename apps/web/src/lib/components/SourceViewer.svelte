@@ -45,6 +45,10 @@
   // スライド資料側: ページ別発言の逆引き(kind∈{pdf,pptx} の全文表示時のみ取得)。
   let slideUtterances = $state<SlideUtterancePage[] | null>(null);
   let activeUtteranceChunkId = $state<string | null>(null);
+  // slide-utterances 取得の世代カウンタ(currentNotebook.svelte.ts の linksFetchSeq と
+  // 同パターン)。ソース切替で古い応答が新しい選択の表示を上書きしないよう、
+  // 最後に発行された取得だけを反映する。
+  let utterancesFetchSeq = 0;
 
   // Resolve source for the chunk (look up in latest assistant message's citations)
   let resolvedSourceId = $derived.by(() => {
@@ -132,6 +136,9 @@
     const cid = selectedChunkId;
     const sid = resolvedSourceId;
     const slideKind = isSlideKind;
+    // 世代を進めることで、対象外への遷移中に in-flight の古い応答が
+    // リセット後の状態を上書きするのも防ぐ。
+    const seq = ++utterancesFetchSeq;
     if (cid || !sid || !slideKind) {
       slideUtterances = null;
       activeUtteranceChunkId = null;
@@ -140,11 +147,13 @@
     linksApi
       .slideUtterances(notebookId, sid)
       .then((groups) => {
+        if (seq !== utterancesFetchSeq) return; // 古い応答は破棄
         slideUtterances = groups;
+        activeUtteranceChunkId = null; // 新しい取得結果では開閉状態をリセット
       })
       .catch(() => {
         // fetch 失敗は静かに非表示(既存表示を壊さない)。
-        slideUtterances = null;
+        if (seq === utterancesFetchSeq) slideUtterances = null;
       });
   });
 
