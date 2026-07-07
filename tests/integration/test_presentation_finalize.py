@@ -113,6 +113,63 @@ def test_stop_persists_markers_and_creates_link_and_title(client):
     assert src.title.startswith("slides 発表 "), src.title
 
 
+def test_stop_survives_missing_presentation_parent(client):
+    """録音中に親ソースが削除されても stop は 200 で完走する(録音の座礁禁止)。
+
+    リンク/タイトル確定は失敗して warning に落ちるが、マーカー永続化(親に依存
+    しない)と pipeline dispatch は通常どおり行われる。
+    """
+    nb = _make_notebook(client)
+    pdf_id = _upload_pdf(client, nb)
+    ctx = client.app.state.ctx
+
+    start = _start(client, nb, presentation_source_id=pdf_id).json()
+    rid = start["recording_id"]
+    source_id = start["source_id"]
+
+    client.post(
+        f"/api/notebooks/{nb}/recordings/{rid}/markers",
+        json={"kind": "page", "value": "1"},
+    )
+
+    # 録音中に親ソースが消えるレースを直接再現(DB 行を物理削除)。
+    ctx.conn.execute("DELETE FROM sources WHERE id=?", (pdf_id,))
+
+    r = client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "processing"
+
+    # リンクは作られない(finalize は失敗して continue)。
+    assert get_parent_link(ctx.conn, source_id) is None
+
+    # マーカーは親と無関係に永続化済み。
+    markers = list_markers(ctx.conn, source_id, kind="page")
+    assert [m.value for m in markers] == ["1"]
+
+    # dispatch は行われた(source が pending から遷移している)。
+    src = sources_repo.get_source(ctx.conn, source_id)
+    assert src.status != sources_repo.SourceStatus.PENDING
+
+
+def test_presentation_title_fallback_for_untitled_parent(client):
+    """親の title が未確定 (None) でも 'None 発表 …' にせず '資料 発表 …' に落とす。"""
+    nb = _make_notebook(client)
+    pdf_id = _upload_pdf(client, nb)  # 擬似PDFは解析失敗 → title は None のまま
+    ctx = client.app.state.ctx
+    assert sources_repo.get_source(ctx.conn, pdf_id).title is None
+
+    start = _start(client, nb, presentation_source_id=pdf_id).json()
+    rid = start["recording_id"]
+    source_id = start["source_id"]
+
+    r = client.post(f"/api/notebooks/{nb}/recordings/{rid}/stop")
+    assert r.status_code == 200, r.text
+
+    src = sources_repo.get_source(ctx.conn, source_id)
+    assert src.title is not None
+    assert src.title.startswith("資料 発表 "), src.title
+
+
 # --- パイプライン側: ページ割当 (Fake deps 直駆動) --------------------------
 
 

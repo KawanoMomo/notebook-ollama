@@ -18,11 +18,14 @@ from apps.api.schemas.recording import (
 )
 from core.exceptions import AppError
 from core.ids import new_id
+from core.logging import get_logger
 from core.recording.session import RecordingBusyError
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import delete_chunks_for_source
 from core.storage.source_links_repo import set_parent
 from core.storage.source_markers_repo import MarkerRecord, insert_markers
+
+log = get_logger("api.recordings")
 
 router = APIRouter(tags=["recordings"])
 
@@ -387,16 +390,27 @@ async def stop_recording(
     presentation_parent_id = sess.extras.get("presentation_source_id")
     auto_title = ctx.config.audio.auto_title
     if presentation_parent_id:
-        parent = sources_repo.get_source(ctx.conn, presentation_parent_id)
-        set_parent(
-            ctx.conn, notebook_id=notebook_id,
-            parent_source_id=presentation_parent_id, child_source_id=src_id,
-            relation="presentation", meta={"presented_at": date.today().isoformat()},
-        )
-        sources_repo.update_source_title(
-            ctx.conn, src_id, f"{parent.title} 発表 {date.today():%Y-%m-%d}"
-        )
-        auto_title = False  # 発表タイトルを LLM 推論で上書きさせない
+        # リンク/タイトル確定の失敗で stop 自体を落とさない: 落とすと pipeline が
+        # dispatch されず録音が座礁する(録音中に親ソースが削除された場合等)。
+        # 失敗時は warning を出して通常録音扱い(auto_title は設定値のまま)で続行。
+        try:
+            parent = sources_repo.get_source(ctx.conn, presentation_parent_id)
+            set_parent(
+                ctx.conn, notebook_id=notebook_id,
+                parent_source_id=presentation_parent_id, child_source_id=src_id,
+                relation="presentation", meta={"presented_at": date.today().isoformat()},
+            )
+            sources_repo.update_source_title(
+                ctx.conn, src_id,
+                f"{parent.title or '資料'} 発表 {date.today():%Y-%m-%d}",
+            )
+            auto_title = False  # 発表タイトルを LLM 推論で上書きさせない
+        except Exception:
+            log.warning(
+                "presentation_finalize_failed",
+                source_id=src_id,
+                presentation_source_id=presentation_parent_id,
+            )
 
     # --- Dispatch the offline RAG ingestion pipeline as a background task -----
     mic_wav = _resolve_wav(paths.get("mic"))
