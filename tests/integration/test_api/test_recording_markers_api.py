@@ -171,3 +171,5 @@ def test_active_returns_session_info_and_last_page(client):
     assert body["source_id"] == start["source_id"]
     assert body["presentation_source_id"] == pdf_id
     assert body["last_page"] == 4
+    # リロード復帰用の経過時間(recordingStore.adopt がタイマー再開に使う)
+    assert body["elapsed_ms"] >= 0

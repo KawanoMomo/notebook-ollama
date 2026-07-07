@@ -30,6 +30,14 @@ export interface RecordingStore {
   readonly systemMuted: boolean;
   readonly error: string | null;
   start(notebookId: string, opts?: { presentationSourceId?: string }): Promise<void>;
+  /**
+   * 既存セッションへの再接続(リロード復帰用)。API は呼ばず、GET …/recordings/active
+   * の結果からローカル状態(recording/recordingId/sourceId/経過タイマー/live WS)を復元する。
+   */
+  adopt(
+    notebookId: string,
+    info: { recordingId: string; sourceId: string; elapsedMs?: number },
+  ): void;
   stop(): Promise<void>;
   toggleLiveCaption(): void;
   toggleMute(channel: MuteChannel): void;
@@ -239,6 +247,37 @@ export function createRecordingStore(
     ws = socket;
   }
 
+  /**
+   * セッション状態の確立(start=新規 / adopt=リロード復帰 の共通パス)。
+   * elapsedMs はサーバー算出の経過時間から再開する(新規は 0)。
+   */
+  function attachSession(
+    nbId: string,
+    rid: string,
+    sid: string,
+    opts: { liveCaption: boolean; elapsedMs?: number },
+  ) {
+    recording = true;
+    recordingId = rid;
+    sourceId = sid;
+    notebookId = nbId;
+    liveCaptionActive = opts.liveCaption;
+    captions = [];
+    micLevel = 0;
+    sysLevel = 0;
+    elapsedMs = opts.elapsedMs ?? 0;
+    startedAt = Date.now() - (opts.elapsedMs ?? 0);
+    micMuted = false;
+    systemMuted = false;
+    clearTimer();
+    timer = setInterval(() => {
+      elapsedMs = Date.now() - startedAt;
+    }, 200);
+    intentionalClose = false; // 新規/再接続とも onclose での自動再接続を許可する
+    reconnectAttempts = 0;
+    connectWs(rid);
+  }
+
   return {
     get recording() {
       return recording;
@@ -302,28 +341,24 @@ export function createRecordingStore(
           live_caption: liveCaptionEnabled,
           presentation_source_id: opts.presentationSourceId,
         });
-        recording = true;
-        recordingId = started.recording_id;
-        sourceId = started.source_id;
-        notebookId = nbId;
-        liveCaptionActive = started.live_caption;
-        captions = [];
-        micLevel = 0;
-        sysLevel = 0;
-        elapsedMs = 0;
-        startedAt = Date.now();
-        micMuted = false;
-        systemMuted = false;
-        clearTimer();
-        timer = setInterval(() => {
-          elapsedMs = Date.now() - startedAt;
-        }, 200);
-        intentionalClose = false; // 新規接続。onclose での自動再接続を許可する
-        reconnectAttempts = 0;
-        connectWs(started.recording_id);
+        attachSession(nbId, started.recording_id, started.source_id, {
+          liveCaption: started.live_caption,
+        });
       } finally {
         starting = false;
       }
+    },
+    adopt(nbId, info) {
+      // リロード復帰(spec §6 中断・異常系): GET …/recordings/active の結果から
+      // 既存セッションへ再接続する。API は呼ばない(セッションはサーバーで継続中)。
+      if (recording || starting) return;
+      error = null;
+      attachSession(nbId, info.recordingId, info.sourceId, {
+        // active 照会は live_caption の有無を返さないため、現在のトグル設定を採る
+        // (WS 再接続後はサーバー送出の有無がそのまま反映される)。
+        liveCaption: liveCaptionEnabled,
+        elapsedMs: info.elapsedMs,
+      });
     },
     async stop() {
       if (stopping) return;

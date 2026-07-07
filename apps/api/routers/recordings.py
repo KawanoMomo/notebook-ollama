@@ -586,6 +586,9 @@ async def get_active_recording(request: Request, notebook_id: str) -> Response:
         source_id=sess.extras.get("source_id", ""),
         presentation_source_id=sess.extras.get("presentation_source_id"),
         last_page=last_page,
+        # マーカー at_ms と同じ epoch 基準。FE(recordingStore.adopt)はこの値から
+        # 経過タイマーを再開する。
+        elapsed_ms=int((_time.perf_counter() - sess.extras["epoch"]) * 1000),
     )
     return JSONResponse(content=body.model_dump())
 

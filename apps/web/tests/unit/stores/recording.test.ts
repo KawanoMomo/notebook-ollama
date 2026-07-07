@@ -297,4 +297,18 @@ describe('recording store', () => {
     });
     await p;
   });
+
+  it('adopt は既存セッションへ再接続する(リロード復帰)', () => {
+    const store = createRecordingStore(makeApi() as never, noopNbStore);
+    expect(store.recording).toBe(false);
+
+    store.adopt('nb1', { recordingId: 'r9', sourceId: 's9', elapsedMs: 5000 });
+
+    expect(store.recording).toBe(true);
+    expect(store.recordingId).toBe('r9');
+    expect(store.sourceId).toBe('s9');
+    expect(store.notebookId).toBe('nb1');
+    expect(store.elapsedMs).toBe(5000); // 経過タイマーはサーバー値から再開
+    expect(FakeWS.instances).toHaveLength(1); // live WS への再接続が開始される
+  });
 });

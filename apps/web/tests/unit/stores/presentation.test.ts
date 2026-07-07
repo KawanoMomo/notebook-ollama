@@ -8,6 +8,7 @@ function makeDeps() {
     recording: false,
     start: vi.fn(async () => { rec.recording = true; }),
     stop: vi.fn(async () => { rec.recording = false; }),
+    adopt: vi.fn(() => { rec.recording = true; }),
   };
   const api = {
     postMarker: vi.fn(async () => ({ at_ms: 0 })),
@@ -67,12 +68,19 @@ describe('presentationStore', () => {
     expect(store.active).toBe(false);
   });
 
-  it('resume: 発表セッションが生きていれば復帰', async () => {
+  it('resume: 発表セッションが生きていれば recordingStore を先に復元して復帰', async () => {
     deps.api.getActive.mockResolvedValue({
       recording_id: 'RID', source_id: 'REC',
-      presentation_source_id: 'SRC', last_page: 4,
+      presentation_source_id: 'SRC', last_page: 4, elapsed_ms: 123456,
     });
     await store.resume('nb1');
+    // recordingStore の復元(adopt)が必須: これが無いと recordingId=null のまま
+    // 以降のページ送りマーカーが silently no-op になり録音コントロールも消える
+    expect(deps.rec.adopt).toHaveBeenCalledWith('nb1', {
+      recordingId: 'RID',
+      sourceId: 'REC',
+      elapsedMs: 123456,
+    });
     expect(store.active).toBe(true);
     expect(store.page).toBe(4);
     expect(store.parentSourceId).toBe('SRC');
@@ -81,9 +89,23 @@ describe('presentationStore', () => {
   it('resume: 通常録音(presentationなし)では何もしない', async () => {
     deps.api.getActive.mockResolvedValue({
       recording_id: 'RID', source_id: 'REC',
-      presentation_source_id: null, last_page: null,
+      presentation_source_id: null, last_page: null, elapsed_ms: 500,
     });
     await store.resume('nb1');
     expect(store.active).toBe(false);
+    expect(deps.rec.adopt).not.toHaveBeenCalled();
+  });
+
+  it('setTotalPages は確定ページ数を超えた page を再クランプする(マーカーなし)', async () => {
+    await store.start('nb1', { id: 'SRC', title: 'A' });
+    // totalPages 未確定(0)の間は制限なしで進める
+    for (let i = 0; i < 5; i++) store.next(); // 1→6
+    expect(store.page).toBe(6);
+
+    deps.api.postMarker.mockClear();
+    store.setTotalPages(3);
+    expect(store.page).toBe(3);
+    // 表示補正のみ: 発表者のページ移動イベントではないためマーカーは送らない
+    expect(deps.api.postMarker).not.toHaveBeenCalled();
   });
 });

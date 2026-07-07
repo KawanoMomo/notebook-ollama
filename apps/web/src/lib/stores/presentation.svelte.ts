@@ -46,7 +46,13 @@ export function createPresentationStore(deps: Deps = {}) {
     get totalPages() { return totalPages; },
 
     /** SlideView が抽出済みページ数を通知する。 */
-    setTotalPages(n: number) { totalPages = n; },
+    setTotalPages(n: number) {
+      totalPages = n;
+      // 実ページ数確定時の表示補正のみ(マーカーは送らない): クランプ前の page は
+      // totalPages 未確定(0)の間に進めた推測値であり、「発表者がページを移動した」
+      // イベントではないため。録音タイムラインには最後の実移動マーカーが残っている。
+      if (n > 0 && page > n) page = n;
+    },
 
     async start(nbId: string, source: { id: string; title: string }) {
       notebookId = nbId;
@@ -64,6 +70,8 @@ export function createPresentationStore(deps: Deps = {}) {
     prev() { changePage(page - 1); },
 
     async end() {
+      // active/parentSourceId のみ解除する。page/totalPages/parentTitle 等の
+      // 視覚状態は次回 start() が初期化するため、ここでは触らない。
       await rec.stop();
       active = false;
       parentSourceId = null;
@@ -74,6 +82,14 @@ export function createPresentationStore(deps: Deps = {}) {
       notebookId = nbId;
       const info = await api.getActive(nbId).catch(() => undefined);
       if (!info || !info.presentation_source_id) return;
+      // 先に recordingStore を復元する: リロード後は recordingId が null のため、
+      // これを怠ると以降のページ送りマーカーが sendMarker の rid ガードで
+      // silently no-op になり、録音コントロールも消える(半端状態)。
+      rec.adopt(nbId, {
+        recordingId: info.recording_id,
+        sourceId: info.source_id,
+        elapsedMs: info.elapsed_ms,
+      });
       parentSourceId = info.presentation_source_id;
       page = info.last_page ?? 1;
       active = true;

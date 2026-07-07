@@ -407,4 +407,6 @@ export interface ActiveRecording {
   source_id: string;
   presentation_source_id: string | null;
   last_page: number | null;
+  /** 録音経過時間(ms)。recordingStore.adopt が経過タイマー再開の起点に使う。 */
+  elapsed_ms: number;
 }

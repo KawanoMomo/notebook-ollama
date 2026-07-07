@@ -29,3 +29,6 @@ class ActiveRecording(BaseModel):
     source_id: str
     presentation_source_id: str | None = None
     last_page: int | None = None
+    # 録音経過時間(ms)。リロード復帰時に FE が経過タイマーを再開する起点
+    # (recordingStore.adopt)。マーカー at_ms と同じ epoch 基準でサーバー算出。
+    elapsed_ms: int = 0
