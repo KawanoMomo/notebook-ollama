@@ -33,6 +33,13 @@ export interface CurrentNotebookStore {
   setParent(childId: string, parentId: string): Promise<void>;
   /** child の親子リンクを解除する。例外は呼び出し元へ伝播。 */
   removeParent(childId: string): Promise<void>;
+  /**
+   * sources 一覧と links を API から再取得して反映する(終端 source_status イベント用)。
+   * SSE payload は title 等のソース実データを持たないため、upsertSource による
+   * status/chunk_count 等の patch だけでは古いプレースホルダ表示が残る。
+   * ノート未ロード時は no-op。例外は飲み込み、既存表示を維持する(background refresh)。
+   */
+  refreshSources(): Promise<void>;
 }
 
 export function createCurrentNotebookStore(
@@ -55,6 +62,14 @@ export function createCurrentNotebookStore(
   // 同時に飛んだとき、最後に発行された取得だけを links に反映する(古い応答は破棄)。
   let linksFetchSeq = 0;
 
+  // sources 取得の世代カウンタ(refreshSources 専用)。load() や別の refreshSources
+  // 呼び出しと競合したとき、最後に発行された取得だけを sources に反映する。
+  let sourcesFetchSeq = 0;
+  // refreshSources の多重発火防止(SSE 連打対策)。実行中に追加要求が来たら
+  // pending フラグを立て、完了後にもう一度だけ実行する(trailing coalesce)。
+  let sourcesRefreshInFlight = false;
+  let sourcesRefreshPending = false;
+
   /**
    * links を再取得して反映する。degradeOnError=true(load() の初回取得)は
    * 失敗時に links=[] へ落としてソース表示を守る。false(mutation 後)は
@@ -72,6 +87,25 @@ export function createCurrentNotebookStore(
       }
       throw e;
     }
+  }
+
+  /** sources + links を 1 回だけ再取得して反映する(世代ガード付き)。 */
+  async function doRefreshSources(nbId: string): Promise<void> {
+    const seq = ++sourcesFetchSeq;
+    const [fetched] = await Promise.all([
+      srcApi.list(nbId),
+      refreshLinks(nbId, { degradeOnError: true }),
+    ]);
+    // 古い応答は破棄(後続の refreshSources/load/ノート切替で無効化された)。
+    if (seq !== sourcesFetchSeq) return;
+    sources = fetched;
+    // upsertSource と同じ規約: 未知だった id は自動選択に加える。既知の id は
+    // 選択状態を変更しない(ユーザの手動選択解除を尊重)。
+    const newlyKnown = fetched.filter((s) => !knownIds.has(s.id)).map((s) => s.id);
+    if (newlyKnown.length > 0) {
+      selected = new Set([...selected, ...newlyKnown]);
+    }
+    knownIds = new Set(fetched.map((s) => s.id));
   }
 
   // 進行中ジョブの導出。判定条件は spec 2026-07-02 に基づく:
@@ -120,6 +154,9 @@ export function createCurrentNotebookStore(
     async load(id) {
       loading = true;
       error = null;
+      // 進行中の refreshSources() 応答が別ノート切替後に古い sources で上書きしない
+      // よう、世代を進めて無効化する(doRefreshSources 側の seq チェックで破棄される)。
+      sourcesFetchSeq++;
       try {
         // links は notebook/sources と並行取得する。refreshLinks が世代チェックと
         // 失敗時の degrade(links=[])を担うため、links の失敗が notebook/sources
@@ -156,6 +193,8 @@ export function createCurrentNotebookStore(
       selected = new Set();
       knownIds = new Set();
       error = null;
+      // 進行中の refreshSources() 応答がページ離脱後に反映されないよう無効化する。
+      sourcesFetchSeq++;
     },
     upsertSource(s) {
       const idx = sources.findIndex((x) => x.id === s.id);
@@ -218,6 +257,31 @@ export function createCurrentNotebookStore(
       if (!nbId) return;
       await lnkApi.removeParent(nbId, childId);
       await refreshLinks(nbId);
+    },
+    async refreshSources() {
+      const nbId = notebook?.id;
+      if (!nbId) return;
+      if (sourcesRefreshInFlight) {
+        // 実行中: この呼び出し分は completion 後の追い実行に畳み込む
+        sourcesRefreshPending = true;
+        return;
+      }
+      sourcesRefreshInFlight = true;
+      try {
+        let keepGoing = true;
+        while (keepGoing) {
+          sourcesRefreshPending = false;
+          try {
+            await doRefreshSources(nbId);
+          } catch {
+            // background refresh: 失敗しても既存表示を維持する(load() の
+            // error state は初回ロード専用なのでここでは汚さない)。
+          }
+          keepGoing = sourcesRefreshPending;
+        }
+      } finally {
+        sourcesRefreshInFlight = false;
+      }
     },
   };
 }

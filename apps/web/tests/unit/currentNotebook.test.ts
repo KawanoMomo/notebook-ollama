@@ -293,3 +293,64 @@ describe('currentNotebookStore.setParent / removeParent', () => {
     expect(store.links).toEqual(linksB);
   });
 });
+
+describe('currentNotebookStore.refreshSources', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sources と links を API から再取得して反映する(終端 source_status イベント用)', async () => {
+    // 録音の optimistic source を模す: title=null のプレースホルダ
+    const { store, srcApi, lnkApi } = makeStore([
+      makeSource('rec1', { title: null, origin: '録音', status: 'parsing' }),
+    ]);
+    await store.load('nb1');
+    expect(store.sources[0].title).toBeNull();
+
+    const readySources = [
+      makeSource('rec1', {
+        title: 'eval-deck.pdf 発表 2026-07-08',
+        origin: '録音',
+        status: 'ready',
+      }),
+    ];
+    const readyLinks = [makeLink('rec1', 'deck1')];
+    srcApi.list.mockResolvedValueOnce(readySources);
+    lnkApi.list.mockResolvedValueOnce(readyLinks);
+
+    await store.refreshSources();
+
+    expect(srcApi.list).toHaveBeenCalledWith('nb1');
+    expect(lnkApi.list).toHaveBeenCalledWith('nb1');
+    expect(store.sources).toEqual(readySources);
+    expect(store.links).toEqual(readyLinks);
+  });
+
+  it('実行中に load() でノートが切り替わると、古い refreshSources 応答は破棄される', async () => {
+    const { store, srcApi } = makeStore([makeSource('a', { title: null })]);
+    await store.load('nb1');
+
+    // refreshSources() を発行するが、srcApi.list を保留状態にしておく
+    let resolveStale!: (v: Source[]) => void;
+    srcApi.list.mockImplementationOnce(() => new Promise((r) => (resolveStale = r)));
+    const stalePromise = store.refreshSources();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 保留中に別ノートへ切り替わる(=世代が進む)
+    const freshSources = [makeSource('x', { title: 'x' })];
+    srcApi.list.mockResolvedValueOnce(freshSources);
+    await store.load('nb2');
+    expect(store.sources).toEqual(freshSources);
+
+    // 保留していた古い refreshSources 応答を今解決しても、load() 後の状態を上書きしない
+    resolveStale([makeSource('a', { title: 'STALE-SHOULD-NOT-APPEAR' })]);
+    await stalePromise;
+    expect(store.sources).toEqual(freshSources);
+  });
+
+  it('ノート未ロード(notebook=null)では no-op で API を呼ばない', async () => {
+    const { store, srcApi, lnkApi } = makeStore([makeSource('a')]);
+    await store.refreshSources();
+    expect(srcApi.list).not.toHaveBeenCalled();
+    expect(lnkApi.list).not.toHaveBeenCalled();
+  });
+});
