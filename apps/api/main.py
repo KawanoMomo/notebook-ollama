@@ -25,6 +25,7 @@ from apps.api.routers import (  # noqa: E402
     events,
     feedback_hub,
     health,
+    links,
     notebooks,
     prompts,
     recording_ws,
@@ -298,6 +299,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(notebooks.router)
     app.include_router(sources.router)
     app.include_router(slides.router)
+    app.include_router(links.router)
     app.include_router(recordings.router)
     app.include_router(recording_ws.router)
     app.include_router(audio.router)

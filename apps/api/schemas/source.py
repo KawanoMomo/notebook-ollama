@@ -33,3 +33,14 @@ class SourceUrlCreate(BaseModel):
 
 class SourceRename(BaseModel):
     title: str
+
+
+class SourceLink(BaseModel):
+    """ソース親子リンク。"""
+    id: str
+    notebook_id: str
+    parent_source_id: str
+    child_source_id: str
+    relation: str  # 'presentation' | 'manual'
+    meta: dict | None
+    created_at: str
