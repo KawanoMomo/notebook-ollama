@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
   import { sourcesApi } from '$lib/api/sources';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog, Presentation } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -26,12 +26,14 @@
     onSummaryCancel?: () => void;
     // ADR(Architecture Decision Record)抽出。録音/ドキュメント横断。
     onGenerateAdr?: () => void;
+    // 発表モード開始(pdf/pptx のみ)。任意(パネル側が配線しない限りボタンは出さない)。
+    onStartPresentation?: () => void;
   }
   let {
     source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
     onRename, onStopConversion,
     guideExpanded = false, onGuideToggle, onSummarize, onSummaryCancel,
-    onGenerateAdr,
+    onGenerateAdr, onStartPresentation,
   }: Props = $props();
 
   // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
@@ -118,6 +120,15 @@
       (source.chunk_count ?? 0) === 0 &&
       source.status === 'ready' &&
       source.has_audio === true,
+  );
+
+  // 発表を開始ボタン(pdf/pptx のみ)。pptx はスライド抽出(has_slides)が
+  // 済んでいないと SlideView に描画対象がないため disabled にし、PDF書き出しの
+  // 回避策をツールチップでのみ案内する(常時ヒントは出さない)。
+  const canPresent = $derived(source.kind === 'pdf' || source.kind === 'pptx');
+  const presentationDisabled = $derived(source.kind === 'pptx' && !source.has_slides);
+  const presentationTitle = $derived(
+    presentationDisabled ? 'PDFに書き出して取り込むと発表できます' : '発表を開始',
   );
 
   // 録音音声の再生(録音 && 音源あり)。めったに使わない機能なので、再生ボタンで
@@ -247,6 +258,17 @@
         title="録音を再生"
       >
         <Play size="14" />
+      </button>
+    {/if}
+    {#if onStartPresentation && canPresent}
+      <button
+        class="icon"
+        onclick={onStartPresentation}
+        disabled={presentationDisabled}
+        aria-label="発表を開始"
+        title={presentationTitle}
+      >
+        <Presentation size="14" />
       </button>
     {/if}
     <button class="icon danger" onclick={onDelete} aria-label="削除">
@@ -491,6 +513,14 @@
   .icon.on {
     background: var(--color-bg-elevated);
     color: var(--color-fg);
+  }
+  .icon:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .icon:disabled:hover {
+    background: none;
+    color: var(--color-fg-muted);
   }
   .player {
     padding: var(--space-2) var(--space-3);

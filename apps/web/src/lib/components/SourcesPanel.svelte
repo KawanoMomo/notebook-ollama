@@ -7,6 +7,7 @@
   import Spinner from './Spinner.svelte';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
+  import { presentationStore } from '$lib/stores/presentation.svelte';
   import { sourcesApi } from '$lib/api/sources';
   import { pushToast } from './Toast.svelte';
   import { computeBulkState } from './SourcesPanel.bulk';
@@ -234,6 +235,16 @@
     }
   }
 
+  async function onStartPresentation(s: Source) {
+    // 録音競合(409)や recording extra 未導入(503)は ApiError.message が
+    // そのまま利用者への適切な案内になる(バックエンド側で文言を作り込み済み)。
+    try {
+      await presentationStore.start(notebookId, { id: s.id, title: s.title ?? '' });
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function onRename(s: Source, title: string) {
     try {
       const updated = await sourcesApi.rename(notebookId, s.id, title);
@@ -314,6 +325,7 @@
         onSummarize={() => onSummarize(s)}
         onSummaryCancel={() => onSummaryCancel(s)}
         onGenerateAdr={() => onGenerateAdr(s)}
+        onStartPresentation={() => onStartPresentation(s)}
       />
     {/each}
     {#if filteredSources.length === 0}
