@@ -18,7 +18,6 @@ export function createPresentationStore(deps: Deps = {}) {
 
   let active = $state(false);
   let parentSourceId = $state<string | null>(null);
-  let parentTitle = $state('');
   let page = $state(1);
   let totalPages = $state(0);
   let notebookId = '';
@@ -31,6 +30,7 @@ export function createPresentationStore(deps: Deps = {}) {
   }
 
   function changePage(next: number) {
+    if (!Number.isFinite(next)) return; // 不正入力(NaN/Infinity)は無視、page もマーカーも不変
     const max = totalPages > 0 ? totalPages : Number.MAX_SAFE_INTEGER;
     const clamped = Math.min(Math.max(1, next), max);
     if (clamped === page) return;
@@ -41,7 +41,6 @@ export function createPresentationStore(deps: Deps = {}) {
   return {
     get active() { return active; },
     get parentSourceId() { return parentSourceId; },
-    get parentTitle() { return parentTitle; },
     get page() { return page; },
     get totalPages() { return totalPages; },
 
@@ -58,7 +57,8 @@ export function createPresentationStore(deps: Deps = {}) {
       notebookId = nbId;
       await rec.start(nbId, { presentationSourceId: source.id });
       parentSourceId = source.id;
-      parentTitle = source.title;
+      // source.title は現状どの表示にも使わない未使用の受け口(将来 UI で親資料名を
+      // 出す際の呼び出し元シグネチャ変更を避けるため、引数としてだけ残している)。
       page = 1;
       totalPages = 0;
       active = true;
@@ -70,7 +70,7 @@ export function createPresentationStore(deps: Deps = {}) {
     prev() { changePage(page - 1); },
 
     async end() {
-      // active/parentSourceId のみ解除する。page/totalPages/parentTitle 等の
+      // active/parentSourceId のみ解除する。page/totalPages 等の
       // 視覚状態は次回 start() が初期化するため、ここでは触らない。
       await rec.stop();
       active = false;

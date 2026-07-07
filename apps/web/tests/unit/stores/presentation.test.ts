@@ -31,7 +31,6 @@ describe('presentationStore', () => {
     expect(deps.rec.start).toHaveBeenCalledWith('nb1', { presentationSourceId: 'SRC' });
     expect(store.active).toBe(true);
     expect(store.page).toBe(1);
-    expect(store.parentTitle).toBe('資料A');
     expect(deps.api.postMarker).toHaveBeenCalledWith('nb1', 'RID', 'page', '1');
   });
 
@@ -99,6 +98,14 @@ describe('presentationStore', () => {
     await store.resume('nb1');
     expect(store.active).toBe(false);
     expect(deps.rec.adopt).not.toHaveBeenCalled();
+  });
+
+  it('goto(NaN) は無視される(page不変・マーカー送信なし)', async () => {
+    await store.start('nb1', { id: 'SRC', title: 'A' });
+    deps.api.postMarker.mockClear();
+    store.goto(NaN);
+    expect(store.page).toBe(1);
+    expect(deps.api.postMarker).not.toHaveBeenCalled();
   });
 
   it('setTotalPages は確定ページ数を超えた page を再クランプする(マーカーなし)', async () => {

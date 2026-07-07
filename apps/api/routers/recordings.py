@@ -155,9 +155,6 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(status_code=409, detail=str(e)) from e
     sess.extras["source_id"] = src.id
-    # 発表モード/マーカー用の共有タイムライン基準。live_caption の有無に依存させない
-    # (マーカー at_ms とチャンク start_ms が同一 epoch 上に乗ることが spec §11 の要件)。
-    sess.extras["epoch"] = _time.perf_counter()
     sess.extras["markers"] = []
     if body.presentation_source_id is not None:
         sess.extras["presentation_source_id"] = body.presentation_source_id
@@ -257,6 +254,21 @@ async def start_recording(request: Request, notebook_id: str, body: StartRecordi
         if lc is not None:
             lc.accept(samples)
 
+    # 発表モード/マーカー用の共有タイムライン基準。live_caption の有無に依存させない
+    # (マーカー at_ms とチャンク start_ms が同一 epoch 上に乗ることが spec §11 の要件)。
+    # 実際のキャプチャ開始(recorder.start)の直前で取る: 永続チャンクの start_ms は
+    # WAV 相対(先頭キャプチャフレーム=0)なので、epoch をこれより早く取ると
+    # セットアップ処理時間ぶんの系統的オフセットが生じ、ページ遷移直後の発言が
+    # 前ページへ誤帰属し得る(spec §11 のバグ)。_init_live_captions_async の epoch
+    # 読み取りは `await _asyncio.to_thread(...)` の後(=イベントループに一度制御を
+    # 返した後)なので、この代入より確実に後になる — create_task 直後に await の
+    # ない同期コードは start_recording が return するまで実行されない asyncio の
+    # 仕様に依る。
+    # なお、ここで epoch を取っても「recorder.start がデバイスを開いて実際に
+    # キャプチャが始まるまでの遅延」は原理的に除去できない床として残る
+    # (mic/system は別ストリームなので、両者の実際の t=0 に生じる微小なズレも
+    # 同様の既知の限界 — 録音側ミュート方式など他の同族の限界と同じ扱い)。
+    sess.extras["epoch"] = _time.perf_counter()
     try:
         sess.recorder.start(
             mic_index=body.mic_device_index, system_index=body.system_device_index,
@@ -405,11 +417,12 @@ async def stop_recording(
                 f"{parent.title or '資料'} 発表 {date.today():%Y-%m-%d}",
             )
             auto_title = False  # 発表タイトルを LLM 推論で上書きさせない
-        except Exception:
+        except Exception as exc:
             log.warning(
                 "presentation_finalize_failed",
                 source_id=src_id,
                 presentation_source_id=presentation_parent_id,
+                error=str(exc),
             )
 
     # --- Dispatch the offline RAG ingestion pipeline as a background task -----
