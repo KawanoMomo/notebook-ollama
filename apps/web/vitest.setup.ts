@@ -36,6 +36,24 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
   (globalThis as any).DOMMatrix = DOMMatrixPolyfill;
 }
 
+/**
+ * Minimal ResizeObserver stub.
+ *
+ * jsdom does not implement ResizeObserver, and jsdom never performs layout, so
+ * resize callbacks would never fire anyway. SlideView.svelte observes its
+ * container to re-render the PDF page on size changes; in unit tests we only
+ * need mounting/unmounting not to throw.
+ */
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = ResizeObserverStub;
+}
+
 if (typeof Element !== 'undefined' && !Element.prototype.animate) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (Element.prototype as any).animate = function animate(): Animation {

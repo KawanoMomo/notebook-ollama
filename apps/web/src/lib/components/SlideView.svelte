@@ -21,9 +21,11 @@
   let loadingTask: import('pdfjs-dist').PDFDocumentLoadingTask | null = null;
   let renderTask: { cancel(): void } | null = null;
   let renderSeq = 0;
+  // unmount 後に in-flight の async 処理(ロード/描画)が state 更新や
+  // onRenderError 通知を行わないためのフラグ。render() もこれを見る。
+  let disposed = false;
 
   onMount(() => {
-    let disposed = false;
     (async () => {
       try {
         pdfjs = await import('pdfjs-dist');
@@ -39,6 +41,7 @@
         onTotalPages?.(doc.numPages);
         await render(page);
       } catch (e) {
+        if (disposed) return;
         error = e instanceof Error ? e.message : String(e);
         onRenderError?.(error);
       }
@@ -62,14 +65,17 @@
   });
 
   async function render(p: number) {
-    if (!doc || !canvas || !container) return;
+    if (disposed || !doc || !canvas || !container) return;
     const seq = ++renderSeq;
     try {
       const pdfPage = await doc.getPage(Math.min(Math.max(1, p), doc.numPages));
-      if (seq !== renderSeq) return;
+      if (disposed || seq !== renderSeq) return;
       const base = pdfPage.getViewport({ scale: 1 });
       const cw = container.clientWidth;
       const ch = container.clientHeight;
+      // レイアウト未確定(非表示・初期マウント直後など)で 0 の間は描画しない。
+      // scale が Infinity/NaN になるのを防ぐ。サイズ確定時に ResizeObserver が再描画する。
+      if (cw <= 0 || ch <= 0) return;
       const scale = Math.min(cw / base.width, ch / base.height) * (window.devicePixelRatio || 1);
       const viewport = pdfPage.getViewport({ scale });
       canvas.width = viewport.width;
@@ -92,11 +98,14 @@
   }
 </script>
 
+<!-- canvas は常に DOM に残す(hidden で隠すだけ)。{#if} で外すと bind:this が
+     null に戻り、以後の render() が全てガードで止まって一時的な失敗から回復
+     できなくなる。エラーはオーバーレイ表示し、次の render 成功で error=null →
+     canvas が再表示されて自然回復する。 -->
 <div class="slide-container" bind:this={container}>
+  <canvas bind:this={canvas} class:hidden={error !== null}></canvas>
   {#if error}
     <div class="err" role="alert">スライドを表示できません: {error}</div>
-  {:else}
-    <canvas bind:this={canvas}></canvas>
   {/if}
 </div>
 
@@ -109,6 +118,9 @@
     justify-content: center;
     overflow: hidden;
     background: var(--color-bg);
+  }
+  .hidden {
+    display: none;
   }
   .err {
     color: var(--color-fg-muted);
