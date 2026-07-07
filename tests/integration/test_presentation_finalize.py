@@ -239,6 +239,46 @@ async def test_pipeline_assigns_pages_from_markers(tmp_path: Path):
     assert by_start[6000] == 2
 
 
+async def test_pipeline_skips_unparseable_page_marker(tmp_path: Path):
+    """int() が拒む Unicode 数字マーカー('³'.isdigit() は True)が混入しても
+    pipeline は死なず、パース可能なマーカーのみでページ割当して READY になる。
+
+    (不正値が永続化済みでも変換全体を恒久 ERROR にしない — retry も同じ
+    マーカーを再読するため、ここで落とすと復旧不能になる。)
+    """
+    conn = _conn()
+    insert_markers(conn, [
+        MarkerRecord(id="m1", source_id="src", kind="page", value="³", at_ms=0),
+        MarkerRecord(id="m2", source_id="src", kind="page", value="2", at_ms=5_000),
+    ])
+    vs = FakeVectorStore()
+
+    pipeline = RecordingPipeline(
+        deps=RecordingPipelineDeps(
+            conn=conn, vector_store=vs, ollama=FakeOllama(), embedding_model="bge-m3",
+        )
+    )
+    await pipeline.run(
+        source_id="src", notebook_id="nb",
+        mic_wav=tmp_path / "mic.wav", system_wav=tmp_path / "system.wav",
+        transcriber=_TwoSegmentTranscriber(), diarizer=FakeDiarizer(),
+        model="qwen3", diarization_enabled=False, name_inference_enabled=False,
+        name_threshold=0.7, auto_title_enabled=False,
+    )
+
+    status = conn.execute("SELECT status FROM sources WHERE id='src'").fetchone()["status"]
+    assert status == "ready"
+
+    rows = conn.execute(
+        "SELECT page, start_ms FROM chunks WHERE source_id='src' ORDER BY ord"
+    ).fetchall()
+    # start_ms=1000 のチャンクは有効マーカー(5000,"2")より前 → None、
+    # start_ms=6000 のチャンクは page=2。不正マーカー "³" は無視される。
+    by_start = {r["start_ms"]: r["page"] for r in rows}
+    assert by_start[1000] is None
+    assert by_start[6000] == 2
+
+
 async def test_pipeline_without_markers_keeps_page_none(tmp_path: Path):
     """マーカー0件の通常録音では従来どおり page は全て None(挙動不変)。"""
     conn = _conn()

@@ -338,11 +338,14 @@ class RecordingPipeline:
 
             # 発表モードの page マーカー(at_ms 昇順)。無ければ page は従来どおり
             # 全チャンク None のまま(page_for が None を返す)。
-            page_markers = [
-                (m.at_ms, int(m.value))
-                for m in list_markers(conn, source_id, kind="page")
-                if m.value.isdigit()
-            ]
+            # int() が拒む値('³' 等 isdigit が通す Unicode 数字)は skip する —
+            # ここで例外を漏らすと変換全体が恒久 ERROR になり retry でも復旧不能。
+            page_markers: list[tuple[int, int]] = []
+            for m in list_markers(conn, source_id, kind="page"):
+                try:
+                    page_markers.append((m.at_ms, int(m.value)))
+                except ValueError:
+                    continue  # 不正値はページ割当から除外(パイプラインを殺さない)
 
             records: list[ChunkRecord] = []
             vectors: list[ChunkVector] = []

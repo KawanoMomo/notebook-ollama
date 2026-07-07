@@ -124,6 +124,19 @@ def test_page_marker_rejects_non_numeric_value(client):
     assert r.json()["last_page"] == 7
 
 
+def test_page_marker_rejects_unicode_digit_422(client):
+    """'³' は str.isdigit() を通すが int() が拒む。isdigit ゲートでは素通りして
+    永続化され、pipeline のページ割当を落とすため int-parse 基準で 422 に弾く。"""
+    nb = _make_notebook(client)
+    rid = _start(client, nb).json()["recording_id"]
+
+    r = client.post(
+        f"/api/notebooks/{nb}/recordings/{rid}/markers",
+        json={"kind": "page", "value": "³"},
+    )
+    assert r.status_code == 422
+
+
 def test_add_marker_cross_notebook_404(client):
     """別ノートブックの notebook_id 経由では既存 rid にマーカーを打てない。"""
     nb = _make_notebook(client)

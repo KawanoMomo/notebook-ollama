@@ -541,13 +541,18 @@ async def add_marker(
     sess = ctx.recordings.get(rid)
     if sess is None or sess.notebook_id != notebook_id:
         raise HTTPException(status_code=404, detail="recording session not found")
-    # page マーカーの value は last_page 復元(active 照会)で int 化されるため、
-    # 書き込み時点で数値文字列であることを保証する(非数値の混入は照会側の恒久 500 化)。
-    if body.kind == "page" and not body.value.isdigit():
-        raise HTTPException(
-            status_code=422,
-            detail="page marker value must be a positive integer string",
-        )
+    # page マーカーの value は last_page 復元(active 照会)と pipeline のページ割当で
+    # int 化されるため、書き込み時点で int() が受理する文字列であることを保証する。
+    # isdigit() は '³' 等 int() が拒む Unicode 数字を通すため、int-parse 基準で弾く
+    # (下流3層と同一基準。素通りすると pipeline 側の変換が落ちる)。
+    if body.kind == "page":
+        try:
+            int(body.value)
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="page marker value must be an integer string",
+            ) from None
     at_ms = int((_time.perf_counter() - sess.extras["epoch"]) * 1000)
     sess.extras["markers"].append({"kind": body.kind, "value": body.value, "at_ms": at_ms})
     return {"at_ms": at_ms}
