@@ -412,3 +412,26 @@ export interface ActiveRecording {
   /** セッション開始時の live_caption 設定。recordingStore.adopt へ素通しする。 */
   live_caption: boolean;
 }
+
+/**
+ * スライド資料の該当ページで発言された録音チャンク 1 件(逆引き、Task 11)。
+ * backend: `apps/api/schemas/source.py::SlideUtteranceItem`。
+ */
+export interface SlideUtteranceItem {
+  child_source_id: string;
+  child_title: string | null;
+  chunk_id: string;
+  start_ms: number | null;
+  end_ms: number | null;
+  speaker: string | null;
+  text: string;
+}
+
+/**
+ * ページ単位にグループ化した発言一覧。
+ * backend: `GET /api/notebooks/{nid}/sources/{sid}/slide-utterances` のレスポンス要素。
+ */
+export interface SlideUtterancePage {
+  page: number;
+  items: SlideUtteranceItem[];
+}

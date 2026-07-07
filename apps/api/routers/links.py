@@ -7,11 +7,14 @@ from fastapi import APIRouter, Path, Request
 from pydantic import BaseModel
 from starlette.responses import Response
 
-from apps.api.schemas.source import SourceLink
+from apps.api.schemas.source import SlideUtteranceItem, SlideUtterancePage, SourceLink
 from core.exceptions import AppError, ErrorCode
 from core.storage import notebooks_repo, source_links_repo, sources_repo
+from core.storage.chunks_repo import list_chunks_for_source
 
 router = APIRouter(prefix="/api/notebooks", tags=["links"])
+
+_SLIDE_KINDS = ("pdf", "pptx")
 
 
 class SetParentRequest(BaseModel):
@@ -92,4 +95,60 @@ async def list_links(
             created_at=link.created_at,
         )
         for link in links
+    ]
+
+
+@router.get("/{notebook_id}/sources/{source_id}/slide-utterances")
+async def slide_utterances(
+    request: Request,
+    notebook_id: Annotated[str, Path()],
+    source_id: Annotated[str, Path()],
+) -> list[SlideUtterancePage]:
+    """発表資料(source_id)の各ページで発言された録音チャンクの逆引き(spec §7)。
+
+    source_id はスライド資料(kind∈{pdf,pptx})のみ許可、それ以外は 400。
+    NB 不一致/未知 source_id は 404(sources.py の get_source_content と同パターン)。
+    source_links で子(全 relation)を辿り、各子の list_chunks_for_source から
+    page が非 NULL のチャンクを集めてページ昇順にグループ化する。items は
+    (child_source_id, start_ms) 順。子ゼロ/該当チャンクゼロなら [] を返す。
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    if src.kind not in _SLIDE_KINDS:
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            f"source kind={src.kind} is not a slide deck (pdf/pptx)",
+        )
+
+    by_page: dict[int, list[SlideUtteranceItem]] = {}
+    for link in source_links_repo.list_child_links(ctx.conn, source_id):
+        child = sources_repo.get_source(ctx.conn, link.child_source_id)
+        for c in list_chunks_for_source(ctx.conn, link.child_source_id):
+            if c.page is None:
+                continue
+            by_page.setdefault(c.page, []).append(
+                SlideUtteranceItem(
+                    child_source_id=c.source_id,
+                    child_title=child.title,
+                    chunk_id=c.id,
+                    start_ms=c.start_ms,
+                    end_ms=c.end_ms,
+                    speaker=c.speaker,
+                    text=c.text,
+                )
+            )
+    return [
+        SlideUtterancePage(
+            page=page,
+            items=sorted(
+                by_page[page],
+                key=lambda it: (
+                    it.child_source_id,
+                    it.start_ms if it.start_ms is not None else 0,
+                ),
+            ),
+        )
+        for page in sorted(by_page)
     ]

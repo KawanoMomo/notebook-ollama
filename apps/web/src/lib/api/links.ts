@@ -1,5 +1,5 @@
 import { request } from './client';
-import type { SourceLink } from './types';
+import type { SlideUtterancePage, SourceLink } from './types';
 
 /** 手動リンク API(親設定/解除/一覧)。backend: `apps/api/routers/links.py`。 */
 export const linksApi = {
@@ -17,4 +17,9 @@ export const linksApi = {
     }),
   list: (notebookId: string) =>
     request<SourceLink[]>(`/api/notebooks/${notebookId}/source-links`),
+  /** スライド資料(sourceId)のページ別発言の逆引き(Task 11)。 */
+  slideUtterances: (notebookId: string, sourceId: string) =>
+    request<SlideUtterancePage[]>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/slide-utterances`,
+    ),
 };

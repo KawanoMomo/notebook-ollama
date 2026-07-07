@@ -44,3 +44,20 @@ class SourceLink(BaseModel):
     relation: str  # 'presentation' | 'manual'
     meta: dict | None
     created_at: str
+
+
+class SlideUtteranceItem(BaseModel):
+    """スライド資料の該当ページで発言された録音チャンク 1 件(逆引き)。"""
+    child_source_id: str
+    child_title: str | None
+    chunk_id: str
+    start_ms: int | None
+    end_ms: int | None
+    speaker: str | None
+    text: str
+
+
+class SlideUtterancePage(BaseModel):
+    """ページ単位にグループ化した発言一覧。"""
+    page: int
+    items: list[SlideUtteranceItem]
