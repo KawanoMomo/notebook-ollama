@@ -36,7 +36,7 @@ export interface RecordingStore {
    */
   adopt(
     notebookId: string,
-    info: { recordingId: string; sourceId: string; elapsedMs?: number },
+    info: { recordingId: string; sourceId: string; elapsedMs?: number; liveCaption?: boolean },
   ): void;
   stop(): Promise<void>;
   toggleLiveCaption(): void;
@@ -354,9 +354,10 @@ export function createRecordingStore(
       if (recording || starting) return;
       error = null;
       attachSession(nbId, info.recordingId, info.sourceId, {
-        // active 照会は live_caption の有無を返さないため、現在のトグル設定を採る
-        // (WS 再接続後はサーバー送出の有無がそのまま反映される)。
-        liveCaption: liveCaptionEnabled,
+        // PM-6レビュー追記: active 照会が live_caption を返すようになったため、
+        // それをそのまま使う(セッション開始時の実設定)。呼び出し元が省略した場合のみ
+        // 現在のトグル設定へフォールバックする(後方互換の保険)。
+        liveCaption: info.liveCaption ?? liveCaptionEnabled,
         elapsedMs: info.elapsedMs,
       });
     },

@@ -32,3 +32,6 @@ class ActiveRecording(BaseModel):
     # 録音経過時間(ms)。リロード復帰時に FE が経過タイマーを再開する起点
     # (recordingStore.adopt)。マーカー at_ms と同じ epoch 基準でサーバー算出。
     elapsed_ms: int = 0
+    # セッション開始時の live_caption 設定(PM-6レビュー追記)。FE の
+    # recordingStore.adopt はこれを使い、ローカルのトグル設定からの推測をやめる。
+    live_caption: bool = False

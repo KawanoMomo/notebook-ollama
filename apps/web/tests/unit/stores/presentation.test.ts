@@ -72,14 +72,18 @@ describe('presentationStore', () => {
     deps.api.getActive.mockResolvedValue({
       recording_id: 'RID', source_id: 'REC',
       presentation_source_id: 'SRC', last_page: 4, elapsed_ms: 123456,
+      live_caption: true,
     });
     await store.resume('nb1');
     // recordingStore の復元(adopt)が必須: これが無いと recordingId=null のまま
-    // 以降のページ送りマーカーが silently no-op になり録音コントロールも消える
+    // 以降のページ送りマーカーが silently no-op になり録音コントロールも消える。
+    // liveCaption はサーバーが返した実設定をそのまま渡す(ローカルトグルの推測をやめた、
+    // PM-6レビュー追記)。
     expect(deps.rec.adopt).toHaveBeenCalledWith('nb1', {
       recordingId: 'RID',
       sourceId: 'REC',
       elapsedMs: 123456,
+      liveCaption: true,
     });
     expect(store.active).toBe(true);
     expect(store.page).toBe(4);
@@ -90,6 +94,7 @@ describe('presentationStore', () => {
     deps.api.getActive.mockResolvedValue({
       recording_id: 'RID', source_id: 'REC',
       presentation_source_id: null, last_page: null, elapsed_ms: 500,
+      live_caption: false,
     });
     await store.resume('nb1');
     expect(store.active).toBe(false);

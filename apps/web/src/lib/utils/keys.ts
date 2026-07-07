@@ -3,6 +3,23 @@ export interface ShortcutBinding {
   handler: (e: KeyboardEvent) => void;
   /** when true, fires even when an input/textarea has focus */
   allowInInput?: boolean;
+  /**
+   * 条件付きバインディング用ゲート。false を返す間は matches() 判定自体を行わない
+   * (preventDefault も呼ばれない)。ハンドラ内で早期 return するだけだと、bare な
+   * ArrowLeft/ArrowRight/Space のようなブラウザ既定動作を持つキーは、条件を満たさない
+   * 状態でも preventDefault() されてしまう(例: フォーカス中のボタンが Space で
+   * 反応しなくなる)ため、条件はここで弾く。
+   */
+  enabled?: () => boolean;
+}
+
+// e.key の別名。空白キーは e.key === ' '(スペース1文字)で届くため、combo 側で
+// 'Space' と書けるようにここで正規化する(combo 文字列は '+' で分割・trim されるため
+// combo: ' ' はそのままでは書けない)。
+const KEY_ALIASES: Record<string, string> = { ' ': 'space' };
+
+function normalizeKey(key: string): string {
+  return (KEY_ALIASES[key] ?? key).toLowerCase();
 }
 
 function matches(combo: string, e: KeyboardEvent): boolean {
@@ -22,7 +39,7 @@ function matches(combo: string, e: KeyboardEvent): boolean {
     ctrlOk &&
     shiftOk &&
     altOk &&
-    e.key.toLowerCase() === key
+    normalizeKey(e.key) === key
   );
 }
 
@@ -35,6 +52,7 @@ function isInInput(target: EventTarget | null): boolean {
 export function bindShortcuts(bindings: ShortcutBinding[]): () => void {
   const handler = (e: KeyboardEvent) => {
     for (const b of bindings) {
+      if (b.enabled && !b.enabled()) continue;
       if (!b.allowInInput && isInInput(e.target)) continue;
       if (matches(b.combo, e)) {
         e.preventDefault();

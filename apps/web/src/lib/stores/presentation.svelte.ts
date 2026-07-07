@@ -89,6 +89,7 @@ export function createPresentationStore(deps: Deps = {}) {
         recordingId: info.recording_id,
         sourceId: info.source_id,
         elapsedMs: info.elapsed_ms,
+        liveCaption: info.live_caption,
       });
       parentSourceId = info.presentation_source_id;
       page = info.last_page ?? 1;

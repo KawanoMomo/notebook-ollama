@@ -589,6 +589,7 @@ async def get_active_recording(request: Request, notebook_id: str) -> Response:
         # マーカー at_ms と同じ epoch 基準。FE(recordingStore.adopt)はこの値から
         # 経過タイマーを再開する。
         elapsed_ms=int((_time.perf_counter() - sess.extras["epoch"]) * 1000),
+        live_caption=sess.live_caption,
     )
     return JSONResponse(content=body.model_dump())
 

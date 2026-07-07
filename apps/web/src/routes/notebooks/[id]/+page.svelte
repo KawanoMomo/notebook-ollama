@@ -14,8 +14,10 @@
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
   import ChatPanel from '$lib/components/ChatPanel.svelte';
   import LiveCaptionView from '$lib/components/LiveCaptionView.svelte';
+  import PresentationView from '$lib/components/PresentationView.svelte';
   import SourceViewer from '$lib/components/SourceViewer.svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
+  import { presentationStore } from '$lib/stores/presentation.svelte';
 
   let { data } = $props<{ data: { notebookId: string } }>();
 
@@ -83,6 +85,8 @@
     void modelsStore.load();
     void settingsStore.load();
     eventsStore.start(data.notebookId);
+    // リロード復帰(spec §6): 発表セッションが生きていれば発表ビューへ再入する。
+    void presentationStore.resume(data.notebookId);
     unbindShortcuts = bindShortcuts([
       {
         combo: 'Mod+/',
@@ -95,6 +99,24 @@
       {
         combo: 'Mod+b',
         handler: () => (viewerOpen = !viewerOpen),
+      },
+      {
+        combo: 'ArrowRight',
+        // enabled: 発表中でなければ matches() 判定自体を行わない(preventDefault も
+        // 発火しない)。ハンドラ内 return だけだと、フォーカス中のボタン等への
+        // 既定キー動作(Space でのクリック等)を発表外でも握り潰してしまうため。
+        enabled: () => presentationStore.active,
+        handler: () => presentationStore.next(),
+      },
+      {
+        combo: 'ArrowLeft',
+        enabled: () => presentationStore.active,
+        handler: () => presentationStore.prev(),
+      },
+      {
+        combo: 'Space',
+        enabled: () => presentationStore.active,
+        handler: () => presentationStore.next(),
       },
     ]);
   });
@@ -134,7 +156,7 @@
   {:else if currentNotebookStore.error}
     <div class="state err">エラー: {currentNotebookStore.error}</div>
   {:else}
-    <div class="cols" class:viewer-open={viewerOpen}>
+    <div class="cols" class:viewer-open={viewerOpen || presentationStore.active}>
       <aside class="sources">
         <SourcesPanel
           notebookId={data.notebookId}
@@ -147,7 +169,9 @@
         />
       </aside>
       <section class="chat">
-        {#if recordingStore.recording}
+        {#if presentationStore.active}
+          <PresentationView notebookId={data.notebookId} />
+        {:else if recordingStore.recording}
           <LiveCaptionView />
         {:else}
           <ChatPanel
@@ -160,7 +184,11 @@
           />
         {/if}
       </section>
-      {#if viewerOpen}
+      {#if presentationStore.active}
+        <aside class="viewer">
+          <LiveCaptionView variant="sidebar" />
+        </aside>
+      {:else if viewerOpen}
         <aside class="viewer">
           <SourceViewer
             notebookId={data.notebookId}

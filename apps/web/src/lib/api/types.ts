@@ -409,4 +409,6 @@ export interface ActiveRecording {
   last_page: number | null;
   /** 録音経過時間(ms)。recordingStore.adopt が経過タイマー再開の起点に使う。 */
   elapsed_ms: number;
+  /** セッション開始時の live_caption 設定。recordingStore.adopt へ素通しする。 */
+  live_caption: boolean;
 }

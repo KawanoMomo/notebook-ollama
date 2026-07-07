@@ -173,3 +173,6 @@ def test_active_returns_session_info_and_last_page(client):
     assert body["last_page"] == 4
     # リロード復帰用の経過時間(recordingStore.adopt がタイマー再開に使う)
     assert body["elapsed_ms"] >= 0
+    # セッション開始時の live_caption 設定がそのまま透過する(_start は live_caption=False)。
+    # FE の recordingStore.adopt はこの値を使い、ローカルトグルからの推測をやめる。
+    assert body["live_caption"] is False
