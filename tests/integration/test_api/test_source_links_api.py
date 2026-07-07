@@ -110,3 +110,32 @@ def test_delete_non_existent_link_returns_204(client):
 
     r = client.delete(f"/api/notebooks/{nb}/sources/{a}/parent")
     assert r.status_code == 204
+
+
+def test_delete_parent_cross_notebook_404(client):
+    """別ノートブックの path で DELETE すると 404、リンクは残存する。"""
+    nb1 = _nb(client)
+    nb2 = _nb(client)
+    a = _upload(client, nb1, "a.md", b"# a")
+    b = _upload(client, nb1, "b.md", b"# b")
+
+    r = client.put(
+        f"/api/notebooks/{nb1}/sources/{b}/parent",
+        json={"parent_source_id": a},
+    )
+    assert r.status_code == 200
+
+    # NB2 の path で NB1 のソース b のリンクを消そうとする → 404
+    r = client.delete(f"/api/notebooks/{nb2}/sources/{b}/parent")
+    assert r.status_code == 404
+
+    # リンクは残存
+    links = client.get(f"/api/notebooks/{nb1}/source-links").json()
+    assert len(links) == 1
+    assert links[0]["child_source_id"] == b
+
+
+def test_list_links_unknown_notebook_404(client):
+    """存在しないノートブックの GET は 404 を返す。"""
+    r = client.get("/api/notebooks/no-such-nb/source-links")
+    assert r.status_code == 404
