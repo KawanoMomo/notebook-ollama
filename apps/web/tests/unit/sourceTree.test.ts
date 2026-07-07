@@ -7,7 +7,7 @@
  * - 循環等の壊れたリンクデータでも全ソースを欠落なく出力し、無限ループしない
  */
 import { describe, expect, it } from 'vitest';
-import { orderWithChildren } from '$lib/utils/sourceTree';
+import { descendantIdsOf, orderWithChildren } from '$lib/utils/sourceTree';
 import type { Source, SourceLink } from '$lib/api/types';
 
 function makeSource(id: string, overrides: Partial<Source> = {}): Source {
@@ -90,5 +90,24 @@ describe('orderWithChildren', () => {
     const rows = orderWithChildren([a, b], [makeLink('a', 'b'), makeLink('b', 'a')]);
     expect(rows).toHaveLength(2);
     expect(new Set(rows.map((r) => r.source.id))).toEqual(new Set(['a', 'b']));
+  });
+});
+
+describe('descendantIdsOf', () => {
+  it('直接の子のみの場合、その子だけを返す', () => {
+    const links = [makeLink('c1', 'p'), makeLink('c2', 'p'), makeLink('x', 'other')];
+    expect(descendantIdsOf('p', links)).toEqual(new Set(['c1', 'c2']));
+  });
+
+  it('多段リンク(孫まで)を辿って全子孫を返す', () => {
+    // p → c → gc(孫)、p → c2
+    const links = [makeLink('c', 'p'), makeLink('gc', 'c'), makeLink('c2', 'p')];
+    expect(descendantIdsOf('p', links)).toEqual(new Set(['c', 'gc', 'c2']));
+  });
+
+  it('循環したリンクデータでも停止し、自分自身は含めない', () => {
+    // a → b → c → a の循環
+    const links = [makeLink('b', 'a'), makeLink('c', 'b'), makeLink('a', 'c')];
+    expect(descendantIdsOf('a', links)).toEqual(new Set(['b', 'c']));
   });
 });

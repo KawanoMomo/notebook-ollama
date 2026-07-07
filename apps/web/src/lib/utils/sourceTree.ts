@@ -35,3 +35,30 @@ export function orderWithChildren(sources: Source[], links: SourceLink[]): Sourc
   for (const s of sources) if (!seen.has(s.id)) rows.push({ source: s, depth: 0 });
   return rows;
 }
+
+/**
+ * sourceId を起点にリンクを辿った子孫(直接の子だけでなく多段も)の ID 集合を返す。
+ * ParentPickerModal の候補から「自身と自身の子孫」を除外するために使う。
+ * 循環したリンクデータでも visited により必ず停止する。自分自身は含めない。
+ */
+export function descendantIdsOf(sourceId: string, links: SourceLink[]): Set<string> {
+  const childrenMap = new Map<string, string[]>();
+  for (const l of links) {
+    const arr = childrenMap.get(l.parent_source_id) ?? [];
+    arr.push(l.child_source_id);
+    childrenMap.set(l.parent_source_id, arr);
+  }
+  const result = new Set<string>();
+  const stack = [sourceId];
+  const visited = new Set<string>([sourceId]);
+  while (stack.length > 0) {
+    const cur = stack.pop() as string;
+    for (const c of childrenMap.get(cur) ?? []) {
+      if (visited.has(c)) continue;
+      visited.add(c);
+      result.add(c);
+      stack.push(c);
+    }
+  }
+  return result;
+}

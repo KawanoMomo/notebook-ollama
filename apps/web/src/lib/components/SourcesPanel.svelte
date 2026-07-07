@@ -12,7 +12,7 @@
   import { sourcesApi } from '$lib/api/sources';
   import { pushToast } from './Toast.svelte';
   import { computeBulkState } from './SourcesPanel.bulk';
-  import { orderWithChildren } from '$lib/utils/sourceTree';
+  import { descendantIdsOf, orderWithChildren } from '$lib/utils/sourceTree';
   import type { Source } from '$lib/api/types';
 
   interface Props {
@@ -268,34 +268,11 @@
   // 親ソース設定モーダル。開いている対象(子)を保持する(null なら閉じている)。
   let parentPickerFor = $state<Source | null>(null);
 
-  // id を起点に、リンクを辿った子孫(直接の子だけでなく多段も)の ID 集合を返す。
-  // ParentPickerModal の候補から「自身と自身の子孫」を除外するために使う。
-  function descendantIdsOf(id: string): Set<string> {
-    const childrenMap = new Map<string, string[]>();
-    for (const l of currentNotebookStore.links) {
-      const arr = childrenMap.get(l.parent_source_id) ?? [];
-      arr.push(l.child_source_id);
-      childrenMap.set(l.parent_source_id, arr);
-    }
-    const result = new Set<string>();
-    const stack = [id];
-    const visited = new Set<string>([id]);
-    while (stack.length > 0) {
-      const cur = stack.pop() as string;
-      for (const c of childrenMap.get(cur) ?? []) {
-        if (visited.has(c)) continue;
-        visited.add(c);
-        result.add(c);
-        stack.push(c);
-      }
-    }
-    return result;
-  }
-
+  // 候補 = 同一NB内ソースから自身と自身の子孫(descendantIdsOf、多段対応)を除外。
   let parentPickerCandidates = $derived.by(() => {
     const child = parentPickerFor;
     if (!child) return [];
-    const excluded = descendantIdsOf(child.id);
+    const excluded = descendantIdsOf(child.id, currentNotebookStore.links);
     excluded.add(child.id);
     return currentNotebookStore.sources.filter((s) => !excluded.has(s.id));
   });
@@ -320,9 +297,10 @@
     }
   }
 
-  function hasParent(id: string): boolean {
-    return currentNotebookStore.links.some((l) => l.child_source_id === id);
-  }
+  // 親を持つソース(=リンクの child 側)の ID 集合。カードごとの O(1) 判定用。
+  let childIdsWithParent = $derived(
+    new Set(currentNotebookStore.links.map((l) => l.child_source_id)),
+  );
 
   async function onRemoveParent(s: Source) {
     try {
@@ -407,7 +385,7 @@
         onGenerateAdr={() => onGenerateAdr(s)}
         onStartPresentation={() => onStartPresentation(s)}
         onSetParent={() => openParentPicker(s)}
-        onRemoveParent={hasParent(s.id) ? () => onRemoveParent(s) : undefined}
+        onRemoveParent={childIdsWithParent.has(s.id) ? () => onRemoveParent(s) : undefined}
       />
     {/each}
     {#if filteredSources.length === 0}

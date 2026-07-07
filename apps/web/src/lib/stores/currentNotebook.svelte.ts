@@ -51,6 +51,29 @@ export function createCurrentNotebookStore(
   let loading = $state(false);
   let error = $state<string | null>(null);
 
+  // links 取得の世代カウンタ。連打/並行 mutation やノート切替で複数の list() が
+  // 同時に飛んだとき、最後に発行された取得だけを links に反映する(古い応答は破棄)。
+  let linksFetchSeq = 0;
+
+  /**
+   * links を再取得して反映する。degradeOnError=true(load() の初回取得)は
+   * 失敗時に links=[] へ落としてソース表示を守る。false(mutation 後)は
+   * 例外を呼び出し元へ伝播する。いずれも世代チェックで古い応答を破棄する。
+   */
+  async function refreshLinks(nbId: string, opts?: { degradeOnError?: boolean }): Promise<void> {
+    const seq = ++linksFetchSeq;
+    try {
+      const fetched = await lnkApi.list(nbId);
+      if (seq === linksFetchSeq) links = fetched;
+    } catch (e) {
+      if (opts?.degradeOnError) {
+        if (seq === linksFetchSeq) links = [];
+        return;
+      }
+      throw e;
+    }
+  }
+
   // 進行中ジョブの導出。判定条件は spec 2026-07-02 に基づく:
   // status ∈ {pending,parsing,chunking,embedding} / summary_status==='generating'
   // / adr_status==='generating'。error/skipped は進行中として扱わない。
@@ -98,14 +121,16 @@ export function createCurrentNotebookStore(
       loading = true;
       error = null;
       try {
-        // links は notebook/sources と並行取得するが、失敗してもソース表示を
-        // 壊さないよう自前で catch して [] に degrade してから Promise.all に渡す
-        // (Promise.all にそのまま渡すと links の reject で全体が失敗してしまう)。
-        const linksPromise = lnkApi.list(id).catch(() => [] as SourceLink[]);
-        const [nb, ss, ls] = await Promise.all([nbApi.get(id), srcApi.list(id), linksPromise]);
+        // links は notebook/sources と並行取得する。refreshLinks が世代チェックと
+        // 失敗時の degrade(links=[])を担うため、links の失敗が notebook/sources
+        // 側の error state を汚すことはない。
+        const [nb, ss] = await Promise.all([
+          nbApi.get(id),
+          srcApi.list(id),
+          refreshLinks(id, { degradeOnError: true }),
+        ]);
         notebook = nb;
         sources = ss;
-        links = ls;
         // 仕様 §2.1: ノート切替・初回ロード時は全選択にリセット(永続化なし)。
         selected = new Set(ss.map((s) => s.id));
         knownIds = new Set(ss.map((s) => s.id));
@@ -186,13 +211,13 @@ export function createCurrentNotebookStore(
       // linksApi 呼び出しの例外はここで飲み込まず呼び出し元(パネル側)へ伝播させ、
       // toast 表示等の UI 判断に委ねる。
       await lnkApi.setParent(nbId, childId, parentId);
-      links = await lnkApi.list(nbId);
+      await refreshLinks(nbId);
     },
     async removeParent(childId) {
       const nbId = notebook?.id;
       if (!nbId) return;
       await lnkApi.removeParent(nbId, childId);
-      links = await lnkApi.list(nbId);
+      await refreshLinks(nbId);
     },
   };
 }
