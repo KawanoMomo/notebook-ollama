@@ -15,6 +15,7 @@ class Source(BaseModel):
     page_count: int | None
     chunk_count: int | None
     has_audio: bool = False
+    has_slides: bool = False
     summary: str | None = None
     summary_status: str | None = None
     adr_draft: str | None = None

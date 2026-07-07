@@ -29,6 +29,7 @@ from apps.api.routers import (  # noqa: E402
     prompts,
     recording_ws,
     recordings,
+    slides,
     sources,
 )
 from apps.api.routers import (  # noqa: E402
@@ -296,6 +297,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(notebooks.router)
     app.include_router(sources.router)
+    app.include_router(slides.router)
     app.include_router(recordings.router)
     app.include_router(recording_ws.router)
     app.include_router(audio.router)

@@ -37,6 +37,10 @@ dependencies = [
 # PyMuPDF itself.
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.24"]
+# PPTX→PDF 変換(発表モード, spec §5/§8)。COM 経由で PowerPoint を操作するため
+# Windows 限定・PowerPoint インストール前提。未インストールでも取込自体は
+# 通常どおり動作し、スライド表示 (has_slides) だけが false のままになる。
+slides = ["pywin32>=306; sys_platform == 'win32'"]
 # Recording / live-caption / diarization stack (Sprint 2+ of the recording-source
 # feature). Heavy, GPU-capable (CUDA via ctranslate2 pulled in by faster-whisper).
 # All third-party; documented in LICENSE-THIRDPARTY.md. STT/diarization MODELS are
