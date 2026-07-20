@@ -111,6 +111,8 @@ ignore = ["S101"]  # allow asserts in tests
 "core/ingestion/chunker.py" = ["RUF001"]           # JP sentence-end regex
 "core/recording/title_inference.py" = ["RUF001"]   # JP/ASCII colon separators
 "core/recording/transcriber.py" = ["RUF001"]       # JP/ASCII strip char set
+"core/generation/stream.py" = ["RUF001"]           # 自動継続の "N×M回" 表記
+"tests/integration/test_generation.py" = ["RUF001"]  # 上記表記を検証するテスト文字列
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
