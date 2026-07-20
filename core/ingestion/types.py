@@ -12,6 +12,17 @@ class ParsedSection:
 
 
 @dataclass
+class ParsedAsset:
+    kind: str  # 'table' | 'figure'
+    page: int          # 1-origin
+    bbox: tuple[float, float, float, float]
+    html: str | None = None
+    md_snippet: str | None = None
+    image_png: bytes | None = None
+
+
+@dataclass
 class ParsedDocument:
     title: str
     sections: list[ParsedSection] = field(default_factory=list)
+    assets: list[ParsedAsset] = field(default_factory=list)

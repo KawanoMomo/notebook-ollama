@@ -120,6 +120,7 @@ markers = [
     "qdrant: tests that require Qdrant local mode write access",
     "cuda: tests that require an NVIDIA CUDA device",
     "slow: tests that exercise real model inference (>5s wall clock)",
+    "pdf: tests that require the optional PyMuPDF (pdf) extra",
 ]
 
 [build-system]
