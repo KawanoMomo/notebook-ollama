@@ -72,6 +72,7 @@ async def list_messages(request: Request, notebook_id: str, conv_id: str) -> lis
             content=m.content,
             citations=m.citations,
             model=m.model,
+            truncated=m.truncated,
             created_at=m.created_at,
         )
         for m in msgs
@@ -127,6 +128,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
     async def event_gen() -> AsyncIterator[dict[str, Any]]:
         buffer: list[str] = []
         citations: list[dict[str, Any]] = []
+        truncated = False
         async for ev in ctx.generation.run(
             notebook_id=notebook_id,
             source_ids=body.source_ids,
@@ -136,6 +138,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
             num_ctx=num_ctx,
             context_budget_ratio=ctx.config.generation.context_budget_ratio,
             response_budget_tokens=ctx.config.generation.response_budget_tokens,
+            auto_continue_max=ctx.config.generation.auto_continue_max,
             retrieval_top_k=ctx.config.retrieval.top_k,
             min_history_turns=ctx.config.retrieval.min_history_turns,
         ):
@@ -144,6 +147,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
             yield {"event": ev.kind, "data": json.dumps(ev.data, ensure_ascii=False)}
             if ev.kind == "done":
                 citations = ev.data["citations"]
+                truncated = ev.data["truncated"]
         # persist assistant message
         messages_repo.append_message(
             ctx.conn,
@@ -152,6 +156,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
             content="".join(buffer),
             citations=citations,
             model=model,
+            truncated=truncated,
         )
 
     return EventSourceResponse(

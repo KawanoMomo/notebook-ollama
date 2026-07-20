@@ -17,6 +17,7 @@ class Message(BaseModel):
     content: str
     citations: list[dict[str, Any]] = []
     model: str | None = None
+    truncated: bool = False
     created_at: str
 
 
