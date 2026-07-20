@@ -120,12 +120,20 @@ class CrashReportSettingsUpdate(BaseModel):
     opted_in_at: datetime | None = None
 
 
+class VoiceInputSettingsSchema(BaseModel):
+    """``core.config.VoiceInputSettings`` の HTTP 表現(GET/PUT 共用)。"""
+
+    mode: Literal["off", "push_to_talk", "hands_free"] = "push_to_talk"
+    ptt_key: str = Field(default="Space", min_length=1, max_length=64)
+
+
 class AppSettingsSchema(BaseModel):
     ollama: OllamaSettingsSchema
     generation: GenerationSettingsSchema
     retrieval: RetrievalSettingsSchema
     audio: AudioSettingsSchema
     crash_report: CrashReportSettingsSchema | None = None
+    voice_input: VoiceInputSettingsSchema | None = None
     dev: DevSettingsSchema | None = None
 
 

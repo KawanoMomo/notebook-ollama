@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>設計仕様: チャット音声入力(Notebook Ollama)</title>
+<style>:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --border: #e5e7eb;
+  --code-bg: #f3f4f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #60a5fa;
+    --border: #1e293b;
+    --code-bg: #1e293b;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+body { font-family: -apple-system, "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; line-height: 1.6; padding: 2rem; max-width: 960px; margin: 0 auto; }
+h1, h2, h3 { line-height: 1.25; }
+h2 { border-bottom: 1px solid var(--border); padding-bottom: .25em; margin-top: 2em; }
+a { color: var(--accent); }
+code, pre { background: var(--code-bg); border-radius: 4px; padding: .15em .35em; font-family: "Consolas", monospace; font-size: .9em; }
+pre { padding: .75em 1em; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--border); padding: .5em .75em; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); }
+nav.toc { background: var(--code-bg); border-radius: 6px; padding: 1em 1.5em; margin: 1.5em 0; }
+nav.toc ol { margin: 0; padding-left: 1.25em; }
+details { border: 1px solid var(--border); border-radius: 6px; padding: .5em 1em; margin: .5em 0; }
+details > summary { cursor: pointer; font-weight: 600; }
+.badge { display: inline-block; padding: .15em .6em; border-radius: 999px; font-size: .85em; font-weight: 600; }
+.badge[data-status="pass"] { background: #16a34a; color: white; }
+.badge[data-status="fail"] { background: #dc2626; color: white; }
+.badge[data-status="warn"] { background: #f59e0b; color: white; }
+
+header { margin-bottom: 1.5em; }
+header .meta { color: var(--muted); font-size: .9em; }
+svg.dataflow { display: block; margin: 1em 0; }
+</style>
+</head>
+<body>
+
+<header>
+<h1>設計仕様: チャット音声入力(Notebook Ollama)</h1>
+<p class="meta"><span>Date: 2026-07-05(改訂2: Claude Code と同じタップ/長押し判別を採用)</span> &middot; <span>Author: Kawano Momo</span> &middot; <span>Status: <span class="badge" data-status="pass">Approved</span></span></p>
+</header>
+
+<nav class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#goals">Goals</a></li>
+<li><a href="#non-goals">Non-Goals</a></li>
+<li><a href="#components">Components</a></li>
+<li><a href="#dataflow">Data flow</a></li>
+<li><a href="#acceptance">Acceptance criteria</a></li>
+<li><a href="#risks">Risks</a></li>
+</ol>
+</nav>
+
+<section id="overview"><h2>Overview</h2><p>チャットの質問文をキーボードで打つ手間を減らすため、ChatInput に音声入力を追加する。認識は録音ソース機能で導入済みの faster-whisper 基盤(app.state.transcriber)を再利用し、完全ローカルで動作。操作は設定画面で 3 択: プッシュトゥトーク(既定キー Space。タップ=通常入力/長押し=録音の判別により textarea 入力中でも使える。Claude Code の hold モードと同じ操作感)/ 常時有効(ハンズフリー: ブラウザ側 VAD が発話区間を自動で切り出し逐次テキスト化)/ 無効。認識テキストは textarea のカーソル位置に挿入のみで自動送信はしない。</p></section>
+<section id="goals"><h2>Goals</h2><ul><li>ChatInput へのマイクボタン追加(モード別の録音制御、認識テキストを textarea に追記)</li><li>音声変換 API POST /api/stt/transcribe の新設(既存 transcriber の薄いラッパー、ステートレス)</li><li>設定画面に「音声入力」セクション追加(モード 3 値 + PTT キー割当)、既存 /api/settings に永続化</li><li>プッシュトゥトーク: タップ(250ms未満)=キーの通常文字を挿入 / 長押し=録音の判別で、textarea フォーカス中でも動作。音声キャプチャは keydown で先行開始し語頭欠落を防止。IME 変換中(isComposing)と修飾キー同時押しは不介入</li><li>ハンズフリー: ブラウザ側 RMS VAD で発話区間を切り出し、区間ごとに WAV バッチ POST を反復(POST はキューで直列化)</li><li>recording extra 未導入環境でのグレースフルデグレード(503 + 導入ヒント)</li></ul></section>
+<section id="non-goals"><h2>Non-Goals</h2><ul><li>サーバー側ストリーミング認識(WebSocket / LiveCaption 再利用)— ハンズフリーもバッチ反復で実現、精度不足時の v2 候補</li><li>Web Speech API フォールバック</li><li>認識後の自動送信(誤認識のまま RAG 検索が走るリスクを避ける)</li><li>録音ソース機能との統合(チャット用音声は保存しない、使い捨て)</li><li>修飾キー組合せ(Ctrl+Space 等)の PTT キー割当 — v1 は単一キーのみ</li></ul></section>
+<section id="components"><h2>Components</h2><table>
+<thead><tr><th>Component</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td>ChatInput.svelte(改修)</td><td>マイクボタン(送信ボタン横)。PTT=キー/ボタン長押し中のみ録音(赤・パルス+経過秒、120秒で自動停止)、ハンズフリー=クリックまたはキー長押しでトグルし常時パルス、無効=非表示。document キーフックはタップ/長押し判別(250ms)・repeat 無視・isComposing/修飾キー不介入。認識結果はカーソル位置に挿入</td></tr>
+<tr><td>設定画面「音声入力」セクション(新規)</td><td>モード選択(無効/PTT/ハンズフリー)+ PTT キー割当(「キーを押して設定」方式、Esc キャンセル)。PTT 以外ではキー割当 UI をグレーアウト</td></tr>
+<tr><td>apps/api/routers/stt.py(新規)</td><td>POST /api/stt/transcribe。multipart 音声受領 → 必要なら ffmpeg で 16kHz mono WAV 化 → 共有 transcriber で認識 → {text, duration_ms} 返却。extra 未導入は 503、20MB 超過は 413。モードによらずこの 1 本</td></tr>
+<tr><td>core/config.py + schemas/settings.py(改修)</td><td>voice_input_mode(off/push_to_talk/hands_free、既定 push_to_talk)と voice_input_ptt_key(KeyboardEvent.code、既定 Space)を既存パターンで追加</td></tr>
+<tr><td>core/recording/transcriber.py(既存)</td><td>変更なし。_get_transcriber() 経由で共有 WhisperModel を再利用(language=ja、_serial_lock で直列化済み)</td></tr>
+<tr><td>ブラウザ側 VAD(新規・フロント)</td><td>RMS しきい値+ハングオーバー(プリロール約300ms/無音約800ms/1区間最大30秒)。純粋関数に切り出し、しきい値は定数で調整可能に</td></tr>
+</tbody>
+</table></section>
+<section id="dataflow"><h2>Data flow</h2><svg class="dataflow" viewBox="0 0 800 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:800px;height:auto;">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+</marker>
+</defs>
+<rect x="20" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="80" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">マイク(PCM)</text>
+<rect x="180" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="240" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">VAD/キー制御</text>
+<rect x="340" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="400" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">WAV化POST</text>
+<rect x="500" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="560" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">Whisper認識</text>
+<rect x="660" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="720" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">textarea追記</text>
+<line x1="140" y1="50" x2="174" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="300" y1="50" x2="334" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="460" y1="50" x2="494" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="620" y1="50" x2="654" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+</svg></section>
+<section id="acceptance"><h2>Acceptance criteria</h2><ul><li>統合: fake transcriber(transcriber_factory 注入)で正常系 — text 連結と duration_ms を検証</li><li>統合: recording extra 未導入時に 503 + 導入ヒントを返す</li><li>統合: 認識セグメント 0 件で text=&quot;&quot; を返す / 20MB 超過で 413</li><li>統合: 設定 roundtrip — voice_input_mode / voice_input_ptt_key の GET/PUT 永続化、不正値は 422</li><li>実機: evaluator スクリーンショット検証 — マイクボタン(各モード)・録音中状態・認識テキスト挿入・設定画面の音声入力セクション(自動テスト GREEN のみでは PASS としない)</li><li>実機: マイク実音声の代替として Chromium fake デバイスフラグまたは UI 状態・エラーパス検証(手段は plan で確定)</li></ul></section>
+<section id="risks"><h2>Risks</h2><table>
+<thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td>初回リクエストで WhisperModel ロード(数秒〜十数秒)が走る</td><td>録音ソース機能と共用キャッシュのため 2 回目以降は即時。変換中 Spinner で待ちを可視化</td></tr>
+<tr><td>会議録音のライブ字幕と同時実行で認識が待たされる(ハンズフリーは特に体感されやすい)</td><td>_serial_lock 直列化で壊れはしない。チャット用途では数秒許容、体感悪化時は v2 でサーバー側移行を検討</td></tr>
+<tr><td>RMS ベース簡易 VAD は騒音環境で区切りを誤る可能性</td><td>しきい値・ハングオーバーを定数に切り出し調整可能に。精度不足なら v2 で既存 webrtcvad(サーバー側)へ移行</td></tr>
+<tr><td>既定キー Space が空白入力・IME 変換・スクロールと競合</td><td>タップ=通常入力/長押し=PTT の判別で共存(Claude Code と同じ)。keydown で preventDefault し、タップ時は undo 履歴を保つ方法で文字を挿入(plan で確定)。IME 変換中は isComposing ガードで不介入。トレードオフとしてキーリピート入力(空白連打)は不可</td></tr>
+<tr><td>ハンズフリー中の変換失敗が無限ループ化</td><td>3 連続失敗で自動オフ + Toast</td></tr>
+<tr><td>getUserMedia は secure context 必須</td><td>localhost は平文 HTTP でも許可されるため、ローカル利用形態では問題なし</td></tr>
+</tbody>
+</table></section>
+
+
+</body>
+</html>

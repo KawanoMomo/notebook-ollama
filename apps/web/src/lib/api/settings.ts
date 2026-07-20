@@ -6,6 +6,7 @@ import type {
   OllamaSettings,
   OllamaSettingsUpdate,
   Stats,
+  VoiceInputSettings,
 } from './types';
 
 export const settingsApi = {
@@ -63,6 +64,11 @@ export const settingsApi = {
    */
   putCrashReport: (body: Partial<CrashReportSettings>) =>
     request<CrashReportSettings>('/api/settings/crash-report', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  putVoiceInput: (body: VoiceInputSettings) =>
+    request<VoiceInputSettings>('/api/settings/voice-input', {
       method: 'PUT',
       body: JSON.stringify(body),
     }),

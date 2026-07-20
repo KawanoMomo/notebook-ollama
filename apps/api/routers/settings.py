@@ -26,6 +26,7 @@ from apps.api.schemas.settings import (
     OllamaSettingsUpdate,
     OllamaTimeoutsUpdate,
     RetrievalSettingsSchema,
+    VoiceInputSettingsSchema,
 )
 from core.accel.plan import is_phase1_implementable
 from core.crash_reporter.settings import CrashReportSettings
@@ -88,6 +89,10 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             enabled=cfg.crash_report.enabled,
             auto_prompt=cfg.crash_report.auto_prompt,
             opted_in_at=cfg.crash_report.opted_in_at,
+        ),
+        voice_input=VoiceInputSettingsSchema(
+            mode=cfg.voice_input.mode,
+            ptt_key=cfg.voice_input.ptt_key,
         ),
         dev=DevSettingsSchema(
             enabled=cfg.dev.enabled,
@@ -162,6 +167,17 @@ async def put_audio_settings(
     # 永続化(編集可能フィールドのみ)
     from core.settings_store import save_section
     save_section(cfg.data_dir, "audio", body.model_dump())
+    return body
+
+
+@router.put("/settings/voice-input", response_model=VoiceInputSettingsSchema)
+async def put_voice_input_settings(
+    request: Request, body: VoiceInputSettingsSchema
+) -> VoiceInputSettingsSchema:
+    """チャット音声入力設定(モード / PTT キー)の更新。audio 方式と同じ規約。"""
+    cfg = request.app.state.ctx.config
+    cfg.voice_input = cfg.voice_input.model_copy(update=body.model_dump())
+    save_section(cfg.data_dir, "voice_input", body.model_dump())
     return body
 
 
