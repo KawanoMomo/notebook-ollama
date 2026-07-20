@@ -21,6 +21,7 @@ class MessageRecord:
     content: str
     citations: list[dict[str, Any]] = field(default_factory=list)
     model: str | None = None
+    truncated: bool = False
     created_at: str = ""
 
     @classmethod
@@ -32,6 +33,7 @@ class MessageRecord:
             content=row["content"],
             citations=json.loads(row["citations"]) if row["citations"] else [],
             model=row["model"],
+            truncated=bool(row["truncated"]) if "truncated" in row.keys() else False,
             created_at=row["created_at"],
         )
 
@@ -44,12 +46,13 @@ def append_message(
     content: str,
     citations: list[dict[str, Any]] | None = None,
     model: str | None = None,
+    truncated: bool = False,
 ) -> MessageRecord:
     mid = new_id()
     now = _now()
     conn.execute(
-        "INSERT INTO messages(id, conversation_id, role, content, citations, model, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO messages(id, conversation_id, role, content, citations, model, truncated, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (
             mid,
             conversation_id,
@@ -57,6 +60,7 @@ def append_message(
             content,
             json.dumps(citations) if citations else None,
             model,
+            1 if truncated else 0,
             now,
         ),
     )
@@ -71,3 +75,21 @@ def list_messages(conn: sqlite3.Connection, *, conversation_id: str) -> list[Mes
         (conversation_id,),
     ).fetchall()
     return [MessageRecord.from_row(r) for r in rows]
+
+
+def update_message_content(
+    conn: sqlite3.Connection,
+    *,
+    message_id: str,
+    content: str,
+    citations: list[dict[str, Any]] | None,
+    truncated: bool,
+) -> MessageRecord:
+    """手動継続の完了時に最後の assistant メッセージを全文置換する(issue #22)。"""
+    conn.execute(
+        "UPDATE messages SET content=?, citations=?, truncated=? WHERE id=?",
+        (content, json.dumps(citations) if citations else None,
+         1 if truncated else 0, message_id),
+    )
+    row = conn.execute("SELECT * FROM messages WHERE id=?", (message_id,)).fetchone()
+    return MessageRecord.from_row(row)
