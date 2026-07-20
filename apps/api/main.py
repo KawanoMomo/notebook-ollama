@@ -24,6 +24,7 @@ from apps.api.routers import (  # noqa: E402
     crash,
     events,
     feedback_hub,
+    features,
     health,
     links,
     notebooks,
@@ -44,6 +45,7 @@ from core.config import AppConfig  # noqa: E402
 from core.crash_reporter import collector as crash_collector  # noqa: E402
 from core.crash_reporter import lifecycle as crash_lifecycle  # noqa: E402
 from core.exceptions import AppError  # noqa: E402
+from core.feature_service import FeatureService  # noqa: E402
 from core.logging import configure_logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -197,6 +199,7 @@ async def lifespan(app: FastAPI):
             configure_logging()
 
         app.state.ctx = build_context(config)
+        app.state.ctx.features = FeatureService(app.state.ctx.config.data_dir)
         # --- 起動時リコンシリエーション -------------------------------------
         # 前プロセスで中断されたジョブの status 残骸(pending/parsing 等、
         # summary/adr の generating)を整理する。放置すると UI 上は「入室した
@@ -290,6 +293,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             "ollama.unreachable": 503,
             "ollama.model_not_found": 404,
             "mcp.unauthorized": 401,
+            "feature.disabled": 403,
         }
         return JSONResponse(
             status_code=status_map.get(exc.code.value, 500),
@@ -314,6 +318,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(events.router)
     app.include_router(feedback_hub.router)
     app.include_router(crash.router)
+    app.include_router(features.router)
     app.mount("/mcp", _McpAsgiProxy())
 
     from pathlib import Path

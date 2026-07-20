@@ -28,6 +28,7 @@ class ErrorCode(StrEnum):
     STORAGE_CONFLICT = "storage.conflict"
     QDRANT_UNREACHABLE = "qdrant.unreachable"
     MCP_UNAUTHORIZED = "mcp.unauthorized"
+    FEATURE_DISABLED = "feature.disabled"
 
 
 @dataclass
