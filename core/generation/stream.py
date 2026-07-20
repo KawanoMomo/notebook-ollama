@@ -34,7 +34,12 @@ class _RetrievalLike(Protocol):
 
 class _GatewayLike(Protocol):
     def chat_stream(
-        self, *, model: str, messages: list[dict[str, str]], options: dict[str, Any] | None = None
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        options: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]: ...
 
 
@@ -140,14 +145,41 @@ class GenerationService:
             messages.append({"role": "assistant", "content": turn.assistant})
         messages.append({"role": "user", "content": user_prompt})
 
+        from core.ollama.client import ThinkingChunk
+
         buffer: list[str] = []
+        stream_meta: dict[str, Any] = {}
         async for tok in self._deps.ollama.chat_stream(
             model=model,
             messages=messages,
             options={"num_ctx": num_ctx, "num_predict": response_budget_tokens},
+            meta=stream_meta,
         ):
+            if isinstance(tok, ThinkingChunk):
+                # 思考モデルの thinking フェーズ。本文には含めず、FE が
+                # 「思考中…」を表示できるよう別イベントで流す(2026-07-05 実機FB:
+                # 重いモデルでは思考が数分続き、無言に見えていた)。
+                yield GenerationEvent(kind="thinking", data={"text": str(tok)})
+                continue
             buffer.append(tok)
             yield GenerationEvent(kind="token", data={"text": tok})
+
+        # num_predict 上限による打ち切り(done_reason=length)を無言にしない。
+        # 思考モデル(qwen3 等)は thinking トークンも予算を消費するため、
+        # 見かけの回答が短くても上限に到達しうる(2026-07-05 実機FB)。
+        truncated = stream_meta.get("done_reason") == "length"
+        if truncated:
+            note = (
+                "\n\n---\n⚠️ 応答が出力トークン上限"
+                f"({response_budget_tokens})に達したため打ち切られました。"
+            )
+            buffer.append(note)
+            yield GenerationEvent(kind="token", data={"text": note})
+            log.warning(
+                "generation_truncated",
+                model=model,
+                response_budget_tokens=response_budget_tokens,
+            )
 
         answer = "".join(buffer)
         citations = build_citations(answer=answer, specs=spec_by_n)
@@ -158,5 +190,6 @@ class GenerationService:
                 "citations": citations,
                 "model_used": model,
                 "dropped_history": budget.dropped_history,
+                "truncated": truncated,
             },
         )

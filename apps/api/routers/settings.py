@@ -17,7 +17,10 @@ from apps.api.schemas.settings import (
     CrashReportSettingsSchema,
     CrashReportSettingsUpdate,
     EmbeddingSwitchRequest,
+    DevSettingsSchema,
+    DevSettingsUpdate,
     GenerationSettingsSchema,
+    GenerationSettingsUpdate,
     HwProfileSchema,
     OllamaSettingsSchema,
     OllamaSettingsUpdate,
@@ -90,6 +93,10 @@ async def get_settings(request: Request) -> AppSettingsSchema:
         voice_input=VoiceInputSettingsSchema(
             mode=cfg.voice_input.mode,
             ptt_key=cfg.voice_input.ptt_key,
+        ),
+        dev=DevSettingsSchema(
+            enabled=cfg.dev.enabled,
+            log_capacity_bytes=cfg.dev.log_capacity_bytes,
         ),
     )
 
@@ -277,6 +284,87 @@ async def put_ollama_timeouts(
         "request_timeout_seconds": cfg.ollama.request_timeout_seconds,
         "chat_read_timeout_seconds": cfg.ollama.chat_read_timeout_seconds,
     }
+
+
+@router.put("/settings/generation", response_model=GenerationSettingsSchema)
+async def put_generation_settings(
+    request: Request, body: GenerationSettingsUpdate
+) -> GenerationSettingsSchema:
+    """生成設定(応答トークン上限 等)を更新する。
+
+    response_budget_tokens は num_predict にそのまま渡る。思考モデルの
+    thinking もこの予算を消費するため、長出力が「上限打ち切り」になる場合に
+    UI から拡大する経路(2026-07-05 実機FB: 表示だけあって変更できなかった)。
+    変更は in-memory cfg と settings.json の両方に反映し、次回起動時は
+    settings.json の値が既定を上書きする(env > settings.json > 既定)。
+    """
+    cfg = request.app.state.ctx.config
+    update: dict = {"response_budget_tokens": body.response_budget_tokens}
+    if body.context_budget_ratio is not None:
+        update["context_budget_ratio"] = body.context_budget_ratio
+    cfg.generation = cfg.generation.model_copy(update=update)
+
+    from core.settings_store import load_overrides, save_section
+    existing = load_overrides(cfg.data_dir).get("generation")
+    existing = existing if isinstance(existing, dict) else {}
+    save_section(
+        cfg.data_dir,
+        "generation",
+        {
+            **existing,
+            "response_budget_tokens": cfg.generation.response_budget_tokens,
+            "context_budget_ratio": cfg.generation.context_budget_ratio,
+        },
+    )
+    return GenerationSettingsSchema(
+        context_budget_ratio=cfg.generation.context_budget_ratio,
+        response_budget_tokens=cfg.generation.response_budget_tokens,
+    )
+
+
+@router.put("/settings/dev", response_model=DevSettingsSchema)
+async def put_dev_settings(
+    request: Request, body: DevSettingsUpdate
+) -> DevSettingsSchema:
+    """開発者モードの ON/OFF と保持容量を更新する(spec §9.2 / §11 S2, S5)。
+
+    - 容量は 1MB..200MB にクランプして採用し、採用値を返す(範囲外でも 400 にしない)
+    - ON 遷移: DevLogRing.enable(容量) — 収集はこの瞬間から始まる(FR-6)
+    - OFF 遷移: ring.disable → broker へ shutdown 配信(購読側は自動クローズ)
+    - ON のまま容量変更: ring.resize(縮小時は古い側から即時 drop)
+    """
+    from core.dev_logs.broker import broker as dev_broker
+    from core.dev_logs.ring import clamp_capacity
+    from core.dev_logs.ring import ring as dev_ring
+
+    cfg = request.app.state.ctx.config
+    was_enabled = cfg.dev.enabled
+    capacity = clamp_capacity(
+        body.log_capacity_bytes
+        if body.log_capacity_bytes is not None
+        else cfg.dev.log_capacity_bytes
+    )
+    cfg.dev = cfg.dev.model_copy(
+        update={"enabled": body.enabled, "log_capacity_bytes": capacity}
+    )
+
+    if body.enabled and not was_enabled:
+        dev_ring.enable(capacity_bytes=capacity)
+    elif not body.enabled and was_enabled:
+        dev_ring.disable()
+        dev_broker.shutdown_all()
+    elif body.enabled:
+        dev_ring.resize(capacity_bytes=capacity)
+
+    from core.settings_store import save_section
+    save_section(
+        cfg.data_dir,
+        "dev",
+        {"enabled": cfg.dev.enabled, "log_capacity_bytes": cfg.dev.log_capacity_bytes},
+    )
+    return DevSettingsSchema(
+        enabled=cfg.dev.enabled, log_capacity_bytes=cfg.dev.log_capacity_bytes
+    )
 
 
 _REINDEX_TOPIC = "embedding_reindex"

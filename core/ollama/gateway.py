@@ -43,11 +43,12 @@ class OllamaGateway:
         model: str,
         messages: list[dict[str, str]],
         options: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         await self._chat_lock.acquire()
         try:
             async for tok in self._client.chat_stream(
-                model=model, messages=messages, options=options
+                model=model, messages=messages, options=options, meta=meta
             ):
                 yield tok
         finally:
@@ -61,9 +62,13 @@ class OllamaGateway:
         options: dict[str, Any] | None = None,
     ) -> str:
         """Non-streaming text completion: accumulate the chat stream into a string."""
+        from core.ollama.client import ThinkingChunk
+
         messages = [{"role": "user", "content": prompt}]
         parts: list[str] = []
         async for tok in self.chat_stream(model=model, messages=messages, options=options):
+            if isinstance(tok, ThinkingChunk):
+                continue  # 思考は本文に含めない
             parts.append(tok)
         return "".join(parts)
 

@@ -19,6 +19,8 @@ from apps.api.schemas.source_content import (
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.hashing import sha256_bytes
 from core.ingestion.parsers import get_parser
+from core.ingestion.pptx_to_pdf import slides_pdf_path
+from core.logging import get_logger
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import (
     delete_chunks_for_source,
@@ -27,6 +29,8 @@ from core.storage.chunks_repo import (
 )
 
 router = APIRouter(prefix="/api/notebooks", tags=["sources"])
+
+log = get_logger("api.sources")
 
 
 _KIND_BY_EXT = {
@@ -76,6 +80,31 @@ def _has_recording_audio(rec, sources_dir) -> bool:
     )
 
 
+def _has_slides(rec, sources_dir) -> bool:
+    """発表モード用 PDF が既に存在するか(pdf 原本 or pptx の COM 併産物)。"""
+    path = slides_pdf_path(sources_dir, rec.id, rec.kind)
+    return path is not None and path.exists()
+
+
+async def _convert_slides_best_effort(ctx, source_id: str, pptx_path) -> None:
+    """PPTX 取込時の PDF 併産(best-effort、spec §8: 失敗しても取込は継続)。"""
+    import asyncio
+
+    from core.ingestion.pptx_to_pdf import convert_pptx_to_pdf, is_powerpoint_available
+
+    if not is_powerpoint_available():
+        return
+    dst = slides_pdf_path(ctx.config.sources_dir, source_id, "pptx")
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(convert_pptx_to_pdf, pptx_path, dst), timeout=120.0
+        )
+    except Exception as exc:
+        # COM は対話ユーザーセッション前提で環境依存の失敗をしうる。取込自体は
+        # 継続させたいので、ここで完全に握りつぶし警告ログだけ残す(spec §8)。
+        log.warning("pptx_slides_conversion_failed", source_id=source_id, error=str(exc))
+
+
 def _to_schema(rec, sources_dir) -> Source:
     return Source(
         id=rec.id,
@@ -89,6 +118,7 @@ def _to_schema(rec, sources_dir) -> Source:
         page_count=rec.page_count,
         chunk_count=rec.chunk_count,
         has_audio=_has_recording_audio(rec, sources_dir),
+        has_slides=_has_slides(rec, sources_dir),
         summary=rec.summary,
         summary_status=(
             rec.summary_status.value if rec.summary_status is not None else None
@@ -130,6 +160,8 @@ async def upload_file(
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
+        if kind == "pptx":
+            background.add_task(_convert_slides_best_effort, ctx, rec.id, source_path)
     return _to_schema(rec, ctx.config.sources_dir)
 
 
@@ -197,6 +229,8 @@ async def upload_url(
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
+        if kind == "pptx":
+            background.add_task(_convert_slides_best_effort, ctx, rec.id, source_path)
     return _to_schema(rec, ctx.config.sources_dir)
 
 
@@ -387,6 +421,14 @@ async def summarize_source(
     src = sources_repo.get_source(ctx.conn, source_id)
     if src.notebook_id != notebook_id:
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    # チャンク 0 件では SummaryJob が確実に失敗する。generating に遷移させる前に
+    # 拒否し、ユーザーへは変換(再試行)を促す。
+    if (src.chunk_count or 0) == 0:
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "source has no chunks to summarize",
+            remediation="先に変換(取込)を完了してください。録音は「再試行」で変換を再実行できます。",
+        )
     sources_repo.update_source_summary_status(
         ctx.conn,
         source_id,
@@ -396,6 +438,51 @@ async def summarize_source(
     if summary_runner is not None:
         background.add_task(summary_runner, source_id)
     return _to_schema(sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir)
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/summarize/cancel",
+    status_code=200,
+    response_model=Source,
+)
+async def cancel_summarize(
+    request: Request,
+    notebook_id: str,
+    source_id: str,
+) -> Source:
+    """実行中の要約ジョブを中断し、summary_status を未生成(None)へ戻す。
+
+    実行タスクが見つからなくても summary_status が generating なら None に
+    リセットする(サーバ再起動等で残留したスピナー状態の救済)。
+    generating でなければ何もしない(冪等)。
+    """
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+
+    registry = getattr(ctx, "summary_tasks", None)
+    cancelled = registry.cancel(source_id) if registry is not None else False
+
+    if cancelled or src.summary_status == sources_repo.SummaryStatus.GENERATING:
+        src = sources_repo.update_source_summary_status(
+            ctx.conn, source_id, status=None
+        )
+        # FE がリロードなしでスピナーを畳めるよう、明示 null を配信する
+        await ctx.sse.publish(
+            f"notebook:{src.notebook_id}",
+            {
+                "source_id": source_id,
+                "status": src.status.value,
+                "summary_status": None,
+            },
+        )
+        log.info(
+            "summary_cancelled",
+            source_id=source_id,
+            task_cancelled=cancelled,
+        )
+    return _to_schema(src, ctx.config.sources_dir)
 
 
 @router.post(

@@ -41,13 +41,23 @@ export const sourcesApi = {
       `/api/notebooks/${notebookId}/recordings/${sourceId}/cancel`,
       { method: 'POST' },
     ),
-  /** 録音音声のストリーミング URL(same-origin / dev は vite proxy で解決)。 */
-  audioUrl: (notebookId: string, sourceId: string, channel: 'mic' | 'system') =>
-    `/api/notebooks/${notebookId}/sources/${sourceId}/audio?channel=${channel}`,
+  /** 録音音声のストリーミング URL(same-origin / dev は vite proxy で解決)。
+   * channel=mix は BE 側で mic+system を合成(初回は ffmpeg、以後キャッシュ)。 */
+  audioUrl: (
+    notebookId: string,
+    sourceId: string,
+    channel: 'mix' | 'mic' | 'system',
+  ) => `/api/notebooks/${notebookId}/sources/${sourceId}/audio?channel=${channel}`,
   /** 要約の再生成(summary_status=generating にリセットして BE で再実行)。 */
   summarize: (notebookId: string, sourceId: string) =>
     request<Source>(
       `/api/notebooks/${notebookId}/sources/${sourceId}/summarize`,
+      { method: 'POST' },
+    ),
+  /** 実行中の要約ジョブを中断(summary_status を未生成 None に戻す)。 */
+  cancelSummary: (notebookId: string, sourceId: string) =>
+    request<Source>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/summarize/cancel`,
       { method: 'POST' },
     ),
   /** ADR 抽出ジョブを起動(Decision Gate → 抽出 or スキップ)。 */

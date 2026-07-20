@@ -88,3 +88,55 @@ def test_audio_source_in_other_notebook_returns_404(client):
     # unknown source id -> 404 as well
     r2 = client.get(f"/api/notebooks/{nb}/sources/does-not-exist/audio?channel=mic")
     assert r2.status_code == 404
+
+
+def _write_channel(client, source_id: str, channel: str, data: bytes) -> None:
+    ctx = client.app.state.ctx
+    base = ctx.config.sources_dir / source_id
+    base.mkdir(parents=True, exist_ok=True)
+    (base / f"{channel}.wav").write_bytes(data)
+
+
+# ---------------------------------------------------------------------------
+# channel=mix (2026-07-04 実機フィードバック: ミックス音声を主動線で聴きたい)
+# ---------------------------------------------------------------------------
+
+
+def test_audio_mix_with_single_channel_serves_that_channel(client):
+    """片チャンネルしか無い録音では mix はそのチャンネルをそのまま配信する
+    (ffmpeg 不要のフォールバック)。"""
+    nb = _create_nb(client)
+    sid = _seed_recording_source(client, nb)
+    payload = b"mic-only-audio-bytes"
+    _write_channel(client, sid, "mic", payload)
+
+    r = client.get(f"/api/notebooks/{nb}/sources/{sid}/audio?channel=mix")
+    assert r.status_code == 200, r.text
+    assert r.content == payload
+
+
+def test_audio_mix_serves_cached_mix_file_without_regeneration(client):
+    """両チャンネルが存在し、より新しい mix キャッシュがあればそれを配信する
+    (ffmpeg を起動しない)。"""
+    import time
+
+    nb = _create_nb(client)
+    sid = _seed_recording_source(client, nb)
+    _write_channel(client, sid, "mic", b"mic-bytes")
+    _write_channel(client, sid, "system", b"system-bytes")
+    time.sleep(0.05)  # mix を最も新しい mtime にする
+    mixed = b"pre-mixed-cache-bytes"
+    ctx = client.app.state.ctx
+    (ctx.config.sources_dir / sid / "mix.m4a").write_bytes(mixed)
+
+    r = client.get(f"/api/notebooks/{nb}/sources/{sid}/audio?channel=mix")
+    assert r.status_code == 200, r.text
+    assert r.content == mixed
+
+
+def test_audio_mix_without_any_audio_returns_404(client):
+    nb = _create_nb(client)
+    sid = _seed_recording_source(client, nb)
+
+    r = client.get(f"/api/notebooks/{nb}/sources/{sid}/audio?channel=mix")
+    assert r.status_code == 404

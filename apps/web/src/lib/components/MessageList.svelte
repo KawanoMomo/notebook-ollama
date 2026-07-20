@@ -44,6 +44,11 @@
         {/if}
         <div class="content">{@html injectCitationBadges(renderMarkdown(conversationStore.streamingText), [])}</div>
         <div class="caret"><Spinner size={10} /> 生成中…</div>
+      {:else if conversationStore.thinkingChars > 0}
+        <div class="pending">
+          <Spinner size={12} />
+          思考中… ({conversationStore.thinkingChars} 文字)
+        </div>
       {:else}
         <div class="pending">
           <Spinner size={12} />

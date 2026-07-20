@@ -199,5 +199,38 @@ async def test_extract_prompt_includes_madr_sections(conn):
     assert "Consequences" in extract_prompt or "影響" in extract_prompt
 
 
+@pytest.mark.asyncio
+async def test_ready_publish_includes_adr_draft(conn):
+    """READY の SSE payload に ADR 本文が載る(FE が再取得なしで即時表示する契約)。"""
+    src = _make_source(conn, chunks=["案 A vs 案 B を比較し、A を採用と決定。"])
+    adr_md = (
+        "---\nstatus: accepted\ntemplate: madr\nconfidence: high\n---\n\n"
+        "# ADR: 案 A の採用\n\n## Context\n背景。\n"
+    )
+    llm = _FakeLLM([_GATE_YES, adr_md])
+    broker = _FakeBroker()
+    job = AdrJob(deps=AdrDeps(conn=conn, llm=llm, model="m", broker=broker))
+
+    await job.run(source_id=src.id)
+
+    ready = [p for (_t, p) in broker.events if p.get("adr_status") == "ready"]
+    assert ready, "ready イベントが publish されていない"
+    assert "ADR: 案 A の採用" in (ready[-1].get("adr_draft") or "")
+
+
+@pytest.mark.asyncio
+async def test_model_getter_overrides_static_model(conn):
+    """model_getter があれば実行時のモデル名を使う(起動時キャプチャの固定を回避)。"""
+    src = _make_source(conn, chunks=["進捗報告だけです"])
+    llm = _FakeLLM([_GATE_NO])
+    job = AdrJob(
+        deps=AdrDeps(
+            conn=conn, llm=llm, model="stale-model", model_getter=lambda: "fresh-model"
+        )
+    )
+    await job.run(source_id=src.id)
+    assert llm.calls[0]["model"] == "fresh-model"
+
+
 async def _no_sleep(_seconds: float) -> None:
     return None

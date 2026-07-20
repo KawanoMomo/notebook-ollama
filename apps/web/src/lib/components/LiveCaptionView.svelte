@@ -2,6 +2,12 @@
   import { tick } from 'svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
 
+  interface Props {
+    /** 発表モード時は右カラムの字幕サイドバーとして使う(見た目のみ縮小、CSS-only)。 */
+    variant?: 'center' | 'sidebar';
+  }
+  let { variant = 'center' }: Props = $props();
+
   let bodyEl = $state<HTMLDivElement | null>(null);
 
   function fmtTime(ms: number): string {
@@ -27,7 +33,7 @@
   });
 </script>
 
-<div class="live">
+<div class="live" class:sidebar={variant === 'sidebar'}>
   <div class="live-head">
     <span class="lh-t"><span class="dot pulse"></span> ライブ字幕</span>
     <span class="lh-note">プレビュー専用 — RAGソースは停止後に高精度生成</span>
@@ -71,6 +77,25 @@
     flex-direction: column;
     height: 100%;
     background: var(--color-bg);
+  }
+  /* 発表モード右サイドバー表示(variant="sidebar"): ヘッダ簡素化+余白縮小のみ。
+     マークアップ・ロジックは center と共通(既存テストの前提を崩さない)。 */
+  .live.sidebar .live-head {
+    padding: var(--space-2) var(--space-3);
+  }
+  .live.sidebar .lh-note {
+    display: none;
+  }
+  .live.sidebar .live-body {
+    padding: var(--space-3);
+    gap: var(--space-2);
+  }
+  .live.sidebar .capline {
+    font-size: 13px;
+  }
+  .live.sidebar .live-foot {
+    padding: var(--space-2) var(--space-3);
+    font-size: 10px;
   }
   .live-head {
     display: flex;

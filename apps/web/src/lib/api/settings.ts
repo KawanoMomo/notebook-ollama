@@ -35,6 +35,21 @@ export const settingsApi = {
         body: JSON.stringify({ request_timeout_seconds, chat_read_timeout_seconds }),
       },
     ),
+  /** 開発者モードの更新(spec §9.2)。容量はBE側で 1MB..200MB にクランプされる。 */
+  putDev: (enabled: boolean, log_capacity_bytes?: number) =>
+    request<{ enabled: boolean; log_capacity_bytes: number }>('/api/settings/dev', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, log_capacity_bytes }),
+    }),
+  /** 生成設定の更新(応答トークン上限 = num_predict)。 */
+  putGeneration: (response_budget_tokens: number) =>
+    request<{ context_budget_ratio: number; response_budget_tokens: number }>(
+      '/api/settings/generation',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ response_budget_tokens }),
+      },
+    ),
   /**
    * クラッシュレポート設定の更新 (spec §7.3 / Sprint 7 Task 7.2)。
    *

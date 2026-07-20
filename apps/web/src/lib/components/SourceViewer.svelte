@@ -5,11 +5,14 @@
     type SourceContent,
     type RecordingSegmentContent,
   } from '$lib/api/source_outline';
+  import { linksApi } from '$lib/api/links';
+  import type { SlideUtterancePage } from '$lib/api/types';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
   import Spinner from './Spinner.svelte';
   import AudioCitationPlayer from './AudioCitationPlayer.svelte';
   import SharedAudioPlayer from './SharedAudioPlayer.svelte';
+  import SlideView from './SlideView.svelte';
   import SpeakerChip from './SpeakerChip.svelte';
   import { pushToast } from './Toast.svelte';
   import { formatBytes } from '$lib/utils/format';
@@ -37,6 +40,15 @@
   // Bindable seek handlers published by the per-channel shared players.
   let seekMic = $state<((ms: number) => void) | undefined>(undefined);
   let seekSystem = $state<((ms: number) => void) | undefined>(undefined);
+  // 録音チャンク側: 親スライドの該当ページ表示トグル(チャンクテキストと排他表示)。
+  let showParentSlide = $state(false);
+  // スライド資料側: ページ別発言の逆引き(kind∈{pdf,pptx} の全文表示時のみ取得)。
+  let slideUtterances = $state<SlideUtterancePage[] | null>(null);
+  let activeUtteranceChunkId = $state<string | null>(null);
+  // slide-utterances 取得の世代カウンタ(currentNotebook.svelte.ts の linksFetchSeq と
+  // 同パターン)。ソース切替で古い応答が新しい選択の表示を上書きしないよう、
+  // 最後に発行された取得だけを反映する。
+  let utterancesFetchSeq = 0;
 
   // Resolve source for the chunk (look up in latest assistant message's citations)
   let resolvedSourceId = $derived.by(() => {
@@ -55,6 +67,7 @@
       chunk = null;
       return;
     }
+    showParentSlide = false; // チャンク切替でトグル状態をリセット
     loading = true;
     error = null;
     sourceDetailApi
@@ -97,6 +110,52 @@
       ? currentNotebookStore.sources.find((s) => s.id === resolvedSourceId)
       : null,
   );
+
+  // 録音チャンク側: 表示中ソースの親リンクを currentNotebookStore.links から逆引き(PM-10)。
+  let parentLink = $derived.by(() => {
+    if (!resolvedSourceId) return null;
+    return (
+      currentNotebookStore.links.find((l) => l.child_source_id === resolvedSourceId) ?? null
+    );
+  });
+  let parentSource = $derived.by(() => {
+    if (!parentLink) return null;
+    return currentNotebookStore.sources.find((s) => s.id === parentLink.parent_source_id) ?? null;
+  });
+  let parentTitle = $derived(parentSource?.title ?? parentSource?.origin ?? '資料');
+  let parentSlidesUrl = $derived(
+    parentLink
+      ? `/api/notebooks/${notebookId}/sources/${parentLink.parent_source_id}/slides`
+      : '',
+  );
+
+  // スライド資料側: kind∈{pdf,pptx} のときだけページ別発言の逆引きを取得する。
+  let isSlideKind = $derived(sourceMeta?.kind === 'pdf' || sourceMeta?.kind === 'pptx');
+
+  $effect(() => {
+    const cid = selectedChunkId;
+    const sid = resolvedSourceId;
+    const slideKind = isSlideKind;
+    // 世代を進めることで、対象外への遷移中に in-flight の古い応答が
+    // リセット後の状態を上書きするのも防ぐ。
+    const seq = ++utterancesFetchSeq;
+    if (cid || !sid || !slideKind) {
+      slideUtterances = null;
+      activeUtteranceChunkId = null;
+      return;
+    }
+    linksApi
+      .slideUtterances(notebookId, sid)
+      .then((groups) => {
+        if (seq !== utterancesFetchSeq) return; // 古い応答は破棄
+        slideUtterances = groups;
+        activeUtteranceChunkId = null; // 新しい取得結果では開閉状態をリセット
+      })
+      .catch(() => {
+        // fetch 失敗は静かに非表示(既存表示を壊さない)。
+        if (seq === utterancesFetchSeq) slideUtterances = null;
+      });
+  });
 
   // mic("あなた")はチャンネル identity を兼ねる固定ラベル。色・シーク・音声ファイル
   // 選択がこの文字列に依存するため、リネームは禁止する(下の SpeakerChip で onRename を
@@ -193,6 +252,28 @@
         <div class="path">
           {#if chunk.speaker}{chunk.speaker} · {/if}{formatTimecode(chunk.start_ms)}{#if chunk.end_ms != null}–{formatTimecode(chunk.end_ms)}{/if}
         </div>
+        {#if parentLink && chunk.page}
+          <div class="parent-info">
+            <span class="parent-label">親: {parentTitle} の p.{chunk.page} で発言</span>
+            <button
+              type="button"
+              class="parent-slide-btn"
+              aria-label={`該当スライド(p.${chunk.page})を表示`}
+              onclick={() => (showParentSlide = !showParentSlide)}
+            >
+              該当スライド(p.{chunk.page})を表示
+            </button>
+          </div>
+        {/if}
+        {#if showParentSlide && parentLink && chunk.page}
+          <div class="parent-slide">
+            {#key parentSlidesUrl}
+              <SlideView url={parentSlidesUrl} page={chunk.page} />
+            {/key}
+          </div>
+        {:else}
+          <pre class="text">{chunk.text}</pre>
+        {/if}
       {:else}
         {#if chunk.heading_path}
           <div class="path">{chunk.heading_path}</div>
@@ -200,8 +281,8 @@
         {#if chunk.page}
           <div class="page">p.{chunk.page}</div>
         {/if}
+        <pre class="text">{chunk.text}</pre>
       {/if}
-      <pre class="text">{chunk.text}</pre>
     </div>
   {:else if selectedChunkId === null && resolvedSourceId}
     {#if contentLoading}
@@ -221,6 +302,41 @@
             <pre class="text">{section.text}</pre>
           </section>
         {/each}
+        {#if isSlideKind && slideUtterances && slideUtterances.length > 0}
+          <div class="slide-utterances">
+            <h4>このページでの発言</h4>
+            {#each slideUtterances as group (group.page)}
+              <details>
+                <summary>p.{group.page} — {group.items.length}件</summary>
+                <ul class="utterance-list">
+                  {#each group.items as item (item.chunk_id)}
+                    <li>
+                      <button
+                        type="button"
+                        class="utterance"
+                        onclick={() =>
+                          (activeUtteranceChunkId =
+                            activeUtteranceChunkId === item.chunk_id ? null : item.chunk_id)}
+                      >
+                        {#if item.speaker}<span class="speaker">{item.speaker}</span>{/if}
+                        <span class="utt-text">{item.text}</span>
+                      </button>
+                      {#if activeUtteranceChunkId === item.chunk_id}
+                        <AudioCitationPlayer
+                          notebookId={notebookId}
+                          sourceId={item.child_source_id}
+                          startMs={item.start_ms ?? 0}
+                          endMs={item.end_ms}
+                          speaker={item.speaker}
+                        />
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              </details>
+            {/each}
+          </div>
+        {/if}
       </div>
     {:else if content?.kind === 'recording'}
       <div class="fulltext">
@@ -315,6 +431,36 @@
     color: var(--color-fg-muted);
     margin-bottom: var(--space-2);
   }
+  .parent-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: 12px;
+    color: var(--color-fg-muted);
+    margin-bottom: var(--space-2);
+    flex-wrap: wrap;
+  }
+  .parent-slide-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-accent);
+    font-size: 12px;
+    padding: 2px var(--space-2);
+    cursor: pointer;
+    flex: none;
+  }
+  .parent-slide-btn:hover {
+    background: var(--color-bg-elevated);
+  }
+  .parent-slide {
+    height: 320px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin-bottom: var(--space-2);
+  }
   .text {
     background: var(--color-citation-bg);
     border-left: 3px solid var(--color-citation-border);
@@ -332,6 +478,58 @@
   }
   .doc-section {
     margin-bottom: var(--space-3);
+  }
+  .slide-utterances {
+    margin-top: var(--space-3);
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-3);
+  }
+  .slide-utterances h4 {
+    margin: 0 0 var(--space-2);
+    font-size: 13px;
+    color: var(--color-fg-muted);
+  }
+  .slide-utterances details {
+    margin-bottom: var(--space-2);
+  }
+  .slide-utterances summary {
+    cursor: pointer;
+    font-size: 13px;
+    padding: var(--space-1) 0;
+  }
+  .utterance-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 var(--space-3);
+  }
+  .utterance-list li {
+    margin-bottom: var(--space-1);
+  }
+  .utterance {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: var(--space-1);
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    border-radius: var(--radius-sm);
+  }
+  .utterance:hover {
+    background: var(--color-bg-elevated);
+  }
+  .utterance .speaker {
+    font-size: 11px;
+    color: var(--color-fg-muted);
+    flex: none;
+  }
+  .utterance .utt-text {
+    font-size: 13px;
+    line-height: 1.5;
   }
   .transcript {
     list-style: none;

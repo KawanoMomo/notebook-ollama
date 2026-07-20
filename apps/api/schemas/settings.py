@@ -6,6 +6,18 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class DevSettingsSchema(BaseModel):
+    enabled: bool
+    log_capacity_bytes: int
+
+
+class DevSettingsUpdate(BaseModel):
+    """PUT /settings/dev の入力。容量は 1MB..200MB へクランプして採用(§9.2 E7)。"""
+
+    enabled: bool
+    log_capacity_bytes: int | None = None
+
+
 class GenerationSettingsSchema(BaseModel):
     context_budget_ratio: float
     response_budget_tokens: int
@@ -38,6 +50,18 @@ class OllamaTimeoutsUpdate(BaseModel):
     # 24 時間以上は受け付けない(誤入力ガード)。最小は 5 秒。
     request_timeout_seconds: float = Field(ge=5, le=86400)
     chat_read_timeout_seconds: float = Field(ge=5, le=86400)
+
+
+class GenerationSettingsUpdate(BaseModel):
+    """PUT /settings/generation の入力。
+
+    response_budget_tokens は num_predict にそのまま渡る応答上限。
+    思考モデルは thinking もこの予算を消費するため下限は 64 とし、
+    誤入力ガードとして 32768 を上限にする。
+    """
+
+    response_budget_tokens: int = Field(ge=64, le=32768)
+    context_budget_ratio: float | None = Field(default=None, gt=0.1, lt=0.95)
 
 
 class AudioSettingsSchema(BaseModel):
@@ -110,6 +134,7 @@ class AppSettingsSchema(BaseModel):
     audio: AudioSettingsSchema
     crash_report: CrashReportSettingsSchema | None = None
     voice_input: VoiceInputSettingsSchema | None = None
+    dev: DevSettingsSchema | None = None
 
 
 class EmbeddingSwitchRequest(BaseModel):

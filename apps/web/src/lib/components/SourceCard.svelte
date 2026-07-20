@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
   import { sourcesApi } from '$lib/api/sources';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog, Presentation, Link, Unlink } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -22,14 +22,43 @@
     guideExpanded?: boolean;
     onGuideToggle?: () => void;
     onSummarize?: () => void;
+    // 生成中の要約ジョブを中断する(generating のときのみ表示)。任意。
+    onSummaryCancel?: () => void;
     // ADR(Architecture Decision Record)抽出。録音/ドキュメント横断。
     onGenerateAdr?: () => void;
+    // 発表モード開始(pdf/pptx のみ)。任意(パネル側が配線しない限りボタンは出さない)。
+    onStartPresentation?: () => void;
+    // 親子ツリー表示のインデント段数(v1: 0 or 1)。SourcesPanel が
+    // orderWithChildren の結果から渡す。カード内部の見た目は不変。
+    depth?: number;
+    // 親ソースを設定する(全ソース種別で表示、任意配線)。
+    onSetParent?: () => void;
+    // 親子リンクを解除する(親を持つソースのみ表示するかは呼び出し元の判断=
+    // prop を渡すかどうかで制御する)。
+    onRemoveParent?: () => void;
   }
   let {
     source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
     onRename, onStopConversion,
-    guideExpanded = false, onGuideToggle, onSummarize, onGenerateAdr,
+    guideExpanded = false, onGuideToggle, onSummarize, onSummaryCancel,
+    onGenerateAdr, onStartPresentation,
+    depth = 0, onSetParent, onRemoveParent,
   }: Props = $props();
+
+  // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
+  // ソースでは確実に失敗するため、無効化してまず変換(再試行)を促す。
+  const summaryDisabled = $derived(
+    (source.chunk_count ?? 0) === 0 ||
+      source.status !== 'ready' ||
+      source.summary_status === 'generating',
+  );
+  const summaryButtonLabel = $derived(
+    source.summary_status === 'generating'
+      ? '要約を生成中…'
+      : (source.chunk_count ?? 0) === 0 || source.status !== 'ready'
+        ? '変換が完了してから要約できます'
+        : '要約を再生成',
+  );
 
   // ADR ボタンの状態(設計: docs/specs/2026-06-26-meeting-adr-templates.md ui_design)
   const adrDisabled = $derived(
@@ -102,11 +131,21 @@
       source.has_audio === true,
   );
 
+  // 発表を開始ボタン(pdf/pptx のみ)。pptx はスライド抽出(has_slides)が
+  // 済んでいないと SlideView に描画対象がないため disabled にし、PDF書き出しの
+  // 回避策をツールチップでのみ案内する(常時ヒントは出さない)。
+  const canPresent = $derived(source.kind === 'pdf' || source.kind === 'pptx');
+  const presentationDisabled = $derived(source.kind === 'pptx' && !source.has_slides);
+  const presentationTitle = $derived(
+    presentationDisabled ? 'PDFに書き出して取り込むと発表できます' : '発表を開始',
+  );
+
   // 録音音声の再生(録音 && 音源あり)。めったに使わない機能なので、再生ボタンで
   // インラインの小さな <audio> を開閉するだけの最小 UI。
   const canPlay = $derived(source.kind === 'recording' && source.has_audio === true);
   let showPlayer = $state(false);
-  let playChannel = $state<'mic' | 'system'>('mic');
+  // ミックス(両チャンネル合成)が主動線。既定選択もミックス。
+  let playChannel = $state<'mix' | 'mic' | 'system'>('mix');
 
   // インライン題名編集。鉛筆クリックで editing=true、Enter/blur で確定、Esc で取消。
   // 確定値が空 or 変更なしなら API を呼ばない (no-op)。
@@ -144,7 +183,11 @@
   }
 </script>
 
-<div class="card-wrap" class:converting={showConvStatus}>
+<div
+  class="card-wrap"
+  class:converting={showConvStatus}
+  style:margin-left={depth > 0 ? '16px' : undefined}
+>
 <div class="card" class:err={source.status === 'error'}>
   <input
     type="checkbox"
@@ -230,6 +273,37 @@
         <Play size="14" />
       </button>
     {/if}
+    {#if onStartPresentation && canPresent}
+      <button
+        class="icon"
+        onclick={onStartPresentation}
+        disabled={presentationDisabled}
+        aria-label="発表を開始"
+        title={presentationTitle}
+      >
+        <Presentation size="14" />
+      </button>
+    {/if}
+    {#if onSetParent}
+      <button
+        class="icon"
+        onclick={onSetParent}
+        aria-label="親ソースを設定"
+        title="親ソースを設定"
+      >
+        <Link size="14" />
+      </button>
+    {/if}
+    {#if onRemoveParent}
+      <button
+        class="icon"
+        onclick={onRemoveParent}
+        aria-label="リンクを解除"
+        title="リンクを解除"
+      >
+        <Unlink size="14" />
+      </button>
+    {/if}
     <button class="icon danger" onclick={onDelete} aria-label="削除">
       <Trash2 size="14" />
     </button>
@@ -241,6 +315,9 @@
 {#if showPlayer && canPlay}
   <div class="player">
     <div class="player-tabs">
+      <button class="tab" class:active={playChannel === 'mix'} onclick={() => (playChannel = 'mix')}>
+        ミックス
+      </button>
       <button class="tab" class:active={playChannel === 'mic'} onclick={() => (playChannel = 'mic')}>
         あなた
       </button>
@@ -276,8 +353,9 @@
         <button
           class="icon guide-regen"
           onclick={onSummarize}
-          aria-label="要約を再生成"
-          title="要約を再生成"
+          disabled={summaryDisabled}
+          aria-label={summaryButtonLabel}
+          title={summaryButtonLabel}
         >
           <RefreshCw size="12" />
         </button>
@@ -301,7 +379,17 @@
           <div class="skeleton">
             <span></span><span></span><span></span>
           </div>
-          <p class="guide-hint"><Spinner size={12} /> 要約を生成中…</p>
+          <p class="guide-hint">
+            <Spinner size={12} /> 要約を生成中…
+            {#if onSummaryCancel}
+              <button
+                class="guide-cancel"
+                onclick={onSummaryCancel}
+                aria-label="要約を中断"
+                title="要約を中断"
+              >中断</button>
+            {/if}
+          </p>
         {:else if source.summary_status === 'error'}
           <p class="guide-err">
             <AlertCircle size="12" color="var(--color-error)" />
@@ -459,6 +547,14 @@
     background: var(--color-bg-elevated);
     color: var(--color-fg);
   }
+  .icon:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .icon:disabled:hover {
+    background: none;
+    color: var(--color-fg-muted);
+  }
   .player {
     padding: var(--space-2) var(--space-3);
     border-bottom: 1px solid var(--color-border);
@@ -542,6 +638,19 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
+  }
+  .guide-cancel {
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-fg-muted);
+    border-radius: var(--radius-sm, 4px);
+    font-size: inherit;
+    padding: 0 var(--space-1);
+    cursor: pointer;
+  }
+  .guide-cancel:hover {
+    color: var(--color-error);
+    border-color: var(--color-error);
   }
   .guide-err {
     margin: 0;

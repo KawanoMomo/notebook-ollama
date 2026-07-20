@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 
 class ErrorCode(StrEnum):
     INPUT_INVALID = "input.invalid"
+    DEV_UNAUTHORIZED = "dev.unauthorized"
     # Prompt icon upload: payload too large (413) と unsupported media (415)
     # を AppError 体系で区別する。これにより main.py の status_map で正確な
     # HTTP ステータスへ写像できる。

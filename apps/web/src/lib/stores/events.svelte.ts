@@ -59,11 +59,21 @@ export function createEventsStore(): EventsStore {
           embedded,
           // 要約/ADRジョブの進行状態。ペイロードに含まれる場合のみ上書きし、
           // 含まれない従来イベント(取り込みパイプライン等)では既存値を維持する。
-          ...(typeof ev.summary_status === 'string'
+          // 明示 null は「中断→未生成へ復帰」の配信(cancel エンドポイント)。
+          ...(typeof ev.summary_status === 'string' || ev.summary_status === null
             ? { summary_status: ev.summary_status as Source['summary_status'] }
             : {}),
           ...(typeof ev.adr_status === 'string'
             ? { adr_status: ev.adr_status as Source['adr_status'] }
+            : {}),
+          // READY イベントは本文を同梱する(BE契約)。再取得なしで即時表示する。
+          ...(typeof ev.summary === 'string' ? { summary: ev.summary } : {}),
+          ...(typeof ev.adr_draft === 'string' ? { adr_draft: ev.adr_draft } : {}),
+          ...(typeof ev.adr_template === 'string'
+            ? { adr_template: ev.adr_template as Source['adr_template'] }
+            : {}),
+          ...(typeof ev.adr_confidence === 'string'
+            ? { adr_confidence: ev.adr_confidence as Source['adr_confidence'] }
             : {}),
         });
         if (prev !== ev.status) {
@@ -82,6 +92,13 @@ export function createEventsStore(): EventsStore {
               body: `${title}${detail}`,
               tag: `source-error-${ev.source_id}`,
             });
+          }
+          if (ev.status === "ready" || ev.status === "error") {
+            // 終端状態: SSE payload には title 等のソース実データや親子リンクが
+            // 含まれないため、upsertSource の patch だけでは古いプレースホルダ
+            // (録音の optimistic source 等)が残る。sources/links を再取得して
+            // 反映する(store 側で世代ガード + 多重発火の coalesce 済み)。
+            void currentNotebookStore.refreshSources();
           }
         }
       });

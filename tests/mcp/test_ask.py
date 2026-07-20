@@ -23,7 +23,7 @@ class FakeRetrieval:
 
 
 class FakeGateway:
-    async def chat_stream(self, *, model, messages, options=None):
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
         for tok in ["answer ", "[^1]"]:
             yield tok
 

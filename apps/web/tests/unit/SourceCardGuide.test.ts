@@ -132,4 +132,78 @@ describe('SourceCard — ソースガイド領域', () => {
     await fireEvent.click(btn);
     expect(onSummarize).toHaveBeenCalledTimes(1);
   });
+
+  // 再生成ボタンのガード(ADR ボタンと同一パターン)。
+  // 変換未完了のソースで「確実に失敗する要約」を起動させない(2026-07-04 実機フィードバック)。
+  it('disables the regenerate button and prompts conversion when chunk_count is 0', () => {
+    const onSummarize = vi.fn();
+    render(
+      SourceCard,
+      baseProps(
+        makeSource({ chunk_count: 0, summary: null, summary_status: null }),
+        { guideExpanded: true, onSummarize },
+      ),
+    );
+    const btn = screen.getByRole('button', {
+      name: /変換が完了してから要約できます/,
+    }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('disables the regenerate button when source status is not ready', () => {
+    const onSummarize = vi.fn();
+    render(
+      SourceCard,
+      baseProps(
+        makeSource({ status: 'error', summary: null, summary_status: null }),
+        { guideExpanded: true, onSummarize },
+      ),
+    );
+    const btn = screen.getByRole('button', {
+      name: /変換が完了してから要約できます/,
+    }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('disables the regenerate button while summary is generating', () => {
+    const onSummarize = vi.fn();
+    render(
+      SourceCard,
+      baseProps(
+        makeSource({ summary: null, summary_status: 'generating' }),
+        { guideExpanded: true, onSummarize },
+      ),
+    );
+    const btn = screen.getByRole('button', {
+      name: /要約を生成中/,
+    }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  // 生成中の中断スイッチ(2026-07-04 実機フィードバック)
+  it('shows a cancel button while generating and clicking it calls onSummaryCancel', async () => {
+    const onSummaryCancel = vi.fn();
+    render(
+      SourceCard,
+      baseProps(
+        makeSource({ summary: null, summary_status: 'generating' }),
+        { guideExpanded: true, onSummaryCancel },
+      ),
+    );
+    const btn = screen.getByRole('button', { name: /要約を中断/ });
+    await fireEvent.click(btn);
+    expect(onSummaryCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show the cancel button when not generating', () => {
+    const onSummaryCancel = vi.fn();
+    render(
+      SourceCard,
+      baseProps(
+        makeSource({ summary: 'x', summary_status: 'ready' }),
+        { guideExpanded: true, onSummaryCancel },
+      ),
+    );
+    expect(screen.queryByRole('button', { name: /要約を中断/ })).toBeNull();
+  });
 });

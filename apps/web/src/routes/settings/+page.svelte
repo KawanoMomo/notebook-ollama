@@ -139,6 +139,61 @@
     }
   }
 
+  // --- 生成設定(応答トークン上限) ---
+  let genDraft = $state<{ budget: number } | null>(null);
+  let savingGen = $state(false);
+
+  $effect(() => {
+    const g = settingsStore.settings?.generation;
+    if (g && genDraft === null) {
+      genDraft = { budget: g.response_budget_tokens };
+    }
+  });
+
+  const genDirty = $derived(
+    genDraft !== null &&
+      settingsStore.settings !== null &&
+      genDraft.budget !== settingsStore.settings.generation.response_budget_tokens,
+  );
+
+  async function saveDevMode(enabled: boolean) {
+    try {
+      await settingsApi.putDev(
+        enabled,
+        settingsStore.settings?.dev?.log_capacity_bytes,
+      );
+      await settingsStore.load();
+      pushToast(enabled ? '開発者モードを有効にしました' : '開発者モードを無効にしました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function saveDevCapacity(mb: number) {
+    try {
+      const enabled = settingsStore.settings?.dev?.enabled ?? false;
+      await settingsApi.putDev(enabled, Math.round(mb * 1048576));
+      await settingsStore.load();
+      pushToast('開発ログ容量を更新しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function saveGeneration() {
+    if (!genDraft) return;
+    savingGen = true;
+    try {
+      await settingsApi.putGeneration(genDraft.budget);
+      await settingsStore.load();
+      pushToast('生成設定を更新しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    } finally {
+      savingGen = false;
+    }
+  }
+
   async function confirmSwitch() {
     if (!switchTarget) return;
     const target = switchTarget;
@@ -447,9 +502,38 @@
           <dl>
             <dt>context_budget_ratio</dt>
             <dd>{settingsStore.settings.generation.context_budget_ratio}</dd>
-            <dt>response_budget_tokens</dt>
-            <dd>{settingsStore.settings.generation.response_budget_tokens}</dd>
+            <dt>response_budget_tokens(応答トークン上限)</dt>
+            <dd>
+              {#if genDraft}
+                <input
+                  class="num"
+                  type="number"
+                  min="64"
+                  max="32768"
+                  step="256"
+                  bind:value={genDraft.budget}
+                  aria-label="response_budget_tokens"
+                />
+                <p class="t-hint">
+                  思考モデル(qwen3 等)は思考トークンもこの上限を消費します。
+                  回答末尾に「上限に達したため打ち切られました」が出る場合は拡大してください。
+                </p>
+              {:else}
+                {settingsStore.settings.generation.response_budget_tokens}
+              {/if}
+            </dd>
           </dl>
+          {#if genDirty}
+            <div class="emb-actions">
+              <button
+                class="emb-btn primary"
+                onclick={saveGeneration}
+                disabled={savingGen}
+              >
+                {savingGen ? '保存中…' : '生成設定を保存'}
+              </button>
+            </div>
+          {/if}
           <h3 style="margin-top: var(--space-5)">検索</h3>
           <dl>
             <dt>top_k</dt>
@@ -458,6 +542,36 @@
             <dd>{settingsStore.settings.retrieval.top_k_max}</dd>
             <dt>min_history_turns</dt>
             <dd>{settingsStore.settings.retrieval.min_history_turns}</dd>
+          </dl>
+          <h3 style="margin-top: var(--space-5)">開発者モード</h3>
+          <dl>
+            <dt>開発者モード</dt>
+            <dd>
+              <input
+                type="checkbox"
+                checked={settingsStore.settings.dev?.enabled ?? false}
+                onchange={(e) => saveDevMode((e.target as HTMLInputElement).checked)}
+                aria-label="開発者モード"
+              />
+              <p class="t-hint">
+                ON にすると、アプリロゴを 3 秒以内に 7 回クリックで Dev パネルが開きます
+                (localhost のみ)。ログ収集は ON にした瞬間から始まります。
+              </p>
+            </dd>
+            <dt>開発ログ保持容量 (MB)</dt>
+            <dd>
+              <input
+                class="num"
+                type="number"
+                min="1"
+                max="200"
+                step="1"
+                value={Math.round((settingsStore.settings.dev?.log_capacity_bytes ?? 20971520) / 1048576)}
+                onchange={(e) => saveDevCapacity(Number((e.target as HTMLInputElement).value))}
+                aria-label="dev_log_capacity_mb"
+              />
+              <p class="t-hint">1〜200 MB。超過分は古いログから捨てられます(再起動で消えます)。</p>
+            </dd>
           </dl>
         {:else if section === 'storage'}
           <h3>ストレージ</h3>

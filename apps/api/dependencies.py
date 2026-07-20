@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any
@@ -21,6 +22,7 @@ from core.retrieval.search import RetrievalService
 from core.settings_store import load_overrides
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
+from core.summary.registry import SummaryTaskRegistry
 from core.summary.summarizer import SummaryDeps, SummaryJob
 
 # 録音スタック(faster-whisper / sherpa-onnx / soundfile / scipy …)は
@@ -136,6 +138,7 @@ class AppContext:
         recordings: RecordingRegistry,
         recording_pipeline: RecordingPipeline | None,
         summary_runner: Any,
+        summary_tasks: SummaryTaskRegistry,
         adr_runner: Any,
         hw_profile: HwProfile,
         backend_plan: BackendPlan,
@@ -159,6 +162,7 @@ class AppContext:
         self.recordings = recordings
         self.recording_pipeline = recording_pipeline
         self.summary_runner = summary_runner
+        self.summary_tasks = summary_tasks
         self.adr_runner = adr_runner
         # Sprint 3 DI fields ------------------------------------------------
         self.hw_profile = hw_profile
@@ -323,23 +327,40 @@ def build_context(config: AppConfig) -> AppContext:
             conn=conn,
             llm=gateway,
             model=config.ollama.default_model,
+            # 設定変更(PUT /api/settings/ollama)は cfg.ollama を差し替えるため、
+            # 起動時の文字列キャプチャでは切替が反映されない。getter で実行時解決する。
+            model_getter=lambda: config.ollama.default_model,
             broker=sse_broker,
         )
     )
 
+    summary_tasks = SummaryTaskRegistry()
+
     async def _summary_runner(source_id: str) -> None:
         # Best-effort: 失敗しても呼び出し元(取込パイプライン or summarize endpoint)を
         # 巻き込まない。SummaryJob 内部で status を error に落とす。
+        # 内側を別タスク化して registry に登録し、/summarize/cancel から
+        # キャンセル可能にする(取込・録音経由の自動要約も対象)。
+        task = asyncio.create_task(summary_job.run(source_id=source_id))
+        summary_tasks.register(source_id, task)
         try:
-            await summary_job.run(source_id=source_id)
+            await task
+        except asyncio.CancelledError:
+            # ユーザー中断(registry.cancel)。status の復帰は cancel エンドポイント
+            # 側で行う。呼び出し元パイプラインへは伝播させない。
+            if not task.cancelled():
+                raise
         except Exception:  # noqa: S110 — SummaryJob logs + persists its own error status
             pass
+        finally:
+            summary_tasks.unregister(source_id, task)
 
     adr_job = AdrJob(
         deps=AdrDeps(
             conn=conn,
             llm=gateway,
             model=config.ollama.default_model,
+            model_getter=lambda: config.ollama.default_model,
             broker=sse_broker,
         )
     )
@@ -409,6 +430,7 @@ def build_context(config: AppConfig) -> AppContext:
         recordings=recordings,
         recording_pipeline=recording_pipeline,
         summary_runner=_summary_runner,
+        summary_tasks=summary_tasks,
         adr_runner=_adr_runner,
         hw_profile=hw_profile,
         backend_plan=backend_plan,

@@ -7,7 +7,7 @@ class _FakeClient:
     def __init__(self) -> None:
         self.chat_calls: list[tuple[str, list[dict], dict | None]] = []
 
-    async def chat_stream(self, *, model, messages, options=None):
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
         await asyncio.sleep(0)
         self.chat_calls.append((model, list(messages), options))
         for tok in ["Hel", "lo", " world"]:
@@ -30,3 +30,18 @@ def test_generate_passes_prompt_as_user_message_and_options():
     assert model == "qwen"
     assert messages == [{"role": "user", "content": "P"}]
     assert options == {"temperature": 0}
+
+
+def test_generate_excludes_thinking_chunks():
+    from core.ollama.client import ThinkingChunk
+
+    class _ThinkingClient:
+        async def chat_stream(self, *, model, messages, options=None, meta=None):
+            yield ThinkingChunk("thinking...")
+            yield "Hel"
+            yield ThinkingChunk("more thinking")
+            yield "lo"
+
+    gw = OllamaGateway(client=_ThinkingClient())
+    out = asyncio.run(gw.generate(model="m", prompt="hi"))
+    assert out == "Hello"
