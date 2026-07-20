@@ -172,16 +172,14 @@ async def continue_message(
     request: Request, notebook_id: str, conv_id: str, body: ContinueInput
 ):
     """打ち切られた最後の assistant 応答の続きを生成し、同メッセージへ追記する。"""
+    from core.exceptions import AppError, ErrorCode
+
     ctx = request.app.state.ctx
     nb = notebooks_repo.get_notebook(ctx.conn, notebook_id)
     conv = conversations_repo.get_conversation(ctx.conn, conv_id)
     if conv.notebook_id != notebook_id:
-        from core.exceptions import AppError, ErrorCode
-
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "conversation not in notebook")
     if not body.source_ids:
-        from core.exceptions import AppError, ErrorCode
-
         raise AppError(
             ErrorCode.INPUT_INVALID,
             "ソースが選択されていません。1 つ以上選んでください。",
@@ -215,8 +213,6 @@ async def continue_message(
         elif m.role == "assistant" and pending_user is not None:
             history.append(HistoryTurn(user=pending_user, assistant=m.content))
             pending_user = None
-    if history and history[-1].user == question:
-        history.pop()
 
     prefill = strip_truncation_note(last.content)
 
