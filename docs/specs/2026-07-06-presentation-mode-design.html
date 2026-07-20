@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>発表モード (Presentation Mode) 設計ドラフト — NotebookOllama</title>
+<style>:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --border: #e5e7eb;
+  --code-bg: #f3f4f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #60a5fa;
+    --border: #1e293b;
+    --code-bg: #1e293b;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+body { font-family: -apple-system, "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; line-height: 1.6; padding: 2rem; max-width: 960px; margin: 0 auto; }
+h1, h2, h3 { line-height: 1.25; }
+h2 { border-bottom: 1px solid var(--border); padding-bottom: .25em; margin-top: 2em; }
+a { color: var(--accent); }
+code, pre { background: var(--code-bg); border-radius: 4px; padding: .15em .35em; font-family: "Consolas", monospace; font-size: .9em; }
+pre { padding: .75em 1em; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--border); padding: .5em .75em; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); }
+nav.toc { background: var(--code-bg); border-radius: 6px; padding: 1em 1.5em; margin: 1.5em 0; }
+nav.toc ol { margin: 0; padding-left: 1.25em; }
+details { border: 1px solid var(--border); border-radius: 6px; padding: .5em 1em; margin: .5em 0; }
+details > summary { cursor: pointer; font-weight: 600; }
+.badge { display: inline-block; padding: .15em .6em; border-radius: 999px; font-size: .85em; font-weight: 600; }
+.badge[data-status="pass"] { background: #16a34a; color: white; }
+.badge[data-status="fail"] { background: #dc2626; color: white; }
+.badge[data-status="warn"] { background: #f59e0b; color: white; }
+
+header { margin-bottom: 1.5em; }
+header .meta { color: var(--muted); font-size: .9em; }
+svg.dataflow { display: block; margin: 1em 0; }
+</style>
+</head>
+<body>
+
+<header>
+<h1>発表モード (Presentation Mode) 設計ドラフト — NotebookOllama</h1>
+<p class="meta"><span>Date: 2026-07-06</span> &middot; <span>Author: Kawano Momo + Claude (brainstorming)</span> &middot; <span>Status: <span class="badge" data-status="pass">Approved</span></span></p>
+</header>
+
+<nav class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#goals">Goals</a></li>
+<li><a href="#non-goals">Non-Goals</a></li>
+<li><a href="#components">Components</a></li>
+<li><a href="#dataflow">Data flow</a></li>
+<li><a href="#ui-flow">発表UIの詳細フロー</a></li>
+<li><a href="#knowledge">ナレッジ活用と検索・引用</a></li>
+<li><a href="#errors">エラー処理</a></li>
+<li><a href="#testing">テストと検証ゲート</a></li>
+<li><a href="#acceptance">Acceptance criteria</a></li>
+<li><a href="#risks">Risks</a></li>
+</ol>
+</nav>
+
+<section id="overview"><h2>Overview</h2><p>スライド資料(PDF/PPTX)を見た目のまま表示しながら発表を録音し、発言をページ単位で資料に紐付けてナレッジを強化する機能。中央のチャット領域をスライド表示に置き換え、右サイドバーに話者名付きのライブ字幕を表示する。録音は既存の録音パイプライン(マイク+システム音声+話者分離)を再利用し、録音セッションには汎用タイムラインマーカー機構(案C)を追加してページ遷移を記録する。あわせて、ソース同士を親子リンクできる汎用基盤(source_links)を導入し、発表録音は発表資料の子として自動リンク、任意ソースの手動リンクも可能にする。※2026-07-06 ブレインストーミング完了、全セクション承認済み。</p></section>
+<section id="goals"><h2>Goals</h2><ul><li>発表資料(PDF/PPTX)をアプリ内で見た目のまま表示しながら録音できる(利用シーンは実際の発表・会議が主)</li><li>発言(文字起こし)をページ単位で発表資料に紐付け、ナレッジの結合度を高める</li><li>発表中に右サイドバーへ話者名付きライブ字幕を履歴表示し、ライブ感を提供する</li><li>ソース親子リンクの汎用基盤を導入する(発表モードによる自動リンク+任意ソースの手動リンクの両方をv1で提供)</li><li>PPTXはPowerPoint COMで取込時にPDF化して忠実に表示する。PowerPoint無し環境では『PDFに書き出して取込』をガイドするグレースフルデグレード</li><li>既存資産(録音セッション/LiveCaption/話者分離/ソース化パイプライン/chunks.page列/RecordingControls)を最大限再利用し、UIの新規部品追加を最小に抑える</li></ul></section>
+<section id="non-goals"><h2>Non-Goals</h2><ul><li>PowerPointアニメーション・段階表示の再現(PDF化の時点で失われる)</li><li>レーザーポインタ・描画注釈・発表タイマー等のプレゼンター補助ツール</li><li>発表モード中のRAGチャット並用(録音中と同様にチャットは非表示)</li><li>スライドサムネイル一覧からのページジャンプ(v1はページ番号入力のみ)</li><li>リンクを使った検索スコアリングの変更(v1はリンクを表示・ナビゲーション強化にのみ使用)</li><li>LibreOfficeによるPPTX変換フォールバック(v1はPowerPoint COMのみ、無い環境は手動PDF化ガイド)</li><li>発表のライブ配信・外部共有機能</li></ul></section>
+<section id="components"><h2>Components</h2><table>
+<thead><tr><th>Component</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td>source_links テーブル(新規)</td><td>ソース親子リンクの汎用基盤。parent/child source_id、relation(presentation=発表自動/manual=手動)、meta(JSON)。自己リンク・重複・循環は登録時に拒否</td></tr>
+<tr><td>source_markers テーブル(新規)</td><td>録音タイムラインの汎用マーカー(案C)。source_id、kind(page等)、value、at_ms。発表中はセッションがメモリ保持し録音確定時に永続化</td></tr>
+<tr><td>PPTX→PDF変換(PowerPoint COM)</td><td>PPTX取込時に&lt;id&gt;.slides.pdfを併産してsources_dirに保存。PowerPoint未検出時はPPTX発表不可+『PDF化して取込』ヒントを表示</td></tr>
+<tr><td>スライド配信API + pdf.jsビューア</td><td>保存済みPDF(原本または併産PDF)をフロントに配信し、pdf.jsでページ単位描画。ページ送り◀▶とページ番号表示</td></tr>
+<tr><td>発表モードUI(中央パネル)</td><td>録音中のLiveCaptionView置換と同じパターンで、チャット領域をスライド表示に置換。ページ送り操作のたびにマーカー{kind:page, value:N, at_ms}を記録</td></tr>
+<tr><td>ライブ字幕サイドバー(右パネル)</td><td>既存LiveCaptionViewを右サイドバー用に再構成。話者名+時刻付きで字幕履歴を表示、遡り可能</td></tr>
+<tr><td>録音セッション拡張(マーカー受付API)</td><td>既存録音セッションに汎用マーカー記録APIのみ追加。録音側は『ページ』の意味を知らない(結合最小)</td></tr>
+<tr><td>自動リンク+ページ割当処理</td><td>録音ソース化完了時にsource_links(relation=presentation)を自動作成し、pageマーカーと時刻を突合して録音チャンクのchunks.page列に発表資料のページ番号を書く</td></tr>
+<tr><td>手動リンクUI(ソース一覧)</td><td>任意のソースを別ソースの子として登録/解除する操作。ソース一覧を親子ツリー表示に変更(見た目は既存カードのまま、インデントのみ)</td></tr>
+</tbody>
+</table></section>
+<section id="dataflow"><h2>Data flow</h2><svg class="dataflow" viewBox="0 0 960 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:960px;height:auto;">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+</marker>
+</defs>
+<rect x="20" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="80" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">発表開始</text>
+<rect x="180" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="240" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">録音+字幕</text>
+<rect x="340" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="400" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">ページ送り</text>
+<rect x="500" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="560" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">発表終了</text>
+<rect x="660" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="720" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">ソース化</text>
+<rect x="820" y="30" width="120" height="40" rx="6" fill="var(--code-bg)" stroke="var(--border)"/>
+<text x="880" y="55" text-anchor="middle" font-size="14" fill="var(--fg)">自動リンク</text>
+<line x1="140" y1="50" x2="174" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="300" y1="50" x2="334" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="460" y1="50" x2="494" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="620" y1="50" x2="654" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="780" y1="50" x2="814" y2="50" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"/>
+</svg></section>
+<section id="ui-flow"><h2>発表UIの詳細フロー</h2><h3>開始導線</h3>
+<ul><li>ソース一覧のPDF/PPTXソースカードの既存メニューに「発表を開始」を追加(縦にUIを肥大化させず既存アフォーダンスを再利用)</li><li>PPTXで変換済みPDFが無い場合(PowerPoint無し環境で取り込んだもの)は項目を無効化し、ツールチップで「PDFに書き出して取り込むと発表できます」と案内</li><li>押下すると確認なしで即開始: 既存の録音開始と同じ設定(マイク+システム音声)でセッション開始し、発表ビューへ切替。開始と同時にページ1のマーカーを自動記録</li></ul>
+<h3>発表中の画面(モックアップ)</h3>
+<div style='border:1px solid #e0e0e0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans JP,sans-serif;color:#1a1a1a;background:#ffffff;max-width:900px;margin:12px 0;box-shadow:0 1px 4px rgba(0,0,0,.06);'><div style='display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid #e0e0e0;background:#ffffff;'><span style='color:#6b6b6b;font-size:13px;'>←</span><span style='font-size:13px;font-weight:700;'>組込み勉強会ノート</span></div><div style='display:flex;min-height:330px;'><div style='width:160px;flex:none;background:#f5f5f7;border-right:1px solid #e0e0e0;display:flex;flex-direction:column;'><div style='background:#ffffff;border-bottom:1px solid #e0e0e0;padding:8px 10px;'><div style='display:flex;align-items:center;gap:5px;font-size:11px;color:#d32f2f;font-weight:600;white-space:nowrap;'><span style='width:7px;height:7px;border-radius:50%;background:#d32f2f;display:inline-block;'></span>録音中<span style='font-family:Consolas,monospace;font-size:13px;color:#1a1a1a;margin-left:2px;'>05:21</span></div><div style='display:flex;align-items:center;gap:4px;font-size:10px;color:#6b6b6b;font-weight:500;margin-top:5px;'>ミュート<span style='width:20px;height:11px;border-radius:999px;background:#e0e0e0;position:relative;display:inline-block;'><span style='position:absolute;left:2px;top:2px;width:7px;height:7px;border-radius:50%;background:#ffffff;box-shadow:0 0 2px rgba(0,0,0,.35);display:block;'></span></span></div><div style='margin-top:6px;background:#d32f2f;color:#ffffff;border-radius:7px;padding:3px 0;font-size:11px;font-weight:600;text-align:center;'>発表を終了</div></div><div style='padding:10px;'><div style='font-size:10px;font-weight:600;color:#6b6b6b;margin-bottom:8px;letter-spacing:.05em;'>ソース</div><div style='background:#ffffff;border:1.5px solid #3563e9;border-radius:8px;padding:6px 8px;margin-bottom:6px;'><div style='font-weight:600;font-size:11px;line-height:1.4;'>新製品仕様.pptx</div><div style='font-size:10px;color:#3563e9;'>発表中の資料</div></div><div style='background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;padding:5px 8px;margin:0 0 6px 12px;'><div style='font-size:10px;color:#6b6b6b;'>└ 発表録音(録音中…)</div></div><div style='background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;padding:6px 8px;'><div style='font-size:11px;'>過去議事録.pdf</div></div></div></div><div style='flex:1;display:flex;flex-direction:column;background:#fafafa;min-width:0;'><div style='flex:1;display:flex;align-items:center;justify-content:center;padding:14px;'><div style='width:92%;aspect-ratio:16/9;background:#ffffff;border:1px solid #e0e0e0;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.10);padding:16px 20px;'><div style='font-size:15px;font-weight:700;border-left:4px solid #3563e9;padding-left:8px;'>3. アーキテクチャ概要</div><ul style='font-size:11px;color:#444444;line-height:2;margin:10px 0 0;padding-left:20px;'><li>センサ入力は DMA 経由で取得</li><li>状態遷移は自動生成コードで管理</li><li>異常系は Watchdog で監視</li></ul></div></div><div style='display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 10px;border-top:1px solid #e0e0e0;background:#ffffff;'><span style='border:1px solid #e0e0e0;background:#ffffff;border-radius:4px;padding:2px 9px;font-size:11px;'>◀</span><span style='font-family:Consolas,monospace;font-size:11px;'>3 / 12</span><span style='border:1px solid #e0e0e0;background:#ffffff;border-radius:4px;padding:2px 9px;font-size:11px;'>▶</span></div></div><div style='width:205px;flex:none;border-left:1px solid #e0e0e0;display:flex;flex-direction:column;background:#ffffff;'><div style='padding:8px 12px;border-bottom:1px solid #e0e0e0;background:#fafafa;font-weight:600;font-size:11px;'>ライブ字幕</div><div style='flex:1;padding:10px 12px;display:flex;flex-direction:column;gap:10px;'><div style='display:flex;gap:6px;align-items:flex-start;'><span style='font-family:Consolas,monospace;font-size:9px;color:#6b6b6b;padding-top:3px;flex:none;'>04:58</span><div><span style='background:#3563e9;color:#ffffff;border-radius:999px;padding:1px 7px;font-size:9px;font-weight:600;'>自分</span><div style='font-size:11px;line-height:1.55;margin-top:2px;'>このページではアーキテクチャの全体像を説明します。</div></div></div><div style='display:flex;gap:6px;align-items:flex-start;'><span style='font-family:Consolas,monospace;font-size:9px;color:#6b6b6b;padding-top:3px;flex:none;'>05:10</span><div><span style='background:#16a34a;color:#ffffff;border-radius:999px;padding:1px 7px;font-size:9px;font-weight:600;'>Aさん</span><div style='font-size:11px;line-height:1.55;margin-top:2px;'>DMA のチャネル数は足りますか?</div></div></div><div style='display:flex;gap:6px;align-items:flex-start;opacity:.55;font-style:italic;'><span style='font-family:Consolas,monospace;font-size:9px;color:#6b6b6b;padding-top:3px;flex:none;'>05:19</span><div><span style='background:#3563e9;color:#ffffff;border-radius:999px;padding:1px 7px;font-size:9px;font-weight:600;'>自分</span><div style='font-size:11px;line-height:1.55;margin-top:2px;'>ええと、8ch のうち…</div></div></div></div></div></div></div><p style='font-size:.85em;color:#6b7280;margin-top:4px;'>※モックアップ: 配色・部品は実アプリのデザイントークン(app.css)と既存コンポーネントに準拠。録音コントロール(録音中表示・経過時間・ミュート・発表を終了)は既存録音機能と同じ左欄上部(RecordingControlsの位置)。ソースカードは既存の見た目のまま(アイコン追加なし)、発表資料の下に録音がインデントで子表示。操作ヒントは画面に常時表示しない。</p>
+<ul><li>ページ操作: ◀▶ボタン、キーボード(←/→、Space=次へ)、マウスホイール(下=次ページ/上=前ページ、PowerPointと同じ感覚)。ページ番号クリックで直接ジャンプ入力。サムネイル一覧はv1非対応</li><li>操作方法のヒントはUIに常時表示しない(必要ならツールチップ等の最小限に留める)</li><li>ホイールの内部動作: スライドは1ページフィット表示のためホイールはページ切替に使用。字幕サイドバーやソース一覧の上では通常のスクロール動作。誤切替防止に約150msのスロットリング(300msは操作感が鈍い既知フィードバックに従う。この挙動は実装仕様であり、画面には表示しない)</li><li>スライド下部バーはページ位置(◀ N/M ▶)のみ。録音コントロール(録音中表示・経過時間・ミュート・発表を終了)は既存の録音機能と同じ左欄(SourcesPanel上部のRecordingControls)を流用</li><li>チャットは非表示(録音中の既存挙動と同じ)</li></ul>
+<h3>ページマーカーの記録</h3>
+<ul><li>ページ変更のたびにフロントがマーカーAPIへ {kind:&quot;page&quot;, value:N} をPOST。at_msはサーバー側で録音タイムラインから算出(クライアントの時計に依存しない=字幕と同じ時刻基準)</li><li>送信失敗してもUIは続行(次のページ送りで回復)</li><li>ページを戻った場合も普通にマーカーを記録=同一ページに複数の発言区間が付くことを許容</li></ul>
+<h3>終了フロー</h3>
+<ol><li>左欄の「発表を終了」→ 確認ダイアログ(誤タップ防止)→ 録音停止</li><li>既存の録音ソース化パイプラインがそのまま実行される(JobStatusBarに進行表示)</li><li>ソース化完了時に自動リンク(relation=presentation)+ページ割当</li><li>録音タイトルの既定は「{資料名} 発表 YYYY-MM-DD」(既存のタイトル推論より発表文脈を優先)</li><li>画面は通常のチャット画面に戻る</li></ol>
+<h3>中断・異常系</h3>
+<ul><li>ブラウザリロード時: サーバー側の録音セッションは継続。ページ再訪時に「発表セッション進行中」を検出して発表ビューへ復帰(表示中ページはサーバーの最終マーカーから復元)</li><li>録音セッションが落ちた場合: 既存のクラッシュ検出(CrashDetectionModal)に委ねる</li></ul></section>
+<section id="knowledge"><h2>ナレッジ活用と検索・引用</h2><p>方針: v1では親子リンクとページ紐付けを「表示とナビゲーションの強化」に使う。検索スコアリング自体の変更は行わない(発表録音のチャンクは従来どおり通常のRAG検索対象として自然にヒットする)。</p>
+<h3>引用の見せ方(モックアップ)</h3>
+<div style='border:1px solid #e0e0e0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans JP,sans-serif;color:#1a1a1a;background:#ffffff;max-width:900px;margin:12px 0;display:flex;box-shadow:0 1px 4px rgba(0,0,0,.06);'><div style='flex:1;padding:12px 14px;border-right:1px solid #e0e0e0;min-width:0;'><div style='font-size:10px;font-weight:600;color:#6b6b6b;margin-bottom:8px;letter-spacing:.05em;'>チャット</div><div style='background:#f5f5f7;border-radius:10px;padding:8px 10px;font-size:11px;max-width:85%;margin-bottom:8px;'>DMAのチャネル割当はどう決めたんだっけ?</div><div style='border:1px solid #e0e0e0;border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.8;'>スライドではセンサ入力を DMA 経由で取得する方針が示されています<span style='background:#fff8c4;border:1px solid #d4a017;border-radius:4px;padding:0 5px;font-size:9px;font-weight:600;margin:0 2px;'>1</span>。発表時の質疑で「8chのうち4chをセンサに割当て、残りは将来拡張用に予約する」と説明されています<span style='background:#fff8c4;border:1px solid #d4a017;border-radius:4px;padding:0 5px;font-size:9px;font-weight:600;margin:0 2px;'>2</span>。</div><div style='font-size:10px;color:#6b6b6b;margin-top:8px;'>引用: <span style='background:#fff8c4;border:1px solid #d4a017;border-radius:4px;padding:1px 6px;font-size:9px;'>1 新製品仕様.pptx — p.3</span>&nbsp;<span style='background:#fff8c4;border:1px solid #d4a017;border-radius:4px;padding:1px 6px;font-size:9px;'>2 新製品仕様 発表 2026-07-06 — p.3 での発言</span></div></div><div style='width:290px;flex:none;padding:12px 14px;background:#fafafa;'><div style='font-size:10px;font-weight:600;color:#6b6b6b;margin-bottom:8px;letter-spacing:.05em;'>ソースビューア(引用2を選択中)</div><div style='background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;padding:10px;'><div style='font-size:11px;font-weight:600;'>新製品仕様 発表 2026-07-06</div><div style='font-size:10px;color:#3563e9;margin:2px 0 6px;'>親: 新製品仕様.pptx の p.3 で発言</div><div style='font-size:10px;color:#6b6b6b;line-height:1.7;'>05:10 <b>Aさん</b>「DMAのチャネル数は足りますか?」<br>05:19 <b>自分</b>「8chのうち4chをセンサに割当てて、残りは将来拡張用に…」 <span style='color:#3563e9;font-weight:600;'>▶ この位置から再生</span></div><div style='border-top:1px solid #e0e0e0;margin-top:8px;padding-top:8px;font-size:10px;'><span style='color:#3563e9;font-weight:600;'>該当スライド(p.3)を表示 →</span></div></div></div></div><p style='font-size:.85em;color:#6b7280;margin-top:4px;'>※モックアップ: 引用バッジ・ソースビューア・音声再生は既存部品(CitationBadge / SourceViewer / AudioCitationPlayer)をそのまま使用。新規追加は「親: {資料名} の p.N で発言」の表記と「該当スライドを表示」導線のみで、その他は既存UIのまま。</p>
+<ul><li>発表録音のチャンクが引用された場合: 引用一覧の表記に親リンク情報を含める(例:「{録音名} — p.N での発言」)。ソースビューアには「親: {資料名} の p.N で発言」と「該当スライド(p.N)を表示」導線を追加</li><li>「該当スライドを表示」を押すと、ソースビューア内でpdf.jsにより親資料の該当ページを描画(発表モードと同じ描画部品を再利用)</li><li>スライド資料側のチャンクが引用された場合: ソースビューアに「このページでの発言 N件」を併記(source_links経由の逆引き)、クリックで子録音の該当セグメントへ</li><li>音声の該当箇所再生は既存のAudioCitationPlayer/SharedAudioPlayerをそのまま使用</li></ul>
+<h3>スライド閲覧の強化</h3>
+<ul><li>スライドソースをソースビューアで開いたとき、ページごとに「このページでの発言」(子録音のセグメント)を折りたたみで表示し、該当箇所から音声再生できる</li><li>複数回の発表(同じ資料に子録音が複数)がある場合は録音ごとにグループ表示</li></ul>
+<h3>手動リンクの操作</h3>
+<ul><li>ソースカードの既存メニューに「親ソースを設定…」「リンクを解除」を追加。設定時は同一ノートブック内のソースを選ぶだけの小さなダイアログ</li><li>ソース一覧のツリー表示は1階層のインデントのみ(データ上は多段リンク可能だが、v1のUIは1階層表示)。カードの見た目自体は既存のまま</li><li>手動リンク(relation=manual)にはページ紐付けはない(ソース単位の関係のみ)</li></ul></section>
+<section id="errors"><h2>エラー処理</h2><table>
+<thead><tr><th>状況</th><th>挙動</th></tr></thead>
+<tbody>
+<tr><td>PowerPoint無し環境でPPTXを取込</td><td>テキスト取込は従来どおり成功(検索・チャットには使える)。「発表を開始」のみ無効化+PDF化ガイド</td></tr>
+<tr><td>COM変換失敗(破損PPTX・PowerPointハング等)</td><td>取込自体は継続(テキストのみ)。変換失敗を警告表示し、発表は不可。タイムアウト付きでPowerPointプロセスを確実に後始末</td></tr>
+<tr><td>recording extra未導入で発表開始</td><td>503+導入ヒントToast(既存録音と同じグレースフルデグレードのパターン)</td></tr>
+<tr><td>別の録音セッションが進行中</td><td>発表開始を拒否してToast表示(同時1セッションの既存制約に従う)</td></tr>
+<tr><td>ページマーカーのPOST失敗</td><td>UIは続行(ベストエフォート)。マーカーが全滅してもソース化と親子リンクは成立し、ページ割当のみ欠落</td></tr>
+<tr><td>pdf.jsの描画失敗</td><td>スライド領域にエラー表示。録音は継続し、左欄から通常どおり終了できる(録音データを失わない)</td></tr>
+<tr><td>ブラウザリロード/タブ閉じ</td><td>サーバー側セッションは継続。再訪時に発表ビューへ復帰(最終マーカーのページを表示)</td></tr>
+<tr><td>サーバークラッシュ</td><td>既存のクラッシュ検出(CrashDetectionModal)と部分データ復旧に委ねる</td></tr>
+</tbody>
+</table></section>
+<section id="testing"><h2>テストと検証ゲート</h2><ul><li>単体: マーカー→ページ割当ロジックの境界(ページ戻り/スキップ/マーカー無し/最終ページ/マーカー時刻とセグメント境界の跨り)、source_linksの自己リンク・重複・循環拒否</li><li>統合: マーカー記録API、source_links CRUD API、PPTX取込時のCOM変換(COMはモック、変換失敗系含む)、ソース化完了時の自動リンク+chunks.page書込、PDF配信API</li><li>フロント: 発表ビューのページ操作(ボタン/キーボード/ホイール+スロットリング)とマーカー送信、字幕サイドバー表示、親子ツリー表示</li><li>Evaluator実機検証(必須ゲート): 発表開始→ページ送り→ライブ字幕→終了→ソース化→親子ツリー→引用から該当スライド表示、の一連をスクリーンショット付きで検証。GUI変更のため自動テストGREENのみではPASSにしない</li></ul></section>
+<section id="acceptance"><h2>Acceptance criteria</h2><ul><li>PDF/PPTXソースから『発表を開始』でき、スライドが見た目のまま中央に表示される</li><li>ページ送りが◀▶ボタン・キーボード(←/→/Space)・マウスホイール(スライド領域上)のいずれでも操作できる(操作ヒントは常時表示しない)</li><li>発表中のページ送りがマーカー(kind=page, value, at_ms)として記録される</li><li>発表中、右サイドバーに話者名付きライブ字幕が履歴表示される</li><li>録音コントロール(録音中表示・ミュート・発表を終了)は既存録音機能と同じ左欄に表示される</li><li>発表終了後、録音が既存パイプラインでソース化され、発表資料の子として自動リンクされる(relation=presentation)</li><li>録音チャンクに『そのとき表示していた発表資料のページ番号』が割り当てられる</li><li>発表録音チャンクの引用から、紐付く親資料の該当スライドページを表示できる</li><li>任意のソースを手動で別ソースの子としてリンク/解除でき、ソース一覧が親子ツリーで表示される(カードの見た目は既存のまま)</li><li>PowerPoint無し環境でPPTXの発表を試みると、『PDFに書き出して取り込む』案内が表示される(機能全体は壊れない)</li><li>GUI変更のため、自動テストGREENに加えてEvaluatorによる実機スクリーンショット検証をPASS条件に含める</li></ul></section>
+<section id="risks"><h2>Risks</h2><table>
+<thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td>PowerPoint COM自動化は対話ユーザーセッションでの実行が前提(サービス起動やヘッドレス環境では失敗しうる)</td><td>起動時にCOM利用可否を検出し、不可ならPDF化ガイドへフォールバック(グレースフルデグレード)</td></tr>
+<tr><td>chunks.page列の流用により、録音ソースのpageの意味が『親発表資料のページ』になる(文脈依存)</td><td>specとコードコメントで意味を明記し、SourceViewer表示側で誤解のないラベルを付ける</td></tr>
+<tr><td>ライブ字幕とページ操作の同時進行での時刻ずれ(マーカーat_msと字幕タイムラインの基準差)</td><td>既存のmic/system共有epoch(perf_counter基準)と同じ時刻基準をマーカーにも使用する</td></tr>
+</tbody>
+</table></section>
+
+
+</body>
+</html>

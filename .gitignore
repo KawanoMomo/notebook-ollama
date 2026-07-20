@@ -44,3 +44,11 @@ data/*
 *.m4a
 *.opus
 *.mp3
+
+# Obsidian vault (settings are shared; UI state and plugin binaries are not)
+.obsidian/workspace.json
+.obsidian/plugins/
+
+# Agent session data
+.claudian/
+.superpowers/

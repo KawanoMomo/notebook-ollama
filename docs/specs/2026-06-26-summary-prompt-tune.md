@@ -1,3 +1,18 @@
+---
+type: spec
+title: 要約プロンプト改善 — 選定根拠
+summary: "ドキュメント要約プロンプトの改善と選定根拠。"
+aliases:
+  - 要約プロンプト改善
+status: approved
+status_inferred: true
+date: 2026-06-26
+project: NotebookOllama
+area: summary
+tags:
+  - spec
+---
+
 # 要約プロンプト改善 — 選定根拠
 
 > 作成: 2026-06-26

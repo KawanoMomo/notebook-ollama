@@ -1,3 +1,23 @@
+---
+type: spec
+title: 発表モード (Presentation Mode)
+summary: "スライド(PDF/PPTX)表示+録音をページ単位で紐付け、ライブ字幕付きで発表する機能。"
+aliases:
+  - 発表モード
+  - Presentation Mode
+status: approved
+date: 2026-07-06
+project: NotebookOllama
+area: presentation
+tags:
+  - spec
+related:
+  - "[[draft-2026-07-06-recording-timeline-markers]]"
+  - "[[draft-2026-07-06-source-links-generic-parent-child]]"
+  - "[[draft-2026-07-06-pptx-render-powerpoint-com]]"
+html: "[[2026-07-06-presentation-mode-design.html]]"
+---
+
 # 設計仕様: 発表モード (Presentation Mode) — Notebook Ollama
 
 - 日付: 2026-07-06

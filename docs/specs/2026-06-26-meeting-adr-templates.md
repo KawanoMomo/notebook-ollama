@@ -1,3 +1,19 @@
+---
+type: spec
+title: 議事録テンプレ + ADR 抽出機能
+summary: "議事録用の要約テンプレとADR抽出専用テンプレ/ボタンを追加。"
+aliases:
+  - 議事録テンプレ
+  - ADR抽出
+status: approved
+status_inferred: true
+date: 2026-06-26
+project: NotebookOllama
+area: summary
+tags:
+  - spec
+---
+
 # 議事録テンプレ + ADR 抽出機能 — 設計仕様
 
 > 作成: 2026-06-26

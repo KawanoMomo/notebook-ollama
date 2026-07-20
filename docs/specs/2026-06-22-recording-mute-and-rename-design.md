@@ -1,3 +1,21 @@
+---
+type: spec
+title: 録音チャンネル個別ミュート + 話者名一括リネーム
+summary: "録音チャンネルの個別ミュートと話者名の一括リネーム。"
+aliases:
+  - 録音ミュート
+  - 話者リネーム
+status: review
+date: 2026-06-22
+project: NotebookOllama
+area: recording
+tags:
+  - spec
+related:
+  - "[[2026-06-17-recording-source-design]]"
+  - "[[2026-06-19-recording-naming-design]]"
+---
+
 # 設計仕様: 録音チャンネル個別ミュート + 話者名一括リネーム(Notebook Ollama)
 
 - 日付: 2026-06-22

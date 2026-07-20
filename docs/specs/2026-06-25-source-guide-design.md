@@ -1,3 +1,19 @@
+---
+type: spec
+title: Source Guide(ソースガイド)
+summary: "ソースパネルUX改善(全選択/一括操作/0件ブロック/ソースガイド要約)。"
+aliases:
+  - Source Guide
+  - ソースガイド
+status: approved
+status_inferred: true
+date: 2026-06-25
+project: NotebookOllama
+area: rag-ux
+tags:
+  - spec
+---
+
 # Source Guide — 設計仕様書
 
 > 作成: 2026-06-25  

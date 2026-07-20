@@ -1,3 +1,20 @@
+---
+type: spec
+title: ジョブ状態可視化 + Optimistic UI
+summary: "並行ジョブの状態可視化とOptimistic UIで即時フィードバックを提供。"
+aliases:
+  - ジョブ状態バー
+  - Optimistic UI
+status: approved
+status_inferred: true
+date: 2026-07-02
+project: NotebookOllama
+area: rag-ux
+tags:
+  - spec
+note: 実機検証レポート PASS 有り(docs/eval/2026-07-02-job-status-bar)
+---
+
 # ジョブ状態可視化 + Optimistic UI 設計 (2026-07-02)
 
 ## 背景

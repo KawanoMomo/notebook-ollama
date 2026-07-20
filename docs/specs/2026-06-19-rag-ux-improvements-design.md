@@ -1,3 +1,19 @@
+---
+type: spec
+title: RAG運用UX改善(群1)
+summary: "群1のRAG運用UX改善5件(設定戻る/取得スコープ/全文ビュー/録音再生成/待機UX)。"
+aliases:
+  - RAG UX改善
+  - 群1
+status: approved
+status_inferred: true
+date: 2026-06-19
+project: NotebookOllama
+area: rag-ux
+tags:
+  - spec
+---
+
 # RAG運用UX改善(群1) 設計仕様
 
 > 対象: 録音→RAG機能の次フェーズ「群1(UX即効・低リスク)」。#4 設定戻る / #6 取得スコープ化 / #7 ソース全文ビュー / #5 録音再生成 / #8 チャット待機UX の5件。
