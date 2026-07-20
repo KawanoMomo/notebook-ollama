@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from core.exceptions import AppError, ErrorCode
 from core.ids import new_id
 
 
@@ -86,10 +87,19 @@ def update_message_content(
     truncated: bool,
 ) -> MessageRecord:
     """手動継続の完了時に最後の assistant メッセージを全文置換する(issue #22)。"""
+    existing = conn.execute(
+        "SELECT conversation_id FROM messages WHERE id=?", (message_id,)
+    ).fetchone()
+    if existing is None:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, f"message {message_id} not found")
     conn.execute(
         "UPDATE messages SET content=?, citations=?, truncated=? WHERE id=?",
         (content, json.dumps(citations) if citations else None,
          1 if truncated else 0, message_id),
+    )
+    conn.execute(
+        "UPDATE conversations SET updated_at=? WHERE id=?",
+        (_now(), existing["conversation_id"]),
     )
     row = conn.execute("SELECT * FROM messages WHERE id=?", (message_id,)).fetchone()
     return MessageRecord.from_row(row)
