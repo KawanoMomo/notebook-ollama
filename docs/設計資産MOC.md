@@ -54,6 +54,7 @@ tags:
 > - [[2026-07-02-developer-mode-design|開発者モード]] ✏️
 > - [[2026-07-06-presentation-mode-design|発表モード (Presentation Mode)]] ✅
 > - [[2026-07-05-chat-voice-input-design|チャット音声入力]] ✅
+> - [[2026-07-20-auto-continuation-design|応答自動継続 (Auto Continuation)]] ✅
 > - [[2026-06-21-youtube-source-design|YouTube ソース機能]] ⏸️（保留）
 
 ## 🧭 ADR ドラフト（未採番）
