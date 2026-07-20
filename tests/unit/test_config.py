@@ -26,6 +26,7 @@ def test_app_config_defaults(tmp_path, monkeypatch):
     assert cfg.ollama.embedding_model == "bge-m3"
     assert cfg.generation.context_budget_ratio == 0.8
     assert cfg.generation.response_budget_tokens == 2048
+    assert cfg.generation.auto_continue_max == 2
     assert cfg.retrieval.top_k == 8
     assert cfg.retrieval.top_k_max == 20
     assert cfg.retrieval.min_history_turns == 1
