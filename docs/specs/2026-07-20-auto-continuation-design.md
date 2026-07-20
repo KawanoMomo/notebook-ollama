@@ -94,15 +94,19 @@ truncated = (最終 round でも done_reason == "length")
 
 ### 4.3 手動継続 API(チャットのみ)
 
-`POST /api/notebooks/{notebook_id}/chat/continue` (SSE、リクエストボディなし)
+`POST /api/notebooks/{notebook_id}/conversations/{conv_id}/continue` (SSE)
 
-対象会話は既存 `POST /chat` と同じ解決方法(notebook からの会話特定)を用いる。
+リクエストボディは `{"source_ids": [...]}`。元質問時の source_ids は DB に保存されて
+いないため、FE が現在のソース選択を送る(既存 send と同じ契約。空は 400)。
 
 1. 対象会話の最後のメッセージが `truncated` な assistant であることを検証
    (違えば 409、notebook/会話なしは 404)
-2. 直近の user 質問と同じ source_ids で retrieval を再実行しプロンプトを再構築
+2. 会話中の直近 user 質問と body.source_ids で retrieval を再実行しプロンプトを再構築
    (qdrant 検索は間に ingest がなければ決定的で、citation 番号は維持される)
-3. 保存済み assistant 全文を prefill にして生成。ここでも自動継続 `auto_continue_max` 回分が働く
+3. 保存済み assistant 全文から**警告注記を除去したもの**を prefill にして生成
+   (注記をモデルに見せない)。モデルは元応答の `message.model` を優先
+   (`last.model or nb.default_model or config.ollama.default_model`)。
+   ここでも自動継続 `auto_continue_max` 回分が働く
 4. 完了時、**最後の assistant メッセージを追記更新**(新規メッセージは作らない)。
    citations は継続後の全文で `build_citations` を再実行して置換。
    `truncated` フラグを最終 done_reason に応じて更新
