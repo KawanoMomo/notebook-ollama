@@ -54,7 +54,9 @@ async def test_ask_returns_answer_and_citations():
         ollama=FakeGateway(),
         client=FakeClient(),
         config=SimpleNamespace(
-            generation=SimpleNamespace(context_budget_ratio=0.8, response_budget_tokens=512),
+            generation=SimpleNamespace(
+                context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
+            ),
             retrieval=SimpleNamespace(top_k=8, min_history_turns=0),
             ollama=SimpleNamespace(default_model="qwen2.5:14b"),
         ),
@@ -64,3 +66,72 @@ async def test_ask_returns_answer_and_citations():
     assert result["citations"][0]["source_title"] == "ARM"
     assert result["citations"][0]["location"] == "p.42, §3"
     assert result["model_used"] == "qwen2.5:14b"
+
+
+class SequenceGateway:
+    """round ごとに (tokens, done_reason) を返す fake。
+
+    tests/integration/test_generation.py の SequenceGateway と同じ形。
+    """
+
+    def __init__(self, rounds):
+        self.rounds = list(rounds)
+        self.calls = 0
+
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
+        tokens, reason = self.rounds[self.calls]
+        self.calls += 1
+        for t in tokens:
+            yield t
+        if meta is not None:
+            meta["done_reason"] = reason
+
+
+@pytest.mark.asyncio
+async def test_ask_auto_continues_on_length():
+    from types import SimpleNamespace
+
+    gw = SequenceGateway([(["前半"], "length"), (["後半"], "stop")])
+    result = await ask_tool(
+        notebook_id="nb1",
+        question="?",
+        model=None,
+        style="concise",
+        retrieval=FakeRetrieval(),
+        ollama=gw,
+        client=FakeClient(),
+        config=SimpleNamespace(
+            generation=SimpleNamespace(
+                context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
+            ),
+            retrieval=SimpleNamespace(top_k=8, min_history_turns=0),
+            ollama=SimpleNamespace(default_model="qwen2.5:14b"),
+        ),
+        notebook_default_model=None,
+    )
+    assert result["answer"] == "前半後半"
+
+
+@pytest.mark.asyncio
+async def test_ask_appends_note_when_exhausted():
+    from types import SimpleNamespace
+
+    gw = SequenceGateway([(["a"], "length"), (["b"], "length"), (["c"], "length")])
+    result = await ask_tool(
+        notebook_id="nb1",
+        question="?",
+        model=None,
+        style="concise",
+        retrieval=FakeRetrieval(),
+        ollama=gw,
+        client=FakeClient(),
+        config=SimpleNamespace(
+            generation=SimpleNamespace(
+                context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
+            ),
+            retrieval=SimpleNamespace(top_k=8, min_history_turns=0),
+            ollama=SimpleNamespace(default_model="qwen2.5:14b"),
+        ),
+        notebook_default_model=None,
+    )
+    assert "打ち切られました" in result["answer"]

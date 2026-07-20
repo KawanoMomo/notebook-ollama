@@ -112,6 +112,7 @@ ignore = ["S101"]  # allow asserts in tests
 "core/recording/title_inference.py" = ["RUF001"]   # JP/ASCII colon separators
 "core/recording/transcriber.py" = ["RUF001"]       # JP/ASCII strip char set
 "core/generation/stream.py" = ["RUF001"]           # 自動継続の "N×M回" 表記
+"core/mcp/tools/ask.py" = ["RUF001"]               # 同上(MCP ask の自動継続注記)
 "tests/integration/test_generation.py" = ["RUF001"]  # 上記表記を検証するテスト文字列
 
 [tool.pytest.ini_options]
