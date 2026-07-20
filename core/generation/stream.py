@@ -20,6 +20,14 @@ from core.retrieval.search import RetrievedChunk
 
 log = get_logger("generation")
 
+TRUNCATION_NOTE_PREFIX = "\n\n---\n⚠️ 応答が出力トークン上限"
+
+
+def strip_truncation_note(text: str) -> str:
+    """本文末尾の打ち切り注記を取り除く(手動継続の prefill 用)。"""
+    idx = text.rfind(TRUNCATION_NOTE_PREFIX)
+    return text[:idx] if idx >= 0 else text
+
 
 class _RetrievalLike(Protocol):
     async def search(
@@ -72,6 +80,8 @@ class GenerationService:
         retrieval_top_k: int,
         min_history_turns: int,
         source_ids: list[str] | None = None,
+        auto_continue_max: int = 0,
+        prefill_answer: str | None = None,
     ) -> AsyncIterator[GenerationEvent]:
         hits = await self._deps.retrieval.search(
             notebook_id=notebook_id,
@@ -145,43 +155,73 @@ class GenerationService:
             messages.append({"role": "assistant", "content": turn.assistant})
         messages.append({"role": "user", "content": user_prompt})
 
+        from core.exceptions import AppError
         from core.ollama.client import ThinkingChunk
 
-        buffer: list[str] = []
-        stream_meta: dict[str, Any] = {}
-        async for tok in self._deps.ollama.chat_stream(
-            model=model,
-            messages=messages,
-            options={"num_ctx": num_ctx, "num_predict": response_budget_tokens},
-            meta=stream_meta,
-        ):
-            if isinstance(tok, ThinkingChunk):
-                # 思考モデルの thinking フェーズ。本文には含めず、FE が
-                # 「思考中…」を表示できるよう別イベントで流す(2026-07-05 実機FB:
-                # 重いモデルでは思考が数分続き、無言に見えていた)。
-                yield GenerationEvent(kind="thinking", data={"text": str(tok)})
-                continue
-            buffer.append(tok)
-            yield GenerationEvent(kind="token", data={"text": tok})
+        answer_parts: list[str] = [prefill_answer] if prefill_answer else []
+        continued_rounds = 0
+        truncated = False
+        for round_idx in range(1 + auto_continue_max):
+            req_messages = list(messages)
+            if answer_parts:
+                # Ollama は末尾 assistant メッセージの続きから生成する(prefill)
+                req_messages.append({"role": "assistant", "content": "".join(answer_parts)})
+            stream_meta: dict[str, Any] = {}
+            round_parts: list[str] = []
+            try:
+                async for tok in self._deps.ollama.chat_stream(
+                    model=model,
+                    messages=req_messages,
+                    options={"num_ctx": num_ctx, "num_predict": response_budget_tokens},
+                    meta=stream_meta,
+                ):
+                    if isinstance(tok, ThinkingChunk):
+                        # 思考モデルの thinking フェーズ。本文には含めず、FE が
+                        # 「思考中…」を表示できるよう別イベントで流す(2026-07-05 実機FB:
+                        # 重いモデルでは思考が数分続き、無言に見えていた)。
+                        yield GenerationEvent(kind="thinking", data={"text": str(tok)})
+                        continue
+                    round_parts.append(tok)
+                    yield GenerationEvent(kind="token", data={"text": tok})
+            except AppError:
+                if round_idx == 0:
+                    raise
+                # 継続ラウンドの失敗は途中本文を失わない(graceful degradation)。
+                # truncated のまま完了させ、手動ボタンで再試行できる。
+                log.warning("continuation_failed", model=model, round=round_idx)
+                answer_parts.extend(round_parts)
+                truncated = True
+                break
+            answer_parts.extend(round_parts)
+            if stream_meta.get("done_reason") != "length":
+                truncated = False
+                break
+            truncated = True
+            if round_idx < auto_continue_max:
+                continued_rounds += 1
+                yield GenerationEvent(
+                    kind="continuing",
+                    data={"round": continued_rounds, "max": auto_continue_max},
+                )
 
-        # num_predict 上限による打ち切り(done_reason=length)を無言にしない。
-        # 思考モデル(qwen3 等)は thinking トークンも予算を消費するため、
-        # 見かけの回答が短くても上限に到達しうる(2026-07-05 実機FB)。
-        truncated = stream_meta.get("done_reason") == "length"
+        # num_predict 上限による打ち切りを無言にしない。思考モデル(qwen3 等)は
+        # thinking トークンも予算を消費するため、見かけの回答が短くても到達しうる。
         if truncated:
+            total = 1 + continued_rounds
             note = (
-                "\n\n---\n⚠️ 応答が出力トークン上限"
-                f"({response_budget_tokens})に達したため打ち切られました。"
+                f"{TRUNCATION_NOTE_PREFIX}"
+                f"({response_budget_tokens}×{total}回)に達したため打ち切られました。"
             )
-            buffer.append(note)
+            answer_parts.append(note)
             yield GenerationEvent(kind="token", data={"text": note})
             log.warning(
                 "generation_truncated",
                 model=model,
                 response_budget_tokens=response_budget_tokens,
+                continued_rounds=continued_rounds,
             )
 
-        answer = "".join(buffer)
+        answer = "".join(answer_parts)
         citations = build_citations(answer=answer, specs=spec_by_n)
         yield GenerationEvent(
             kind="done",
@@ -191,5 +231,6 @@ class GenerationService:
                 "model_used": model,
                 "dropped_history": budget.dropped_history,
                 "truncated": truncated,
+                "continued_rounds": continued_rounds,
             },
         )

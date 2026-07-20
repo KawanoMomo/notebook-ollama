@@ -188,3 +188,107 @@ async def test_generation_emits_thinking_events_but_excludes_from_answer():
     final = next(e for e in events if e.kind == "done")
     assert final.data["answer"] == "回答"
     assert "思考中の独り言" not in final.data["answer"]
+
+
+class SequenceGateway:
+    """round ごとに (tokens, done_reason) を返す fake。prefill 検証用に
+    受け取った messages を記録する。"""
+
+    def __init__(self, rounds):
+        self.rounds = list(rounds)
+        self.received_messages: list[list[dict]] = []
+        self.calls = 0
+
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
+        self.received_messages.append(list(messages))
+        tokens, reason = self.rounds[self.calls]
+        self.calls += 1
+        for t in tokens:
+            yield t
+        if meta is not None:
+            meta["done_reason"] = reason
+
+
+@pytest.mark.asyncio
+async def test_auto_continue_resumes_with_assistant_prefill():
+    gw = SequenceGateway([ (["前半"], "length"), (["後半"], "stop") ])
+    svc = GenerationService(deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=gw))
+    events = [e async for e in svc.run(**_run_args(auto_continue_max=2))]
+
+    final = next(e for e in events if e.kind == "done")
+    assert final.data["answer"] == "前半後半"
+    assert final.data["truncated"] is False
+    assert final.data["continued_rounds"] == 1
+    # 2回目のリクエスト末尾は途中応答の assistant prefill
+    assert gw.received_messages[1][-1] == {"role": "assistant", "content": "前半"}
+    # continuing イベントが token の間に入る
+    cont = next(e for e in events if e.kind == "continuing")
+    assert cont.data == {"round": 1, "max": 2}
+
+
+@pytest.mark.asyncio
+async def test_auto_continue_exhausted_appends_note_with_round_count():
+    gw = SequenceGateway([ (["a"], "length"), (["b"], "length"), (["c"], "length") ])
+    svc = GenerationService(deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=gw))
+    events = [e async for e in svc.run(**_run_args(auto_continue_max=2))]
+    final = next(e for e in events if e.kind == "done")
+    assert final.data["truncated"] is True
+    assert final.data["continued_rounds"] == 2
+    assert "1024×3回" in final.data["answer"]
+    assert final.data["answer"].startswith("abc")
+
+
+@pytest.mark.asyncio
+async def test_auto_continue_zero_keeps_current_behavior():
+    gw = SequenceGateway([ (["a"], "length") ])
+    svc = GenerationService(deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=gw))
+    events = [e async for e in svc.run(**_run_args(auto_continue_max=0))]
+    final = next(e for e in events if e.kind == "done")
+    assert final.data["truncated"] is True
+    assert gw.calls == 1
+    assert "1024×1回" in final.data["answer"]
+    assert not [e for e in events if e.kind == "continuing"]
+
+
+@pytest.mark.asyncio
+async def test_continuation_error_degrades_gracefully():
+    """2ラウンド目のOllamaエラーは途中本文を失わず truncated 扱いで完了する。"""
+    from core.exceptions import AppError, ErrorCode
+
+    class FailsOnSecondCall(SequenceGateway):
+        async def chat_stream(self, *, model, messages, options=None, meta=None):
+            if self.calls >= 1:
+                self.calls += 1
+                raise AppError(ErrorCode.OLLAMA_UNREACHABLE, "boom")
+                yield  # pragma: no cover — async generator 化のため
+            async for t in super().chat_stream(
+                model=model, messages=messages, options=options, meta=meta
+            ):
+                yield t
+
+    gw = FailsOnSecondCall([ (["前半"], "length") ])
+    svc = GenerationService(deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=gw))
+    events = [e async for e in svc.run(**_run_args(auto_continue_max=2))]
+    final = next(e for e in events if e.kind == "done")
+    assert final.data["truncated"] is True
+    assert final.data["answer"].startswith("前半")
+
+
+@pytest.mark.asyncio
+async def test_prefill_answer_included_in_answer_but_not_tokens():
+    gw = SequenceGateway([ (["続き"], "stop") ])
+    svc = GenerationService(deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=gw))
+    events = [e async for e in svc.run(**_run_args(auto_continue_max=0, prefill_answer="既存分"))]
+    final = next(e for e in events if e.kind == "done")
+    assert final.data["answer"] == "既存分続き"
+    token_texts = [e.data["text"] for e in events if e.kind == "token"]
+    assert "既存分" not in "".join(token_texts)
+    assert gw.received_messages[0][-1] == {"role": "assistant", "content": "既存分"}
+
+
+def test_strip_truncation_note():
+    from core.generation.stream import strip_truncation_note
+    body = "回答本文"
+    note = "\n\n---\n⚠️ 応答が出力トークン上限(1024×3回)に達したため打ち切られました。"
+    assert strip_truncation_note(body + note) == body
+    assert strip_truncation_note(body) == body
