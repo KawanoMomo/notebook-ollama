@@ -149,6 +149,10 @@ class AppConfig(BaseSettings):
         return self.data_dir / "sources"
 
     @property
+    def assets_dir(self) -> Path:
+        return self.data_dir / "assets"
+
+    @property
     def logs_dir(self) -> Path:
         return self.data_dir / "logs"
 

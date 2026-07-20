@@ -24,9 +24,11 @@ def migrate(conn: sqlite3.Connection) -> None:
     conn.executescript(sql)
     from core.storage.migrations import (
         run_adr_migration,
+        run_chunk_assets_migration,
         run_chunk_timecode_migration,
         run_summary_migration,
     )
     run_chunk_timecode_migration(conn)
     run_summary_migration(conn)
     run_adr_migration(conn)
+    run_chunk_assets_migration(conn)
