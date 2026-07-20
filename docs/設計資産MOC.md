@@ -53,16 +53,18 @@ tags:
 > - [[browser-notifications-design|Browser Notifications]] ✅
 > - [[2026-07-02-developer-mode-design|開発者モード]] ✏️
 > - [[2026-07-06-presentation-mode-design|発表モード (Presentation Mode)]] ✅
+> - [[2026-07-05-chat-voice-input-design|チャット音声入力]] ✅
 > - [[2026-06-21-youtube-source-design|YouTube ソース機能]] ⏸️（保留）
 
 ## 🧭 ADR ドラフト（未採番）
 
-すべて発表モード設計 [[2026-07-06-presentation-mode-design]] から起票された提案です。採番・正式登録は承認後に `/adr` で行います。
+採番・正式登録は承認後に `/adr` で行います。
 
 > [!question] 提案中の設計判断
-> - [[draft-2026-07-06-source-links-generic-parent-child|ソース間結合は汎用親子リンク基盤(source_links)]] — データモデル
-> - [[draft-2026-07-06-recording-timeline-markers|ページ遷移の記録は録音タイムラインマーカー機構]] — アーキテクチャ/結合度
-> - [[draft-2026-07-06-pptx-render-powerpoint-com|PPTX見た目再現は PowerPoint COM で取込時PDF化]] — 外部依存/取込パイプライン
+> - [[draft-2026-07-06-source-links-generic-parent-child|ソース間結合は汎用親子リンク基盤(source_links)]] — データモデル（発表モード起票）
+> - [[draft-2026-07-06-recording-timeline-markers|ページ遷移の記録は録音タイムラインマーカー機構]] — アーキテクチャ/結合度（発表モード起票）
+> - [[draft-2026-07-06-pptx-render-powerpoint-com|PPTX見た目再現は PowerPoint COM で取込時PDF化]] — 外部依存/取込パイプライン（発表モード起票）
+> - [[chat-voice-input-stateless-stt|チャット音声入力はステートレスSTT + ブラウザ側VAD構成]] — アーキテクチャ/結合度（音声入力起票）
 
 ## 🏷️ ステータス凡例
 

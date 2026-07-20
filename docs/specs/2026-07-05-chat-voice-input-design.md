@@ -1,3 +1,21 @@
+---
+type: spec
+title: チャット音声入力
+summary: "ChatInput にローカルSTT(faster-whisper)の音声入力を追加。プッシュトゥトーク+ハンズフリーの2モードを設定で切替。"
+aliases:
+  - チャット音声入力
+  - Chat Voice Input
+status: approved
+date: 2026-07-05
+project: NotebookOllama
+area: chat
+tags:
+  - spec
+related:
+  - "[[chat-voice-input-stateless-stt]]"
+html: "[[2026-07-05-chat-voice-input-design.html]]"
+---
+
 # 設計仕様: チャット音声入力(Notebook Ollama)
 
 - 日付: 2026-07-05(改訂: PTTキー設定・ハンズフリーモード追加)
