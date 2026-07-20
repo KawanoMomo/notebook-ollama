@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Protocol
 
 from core.exceptions import AppError, ErrorCode
@@ -10,6 +13,7 @@ from core.ids import new_id
 from core.ingestion.chunker import chunk_document
 from core.ingestion.parsers import get_parser
 from core.logging import get_logger
+from core.storage.assets_repo import AssetRecord, insert_assets
 from core.storage.chunks_repo import ChunkRecord, insert_chunks
 from core.storage.sources_repo import SourceStatus, get_source, update_source_status
 from core.storage.vector_store import ChunkVector, VectorStore
@@ -36,6 +40,8 @@ class PipelineDeps:
     # READY 直後に呼ばれる要約フック。失敗しても取込は READY を維持する。
     # アプリ層で SummaryJob.run を asyncio.create_task でラップして渡す想定。
     summary_runner: Callable[[str], Any] | None = None
+    assets_dir: Path | None = None
+    assets_enabled: Callable[[], bool] | None = None
 
 
 class IngestionPipeline:
@@ -45,6 +51,48 @@ class IngestionPipeline:
     def _embedding_model(self) -> str:
         getter = self._deps.embedding_model_getter
         return getter() if getter is not None else self._deps.embedding_model
+
+    def _save_assets(self, conn, *, source_id: str, doc, chunk_records: list[ChunkRecord]) -> None:
+        """アセット保存と chunk 紐付け。失敗しても取込全体は継続する(グレースフルデグレード)。"""
+        try:
+            assets_dir = self._deps.assets_dir / source_id
+            by_page_first: dict[int, str] = {}
+            for rec in sorted(chunk_records, key=lambda r: r.ord):
+                if rec.page is not None and rec.page not in by_page_first:
+                    by_page_first[rec.page] = rec.id
+
+            records: list[AssetRecord] = []
+            for asset in doc.assets:
+                asset_id = new_id()
+                chunk_id: str | None = None
+                image_path: str | None = None
+                if asset.kind == "table" and asset.md_snippet:
+                    chunk_id = next(
+                        (r.id for r in chunk_records if asset.md_snippet in r.text), None
+                    )
+                elif asset.kind == "figure":
+                    chunk_id = by_page_first.get(asset.page)
+                    if asset.image_png:
+                        assets_dir.mkdir(parents=True, exist_ok=True)
+                        (assets_dir / f"{asset_id}.png").write_bytes(asset.image_png)
+                        image_path = f"{source_id}/{asset_id}.png"
+                records.append(
+                    AssetRecord(
+                        id=asset_id,
+                        source_id=source_id,
+                        chunk_id=chunk_id,
+                        kind=asset.kind,
+                        page=asset.page,
+                        bbox_json=json.dumps(list(asset.bbox)),
+                        html=asset.html,
+                        md_snippet=asset.md_snippet,
+                        image_path=image_path,
+                        created_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                )
+            insert_assets(conn, records)
+        except Exception:
+            log.warning("asset_save_failed", source_id=source_id, exc_info=True)
 
     async def run(self, *, source_id: str, kind: str, data: bytes) -> None:
         conn = self._deps.conn
@@ -62,7 +110,20 @@ class IngestionPipeline:
             update_source_status(conn, source_id, status=SourceStatus.PARSING)
             await _publish(SourceStatus.PARSING)
             parser = get_parser(kind)
-            doc = parser.parse_bytes(data, source_hint=get_source(conn, source_id).origin)
+            extract = (
+                kind == "pdf"
+                and self._deps.assets_enabled is not None
+                and self._deps.assets_enabled()
+                and self._deps.assets_dir is not None
+            )
+            if kind == "pdf":
+                doc = parser.parse_bytes(
+                    data,
+                    source_hint=get_source(conn, source_id).origin,
+                    extract_assets=extract,
+                )
+            else:
+                doc = parser.parse_bytes(data, source_hint=get_source(conn, source_id).origin)
 
             update_source_status(conn, source_id, status=SourceStatus.CHUNKING, title=doc.title)
             await _publish(SourceStatus.CHUNKING)
@@ -88,6 +149,11 @@ class IngestionPipeline:
                 for c in chunk_outs
             ]
             insert_chunks(conn, chunk_records)
+
+            if extract and doc.assets:
+                self._save_assets(
+                    conn, source_id=source_id, doc=doc, chunk_records=chunk_records
+                )
 
             total = len(chunk_records)
             update_source_status(

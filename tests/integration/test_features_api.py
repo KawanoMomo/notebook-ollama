@@ -35,7 +35,11 @@ def test_put_unknown_flag_404(client):
 
 def test_require_feature_blocks_when_disabled(client):
     client.put("/api/features/table-figure-rag", json={"enabled": False})
-    # Task 8 で reingest がこのゲートを使う。ここではゲート単体を検証するため
-    # テスト用の一時ルートではなく、ゲート適用済みの実APIを対象にする。
-    # Task 8 完了までは xfail マークで先行登録する。
-    pytest.xfail("gated API lands in Task 8 (reingest)")
+    # ゲートは FastAPI の dependencies=[Depends(...)] としてルートに付けてあり、
+    # エンドポイント本体(source_id の存在確認など)より先に評価される。
+    # そのため存在しない source_id でもゲートで先に 403 になる。
+    res = client.post(
+        "/api/notebooks/nonexistent-nb/sources/nonexistent-src/reingest"
+    )
+    assert res.status_code == 403
+    assert res.json()["error"]["code"] == "feature.disabled"
