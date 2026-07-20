@@ -93,6 +93,13 @@ export function createEventsStore(): EventsStore {
               tag: `source-error-${ev.source_id}`,
             });
           }
+          if (ev.status === "ready" || ev.status === "error") {
+            // 終端状態: SSE payload には title 等のソース実データや親子リンクが
+            // 含まれないため、upsertSource の patch だけでは古いプレースホルダ
+            // (録音の optimistic source 等)が残る。sources/links を再取得して
+            // 反映する(store 側で世代ガード + 多重発火の coalesce 済み)。
+            void currentNotebookStore.refreshSources();
+          }
         }
       });
     },

@@ -1,6 +1,7 @@
-import type { Notebook, Source } from '$lib/api/types';
+import type { Notebook, Source, SourceLink } from '$lib/api/types';
 import { notebooksApi } from '$lib/api/notebooks';
 import { sourcesApi } from '$lib/api/sources';
+import { linksApi } from '$lib/api/links';
 
 /** JobStatusBar に表示する進行中ジョブ1件。 */
 export interface ActiveJob {
@@ -17,6 +18,8 @@ export interface CurrentNotebookStore {
   readonly error: string | null;
   /** 進行中ジョブ一覧(取り込み/要約/ADR)。JobStatusBar が購読する。 */
   readonly activeJobs: ActiveJob[];
+  /** ソース親子の手動リンク一覧(発表モード/ツリー表示用)。 */
+  readonly links: SourceLink[];
   load(id: string): Promise<void>;
   update(patch: { default_model?: string | null }): Promise<void>;
   clear(): void;
@@ -26,14 +29,27 @@ export interface CurrentNotebookStore {
   clearSelection(): void;
   /** 全選択。引数がある場合はその ID 集合のみを選択(フィルタ中の全選択に使う)。 */
   selectAll(ids?: readonly string[]): void;
+  /** child の親を parent に設定する(既存があれば付け替え)。例外は呼び出し元へ伝播。 */
+  setParent(childId: string, parentId: string): Promise<void>;
+  /** child の親子リンクを解除する。例外は呼び出し元へ伝播。 */
+  removeParent(childId: string): Promise<void>;
+  /**
+   * sources 一覧と links を API から再取得して反映する(終端 source_status イベント用)。
+   * SSE payload は title 等のソース実データを持たないため、upsertSource による
+   * status/chunk_count 等の patch だけでは古いプレースホルダ表示が残る。
+   * ノート未ロード時は no-op。例外は飲み込み、既存表示を維持する(background refresh)。
+   */
+  refreshSources(): Promise<void>;
 }
 
 export function createCurrentNotebookStore(
   nbApi = notebooksApi,
   srcApi = sourcesApi,
+  lnkApi = linksApi,
 ): CurrentNotebookStore {
   let notebook = $state<Notebook | null>(null);
   let sources = $state<Source[]>([]);
+  let links = $state<SourceLink[]>([]);
   let selected = $state<Set<string>>(new Set());
   // 既存ソース ID の集合(upsertSource で新規/既存を判定するため、selected と別管理する)。
   // toggleSelected で selected から外しても、ここには残るので「2 度目の upsert で自動選択」
@@ -41,6 +57,56 @@ export function createCurrentNotebookStore(
   let knownIds = $state<Set<string>>(new Set());
   let loading = $state(false);
   let error = $state<string | null>(null);
+
+  // links 取得の世代カウンタ。連打/並行 mutation やノート切替で複数の list() が
+  // 同時に飛んだとき、最後に発行された取得だけを links に反映する(古い応答は破棄)。
+  let linksFetchSeq = 0;
+
+  // sources 取得の世代カウンタ(refreshSources 専用)。load() や別の refreshSources
+  // 呼び出しと競合したとき、最後に発行された取得だけを sources に反映する。
+  let sourcesFetchSeq = 0;
+  // refreshSources の多重発火防止(SSE 連打対策)。実行中に追加要求が来たら
+  // pending フラグを立て、完了後にもう一度だけ実行する(trailing coalesce)。
+  let sourcesRefreshInFlight = false;
+  let sourcesRefreshPending = false;
+
+  /**
+   * links を再取得して反映する。degradeOnError=true(load() の初回取得)は
+   * 失敗時に links=[] へ落としてソース表示を守る。false(mutation 後)は
+   * 例外を呼び出し元へ伝播する。いずれも世代チェックで古い応答を破棄する。
+   */
+  async function refreshLinks(nbId: string, opts?: { degradeOnError?: boolean }): Promise<void> {
+    const seq = ++linksFetchSeq;
+    try {
+      const fetched = await lnkApi.list(nbId);
+      if (seq === linksFetchSeq) links = fetched;
+    } catch (e) {
+      if (opts?.degradeOnError) {
+        if (seq === linksFetchSeq) links = [];
+        return;
+      }
+      throw e;
+    }
+  }
+
+  /** sources + links を 1 回だけ再取得して反映する(世代ガード付き)。 */
+  async function doRefreshSources(nbId: string): Promise<void> {
+    const seq = ++sourcesFetchSeq;
+    const [fetched] = await Promise.all([
+      srcApi.list(nbId),
+      refreshLinks(nbId, { degradeOnError: true }),
+    ]);
+    // 古い応答は破棄(後続の refreshSources/load/ノート切替で無効化された)。
+    if (seq !== sourcesFetchSeq) return;
+    sources = fetched;
+    // upsertSource と同じ規約: 未知だった id は自動選択に加える。既知の id は
+    // 選択状態を変更しない(ユーザの手動選択解除を尊重)。
+    const newlyKnown = fetched.filter((s) => !knownIds.has(s.id)).map((s) => s.id);
+    if (newlyKnown.length > 0) {
+      selected = new Set([...selected, ...newlyKnown]);
+    }
+    knownIds = new Set(fetched.map((s) => s.id));
+  }
 
   // 進行中ジョブの導出。判定条件は spec 2026-07-02 に基づく:
   // status ∈ {pending,parsing,chunking,embedding} / summary_status==='generating'
@@ -82,11 +148,24 @@ export function createCurrentNotebookStore(
     get activeJobs() {
       return activeJobs;
     },
+    get links() {
+      return links;
+    },
     async load(id) {
       loading = true;
       error = null;
+      // 進行中の refreshSources() 応答が別ノート切替後に古い sources で上書きしない
+      // よう、世代を進めて無効化する(doRefreshSources 側の seq チェックで破棄される)。
+      sourcesFetchSeq++;
       try {
-        const [nb, ss] = await Promise.all([nbApi.get(id), srcApi.list(id)]);
+        // links は notebook/sources と並行取得する。refreshLinks が世代チェックと
+        // 失敗時の degrade(links=[])を担うため、links の失敗が notebook/sources
+        // 側の error state を汚すことはない。
+        const [nb, ss] = await Promise.all([
+          nbApi.get(id),
+          srcApi.list(id),
+          refreshLinks(id, { degradeOnError: true }),
+        ]);
         notebook = nb;
         sources = ss;
         // 仕様 §2.1: ノート切替・初回ロード時は全選択にリセット(永続化なし)。
@@ -110,9 +189,12 @@ export function createCurrentNotebookStore(
     clear() {
       notebook = null;
       sources = [];
+      links = [];
       selected = new Set();
       knownIds = new Set();
       error = null;
+      // 進行中の refreshSources() 応答がページ離脱後に反映されないよう無効化する。
+      sourcesFetchSeq++;
     },
     upsertSource(s) {
       const idx = sources.findIndex((x) => x.id === s.id);
@@ -161,6 +243,45 @@ export function createCurrentNotebookStore(
       const next = new Set(selected);
       for (const id of ids) next.add(id);
       selected = next;
+    },
+    async setParent(childId, parentId) {
+      const nbId = notebook?.id;
+      if (!nbId) return;
+      // linksApi 呼び出しの例外はここで飲み込まず呼び出し元(パネル側)へ伝播させ、
+      // toast 表示等の UI 判断に委ねる。
+      await lnkApi.setParent(nbId, childId, parentId);
+      await refreshLinks(nbId);
+    },
+    async removeParent(childId) {
+      const nbId = notebook?.id;
+      if (!nbId) return;
+      await lnkApi.removeParent(nbId, childId);
+      await refreshLinks(nbId);
+    },
+    async refreshSources() {
+      const nbId = notebook?.id;
+      if (!nbId) return;
+      if (sourcesRefreshInFlight) {
+        // 実行中: この呼び出し分は completion 後の追い実行に畳み込む
+        sourcesRefreshPending = true;
+        return;
+      }
+      sourcesRefreshInFlight = true;
+      try {
+        let keepGoing = true;
+        while (keepGoing) {
+          sourcesRefreshPending = false;
+          try {
+            await doRefreshSources(nbId);
+          } catch {
+            // background refresh: 失敗しても既存表示を維持する(load() の
+            // error state は初回ロード専用なのでここでは汚さない)。
+          }
+          keepGoing = sourcesRefreshPending;
+        }
+      } finally {
+        sourcesRefreshInFlight = false;
+      }
     },
   };
 }

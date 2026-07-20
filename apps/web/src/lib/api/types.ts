@@ -65,6 +65,8 @@ export interface Source {
   page_count: number | null;
   chunk_count: number | null;
   has_audio?: boolean;
+  /** 発表モード: スライドページ抽出済み (pdf/pptx)。backend: `has_slides`。 */
+  has_slides?: boolean;
   /** Transient field populated from SSE during the embedding phase. */
   embedded?: number | null;
   duration_ms?: number | null;
@@ -376,4 +378,60 @@ export interface FeedbackInput {
   body: string;
   sentiment?: Sentiment | null;
   screenshot_b64?: string | null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 発表モード (プレゼンテーション連動録音)                                      */
+/* backend: apps/api/routers/links.py, apps/api/routers/recordings.py         */
+/* -------------------------------------------------------------------------- */
+
+/** ソース親子リンク。backend: `apps/api/schemas/source.py::SourceLink`。 */
+export interface SourceLink {
+  id: string;
+  notebook_id: string;
+  parent_source_id: string;
+  child_source_id: string;
+  relation: 'presentation' | 'manual';
+  meta: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/**
+ * 進行中の録音セッション照会結果 (リロード復帰用、spec §6 中断・異常系)。
+ * backend: `apps/api/schemas/recording.py::ActiveRecording`。
+ * セッションが無い場合、backend は 204 を返し `client.ts` の `request<T>` は
+ * `undefined` を返す。
+ */
+export interface ActiveRecording {
+  recording_id: string;
+  source_id: string;
+  presentation_source_id: string | null;
+  last_page: number | null;
+  /** 録音経過時間(ms)。recordingStore.adopt が経過タイマー再開の起点に使う。 */
+  elapsed_ms: number;
+  /** セッション開始時の live_caption 設定。recordingStore.adopt へ素通しする。 */
+  live_caption: boolean;
+}
+
+/**
+ * スライド資料の該当ページで発言された録音チャンク 1 件(逆引き、Task 11)。
+ * backend: `apps/api/schemas/source.py::SlideUtteranceItem`。
+ */
+export interface SlideUtteranceItem {
+  child_source_id: string;
+  child_title: string | null;
+  chunk_id: string;
+  start_ms: number | null;
+  end_ms: number | null;
+  speaker: string | null;
+  text: string;
+}
+
+/**
+ * ページ単位にグループ化した発言一覧。
+ * backend: `GET /api/notebooks/{nid}/sources/{sid}/slide-utterances` のレスポンス要素。
+ */
+export interface SlideUtterancePage {
+  page: number;
+  items: SlideUtteranceItem[];
 }

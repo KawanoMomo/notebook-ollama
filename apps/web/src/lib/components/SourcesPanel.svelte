@@ -2,14 +2,17 @@
   import { Plus, Mic, Check, Minus } from '@lucide/svelte';
   import SourceCard from './SourceCard.svelte';
   import SourceUploadModal from './SourceUploadModal.svelte';
+  import ParentPickerModal from './ParentPickerModal.svelte';
   import RecordingControls from './RecordingControls.svelte';
   import Button from './Button.svelte';
   import Spinner from './Spinner.svelte';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
+  import { presentationStore } from '$lib/stores/presentation.svelte';
   import { sourcesApi } from '$lib/api/sources';
   import { pushToast } from './Toast.svelte';
   import { computeBulkState } from './SourcesPanel.bulk';
+  import { descendantIdsOf, orderWithChildren } from '$lib/utils/sourceTree';
   import type { Source } from '$lib/api/types';
 
   interface Props {
@@ -31,6 +34,14 @@
         ? (s.title ?? s.origin ?? '').toLowerCase().includes(filter.toLowerCase())
         : true,
     ),
+  );
+
+  // 検索フィルタ入力中(query 非空)はツリー無効=フラット表示(depth 全て 0)。
+  // 未入力時のみ親子ツリー順に並べ替える。
+  let rows = $derived(
+    filter.trim()
+      ? filteredSources.map((s) => ({ source: s, depth: 0 as const }))
+      : orderWithChildren(filteredSources, currentNotebookStore.links),
   );
 
   // 仕様 §2.2: フィルタ中は表示中ソースのみを対象にしたトライステート/カウントを出す。
@@ -234,11 +245,67 @@
     }
   }
 
+  async function onStartPresentation(s: Source) {
+    // 録音競合(409)や recording extra 未導入(503)は ApiError.message が
+    // そのまま利用者への適切な案内になる(バックエンド側で文言を作り込み済み)。
+    try {
+      await presentationStore.start(notebookId, { id: s.id, title: s.title ?? '' });
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   async function onRename(s: Source, title: string) {
     try {
       const updated = await sourcesApi.rename(notebookId, s.id, title);
       currentNotebookStore.upsertSource(updated);
       pushToast('名前を変更しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  // 親ソース設定モーダル。開いている対象(子)を保持する(null なら閉じている)。
+  let parentPickerFor = $state<Source | null>(null);
+
+  // 候補 = 同一NB内ソースから自身と自身の子孫(descendantIdsOf、多段対応)を除外。
+  let parentPickerCandidates = $derived.by(() => {
+    const child = parentPickerFor;
+    if (!child) return [];
+    const excluded = descendantIdsOf(child.id, currentNotebookStore.links);
+    excluded.add(child.id);
+    return currentNotebookStore.sources.filter((s) => !excluded.has(s.id));
+  });
+
+  function openParentPicker(s: Source) {
+    parentPickerFor = s;
+  }
+
+  function closeParentPicker() {
+    parentPickerFor = null;
+  }
+
+  async function pickParent(parentId: string) {
+    const child = parentPickerFor;
+    closeParentPicker();
+    if (!child) return;
+    try {
+      await currentNotebookStore.setParent(child.id, parentId);
+      pushToast('親ソースを設定しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  // 親を持つソース(=リンクの child 側)の ID 集合。カードごとの O(1) 判定用。
+  let childIdsWithParent = $derived(
+    new Set(currentNotebookStore.links.map((l) => l.child_source_id)),
+  );
+
+  async function onRemoveParent(s: Source) {
+    try {
+      await currentNotebookStore.removeParent(s.id);
+      pushToast('リンクを解除しました', 'success');
     } catch (e) {
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
@@ -298,9 +365,11 @@
     <span class="bulk-count">{bulk.label}</span>
   </button>
   <div class="list">
-    {#each filteredSources as s (s.id)}
+    {#each rows as row (row.source.id)}
+      {@const s = row.source}
       <SourceCard
         source={s}
+        depth={row.depth}
         selected={currentNotebookStore.selectedSourceIds.has(s.id)}
         onToggle={() => currentNotebookStore.toggleSelected(s.id)}
         onSelect={() => toggleGuideAndSelect(s)}
@@ -314,6 +383,9 @@
         onSummarize={() => onSummarize(s)}
         onSummaryCancel={() => onSummaryCancel(s)}
         onGenerateAdr={() => onGenerateAdr(s)}
+        onStartPresentation={() => onStartPresentation(s)}
+        onSetParent={() => openParentPicker(s)}
+        onRemoveParent={childIdsWithParent.has(s.id) ? () => onRemoveParent(s) : undefined}
       />
     {/each}
     {#if filteredSources.length === 0}
@@ -335,6 +407,14 @@
     {notebookId}
     onClose={() => (showUpload = false)}
     onUploaded={(s) => currentNotebookStore.upsertSource(s)}
+  />
+{/if}
+
+{#if parentPickerFor}
+  <ParentPickerModal
+    candidates={parentPickerCandidates}
+    onPick={pickParent}
+    onClose={closeParentPicker}
   />
 {/if}
 

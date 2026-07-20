@@ -1,8 +1,11 @@
 <script lang="ts">
   import { Square, Mic, MicOff, Volume2, VolumeX } from '@lucide/svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
+  import { presentationStore } from '$lib/stores/presentation.svelte';
   import { pushToast } from './Toast.svelte';
   import Spinner from './Spinner.svelte';
+  import Modal from './Modal.svelte';
+  import Button from './Button.svelte';
 
   interface Props {
     // Accepted for symmetry with SourcesPanel and future per-notebook gain
@@ -10,6 +13,11 @@
     notebookId: string;
   }
   let {}: Props = $props();
+
+  // 発表モード中(presentationStore.active)は「停止」を「発表を終了」に読み替え、
+  // 即 stop() せず確認 Modal を挟む(誤タップで発表を止めてしまう事故を防ぐ)。
+  // 通常録音時(active=false)は従来どおり即 stop() で挙動不変。
+  let showEndConfirm = $state(false);
 
   let elapsed = $derived(formatElapsed(recordingStore.elapsedMs));
 
@@ -33,6 +41,26 @@
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }
+
+  function onStopClick() {
+    if (presentationStore.active) {
+      // 発表中は誤操作防止のため確認 Modal を挟む。ここでは stop しない。
+      showEndConfirm = true;
+      return;
+    }
+    void stop();
+  }
+
+  async function confirmEndPresentation() {
+    showEndConfirm = false;
+    try {
+      // presentationStore.end() が内部で recordingStore.stop() を呼ぶ(録音停止
+      // +ソース化)。ここで stop() を重ねて呼ぶと二重停止になるため呼ばない。
+      await presentationStore.end();
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
 </script>
 
 <div class="recstrip">
@@ -40,11 +68,11 @@
     <div class="recrow">
       <span class="recnow"><span class="dot pulse"></span> 録音中</span>
       <span class="rectimer">{elapsed}</span>
-      <button class="stopbtn" onclick={stop} disabled={recordingStore.stopping}>
+      <button class="stopbtn" onclick={onStopClick} disabled={recordingStore.stopping}>
         {#if recordingStore.stopping}
           <Spinner size={12} /> 停止中…
         {:else}
-          <Square size="12" fill="currentColor" /> 停止
+          <Square size="12" fill="currentColor" /> {presentationStore.active ? '発表を終了' : '停止'}
         {/if}
       </button>
     </div>
@@ -107,6 +135,16 @@
     </div>
   {/if}
 </div>
+
+{#if showEndConfirm}
+  <Modal title="発表を終了しますか？" onClose={() => (showEndConfirm = false)}>
+    <p class="confirm-body">録音を停止してソース化します</p>
+    <div class="confirm-actions">
+      <Button variant="secondary" onclick={() => (showEndConfirm = false)}>キャンセル</Button>
+      <Button variant="danger" onclick={confirmEndPresentation}>終了する</Button>
+    </div>
+  </Modal>
+{/if}
 
 <style>
   .recstrip {
@@ -267,5 +305,16 @@
     100% {
       opacity: 1;
     }
+  }
+  .confirm-body {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-fg);
+  }
+  .confirm-actions {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: flex-end;
+    margin-top: var(--space-4);
   }
 </style>

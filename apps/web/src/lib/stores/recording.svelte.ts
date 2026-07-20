@@ -29,7 +29,15 @@ export interface RecordingStore {
   readonly micMuted: boolean;
   readonly systemMuted: boolean;
   readonly error: string | null;
-  start(notebookId: string): Promise<void>;
+  start(notebookId: string, opts?: { presentationSourceId?: string }): Promise<void>;
+  /**
+   * 既存セッションへの再接続(リロード復帰用)。API は呼ばず、GET …/recordings/active
+   * の結果からローカル状態(recording/recordingId/sourceId/経過タイマー/live WS)を復元する。
+   */
+  adopt(
+    notebookId: string,
+    info: { recordingId: string; sourceId: string; elapsedMs?: number; liveCaption?: boolean },
+  ): void;
   stop(): Promise<void>;
   toggleLiveCaption(): void;
   toggleMute(channel: MuteChannel): void;
@@ -239,6 +247,37 @@ export function createRecordingStore(
     ws = socket;
   }
 
+  /**
+   * セッション状態の確立(start=新規 / adopt=リロード復帰 の共通パス)。
+   * elapsedMs はサーバー算出の経過時間から再開する(新規は 0)。
+   */
+  function attachSession(
+    nbId: string,
+    rid: string,
+    sid: string,
+    opts: { liveCaption: boolean; elapsedMs?: number },
+  ) {
+    recording = true;
+    recordingId = rid;
+    sourceId = sid;
+    notebookId = nbId;
+    liveCaptionActive = opts.liveCaption;
+    captions = [];
+    micLevel = 0;
+    sysLevel = 0;
+    elapsedMs = opts.elapsedMs ?? 0;
+    startedAt = Date.now() - (opts.elapsedMs ?? 0);
+    micMuted = false;
+    systemMuted = false;
+    clearTimer();
+    timer = setInterval(() => {
+      elapsedMs = Date.now() - startedAt;
+    }, 200);
+    intentionalClose = false; // 新規/再接続とも onclose での自動再接続を許可する
+    reconnectAttempts = 0;
+    connectWs(rid);
+  }
+
   return {
     get recording() {
       return recording;
@@ -288,36 +327,39 @@ export function createRecordingStore(
     get error() {
       return error;
     },
-    async start(nbId) {
+    async start(nbId, opts = {}) {
       if (recording || starting) return;
       error = null;
       // optimistic pending: API 応答を待たずにボタンを即座に反応させる。
       // 失敗時は finally で戻り、recording は false のままなのでロールバック不要。
       starting = true;
       try {
-        const started = await api.start(nbId, { live_caption: liveCaptionEnabled });
-        recording = true;
-        recordingId = started.recording_id;
-        sourceId = started.source_id;
-        notebookId = nbId;
-        liveCaptionActive = started.live_caption;
-        captions = [];
-        micLevel = 0;
-        sysLevel = 0;
-        elapsedMs = 0;
-        startedAt = Date.now();
-        micMuted = false;
-        systemMuted = false;
-        clearTimer();
-        timer = setInterval(() => {
-          elapsedMs = Date.now() - startedAt;
-        }, 200);
-        intentionalClose = false; // 新規接続。onclose での自動再接続を許可する
-        reconnectAttempts = 0;
-        connectWs(started.recording_id);
+        // 発表モード(presentation.svelte.ts から透過): opts.presentationSourceId が
+        // undefined なら JSON.stringify がキーごと落とすため、backend の通常録音
+        // パス(presentation_source_id 省略 = null 扱い)に落ちる。
+        const started = await api.start(nbId, {
+          live_caption: liveCaptionEnabled,
+          presentation_source_id: opts.presentationSourceId,
+        });
+        attachSession(nbId, started.recording_id, started.source_id, {
+          liveCaption: started.live_caption,
+        });
       } finally {
         starting = false;
       }
+    },
+    adopt(nbId, info) {
+      // リロード復帰(spec §6 中断・異常系): GET …/recordings/active の結果から
+      // 既存セッションへ再接続する。API は呼ばない(セッションはサーバーで継続中)。
+      if (recording || starting) return;
+      error = null;
+      attachSession(nbId, info.recordingId, info.sourceId, {
+        // PM-6レビュー追記: active 照会が live_caption を返すようになったため、
+        // それをそのまま使う(セッション開始時の実設定)。呼び出し元が省略した場合のみ
+        // 現在のトグル設定へフォールバックする(後方互換の保険)。
+        liveCaption: info.liveCaption ?? liveCaptionEnabled,
+        elapsedMs: info.elapsedMs,
+      });
     },
     async stop() {
       if (stopping) return;

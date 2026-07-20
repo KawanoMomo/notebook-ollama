@@ -19,6 +19,7 @@ from apps.api.schemas.source_content import (
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.hashing import sha256_bytes
 from core.ingestion.parsers import get_parser
+from core.ingestion.pptx_to_pdf import slides_pdf_path
 from core.logging import get_logger
 from core.storage import notebooks_repo, sources_repo
 from core.storage.chunks_repo import (
@@ -79,6 +80,31 @@ def _has_recording_audio(rec, sources_dir) -> bool:
     )
 
 
+def _has_slides(rec, sources_dir) -> bool:
+    """発表モード用 PDF が既に存在するか(pdf 原本 or pptx の COM 併産物)。"""
+    path = slides_pdf_path(sources_dir, rec.id, rec.kind)
+    return path is not None and path.exists()
+
+
+async def _convert_slides_best_effort(ctx, source_id: str, pptx_path) -> None:
+    """PPTX 取込時の PDF 併産(best-effort、spec §8: 失敗しても取込は継続)。"""
+    import asyncio
+
+    from core.ingestion.pptx_to_pdf import convert_pptx_to_pdf, is_powerpoint_available
+
+    if not is_powerpoint_available():
+        return
+    dst = slides_pdf_path(ctx.config.sources_dir, source_id, "pptx")
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(convert_pptx_to_pdf, pptx_path, dst), timeout=120.0
+        )
+    except Exception as exc:
+        # COM は対話ユーザーセッション前提で環境依存の失敗をしうる。取込自体は
+        # 継続させたいので、ここで完全に握りつぶし警告ログだけ残す(spec §8)。
+        log.warning("pptx_slides_conversion_failed", source_id=source_id, error=str(exc))
+
+
 def _to_schema(rec, sources_dir) -> Source:
     return Source(
         id=rec.id,
@@ -92,6 +118,7 @@ def _to_schema(rec, sources_dir) -> Source:
         page_count=rec.page_count,
         chunk_count=rec.chunk_count,
         has_audio=_has_recording_audio(rec, sources_dir),
+        has_slides=_has_slides(rec, sources_dir),
         summary=rec.summary,
         summary_status=(
             rec.summary_status.value if rec.summary_status is not None else None
@@ -133,6 +160,8 @@ async def upload_file(
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
+        if kind == "pptx":
+            background.add_task(_convert_slides_best_effort, ctx, rec.id, source_path)
     return _to_schema(rec, ctx.config.sources_dir)
 
 
@@ -200,6 +229,8 @@ async def upload_url(
         source_path = ctx.config.sources_dir / f"{rec.id}{ext}"
         source_path.write_bytes(data)
         background.add_task(ctx.pipeline.run, source_id=rec.id, kind=kind, data=data)
+        if kind == "pptx":
+            background.add_task(_convert_slides_best_effort, ctx, rec.id, source_path)
     return _to_schema(rec, ctx.config.sources_dir)
 
 

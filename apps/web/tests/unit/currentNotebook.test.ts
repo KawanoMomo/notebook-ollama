@@ -33,10 +33,15 @@ function makeSource(id: string, overrides: Partial<Source> = {}): Source {
   };
 }
 
-function makeStore(sources: Source[]) {
+function makeStore(sources: Source[], links: any[] = []) {
   const nbApi = { get: vi.fn().mockResolvedValue(fakeNotebook) } as any;
   const srcApi = { list: vi.fn().mockResolvedValue(sources) } as any;
-  return { store: createCurrentNotebookStore(nbApi, srcApi), nbApi, srcApi };
+  const lnkApi = {
+    list: vi.fn().mockResolvedValue(links),
+    setParent: vi.fn(),
+    removeParent: vi.fn(),
+  } as any;
+  return { store: createCurrentNotebookStore(nbApi, srcApi, lnkApi), nbApi, srcApi, lnkApi };
 }
 
 describe('currentNotebookStore — default-all-selected', () => {
@@ -167,5 +172,185 @@ describe('currentNotebookStore.activeJobs', () => {
       makeJobSource({ title: null, origin: '録音', status: 'parsing' }),
     );
     expect(store.activeJobs[0].label).toBe('録音: 取り込み中');
+  });
+});
+
+describe('currentNotebookStore.links', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('load() は links を並行取得してストアに反映する', async () => {
+    const links = [
+      {
+        id: 'l1',
+        notebook_id: 'nb1',
+        parent_source_id: 'a',
+        child_source_id: 'b',
+        relation: 'manual' as const,
+        meta: null,
+        created_at: 't',
+      },
+    ];
+    const { store, lnkApi } = makeStore([makeSource('a'), makeSource('b')], links);
+    await store.load('nb1');
+    expect(lnkApi.list).toHaveBeenCalledWith('nb1');
+    expect(store.links).toEqual(links);
+    // ソース表示は壊れていない
+    expect(store.sources).toHaveLength(2);
+    expect(store.error).toBeNull();
+  });
+
+  it('linksApi.list が reject しても links=[] に degrade し、ソース表示は継続する', async () => {
+    const { store, lnkApi } = makeStore([makeSource('a'), makeSource('b')]);
+    lnkApi.list.mockRejectedValueOnce(new Error('links unavailable'));
+    await store.load('nb1');
+    expect(store.links).toEqual([]);
+    expect(store.sources).toHaveLength(2);
+    expect(store.error).toBeNull();
+  });
+});
+
+function makeLink(childId: string, parentId: string) {
+  return {
+    id: `link-${childId}-${parentId}`,
+    notebook_id: 'nb1',
+    parent_source_id: parentId,
+    child_source_id: childId,
+    relation: 'manual' as const,
+    meta: null,
+    created_at: 't',
+  };
+}
+
+describe('currentNotebookStore.setParent / removeParent', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('setParent が linksApi.setParent を呼び links を更新する', async () => {
+    const { store, lnkApi } = makeStore([makeSource('a'), makeSource('b')]);
+    await store.load('nb1');
+    const newLinks = [makeLink('b', 'a')];
+    lnkApi.setParent.mockResolvedValueOnce(newLinks[0]);
+    lnkApi.list.mockResolvedValueOnce(newLinks);
+    await store.setParent('b', 'a');
+    expect(lnkApi.setParent).toHaveBeenCalledWith('nb1', 'b', 'a');
+    expect(store.links).toEqual(newLinks);
+  });
+
+  it('removeParent が linksApi.removeParent を呼び links を更新する', async () => {
+    const initial = [makeLink('b', 'a')];
+    const { store, lnkApi } = makeStore([makeSource('a'), makeSource('b')], initial);
+    await store.load('nb1');
+    expect(store.links).toEqual(initial);
+    lnkApi.removeParent.mockResolvedValueOnce(undefined);
+    lnkApi.list.mockResolvedValueOnce([]);
+    await store.removeParent('b');
+    expect(lnkApi.removeParent).toHaveBeenCalledWith('nb1', 'b');
+    expect(store.links).toEqual([]);
+  });
+
+  it('setParent の API 例外は呼び出し元へ伝播し、links は変更されない', async () => {
+    const initial = [makeLink('b', 'a')];
+    const { store, lnkApi } = makeStore(
+      [makeSource('a'), makeSource('b'), makeSource('c')],
+      initial,
+    );
+    await store.load('nb1');
+    lnkApi.setParent.mockRejectedValueOnce(new Error('循環リンクは作成できません'));
+    await expect(store.setParent('a', 'b')).rejects.toThrow('循環リンクは作成できません');
+    expect(store.links).toEqual(initial);
+  });
+
+  it('古い list 応答が新しい状態を上書きしない(レースガード)', async () => {
+    const { store, lnkApi } = makeStore([
+      makeSource('a'),
+      makeSource('b'),
+      makeSource('c'),
+    ]);
+    await store.load('nb1');
+
+    const linksA = [makeLink('b', 'a')];
+    const linksB = [makeLink('b', 'a'), makeLink('c', 'a')];
+    let resolveA!: (v: typeof linksA) => void;
+    lnkApi.setParent.mockResolvedValue(makeLink('x', 'y'));
+    lnkApi.list
+      // mutation A の再取得: 保留(後で手動 resolve)
+      .mockImplementationOnce(() => new Promise((r) => (resolveA = r)))
+      // mutation B の再取得: 即時 resolve
+      .mockResolvedValueOnce(linksB);
+
+    // mutation A を発行し、list 呼び出し(保留)まで進める
+    const pA = store.setParent('b', 'a');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(lnkApi.list).toHaveBeenCalledTimes(2); // load + A
+
+    // mutation B を発行して完了させる → links = B の結果
+    await store.setParent('c', 'a');
+    expect(store.links).toEqual(linksB);
+
+    // 古い A の応答を解決しても B の結果を上書きしない
+    resolveA(linksA);
+    await pA;
+    expect(store.links).toEqual(linksB);
+  });
+});
+
+describe('currentNotebookStore.refreshSources', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sources と links を API から再取得して反映する(終端 source_status イベント用)', async () => {
+    // 録音の optimistic source を模す: title=null のプレースホルダ
+    const { store, srcApi, lnkApi } = makeStore([
+      makeSource('rec1', { title: null, origin: '録音', status: 'parsing' }),
+    ]);
+    await store.load('nb1');
+    expect(store.sources[0].title).toBeNull();
+
+    const readySources = [
+      makeSource('rec1', {
+        title: 'eval-deck.pdf 発表 2026-07-08',
+        origin: '録音',
+        status: 'ready',
+      }),
+    ];
+    const readyLinks = [makeLink('rec1', 'deck1')];
+    srcApi.list.mockResolvedValueOnce(readySources);
+    lnkApi.list.mockResolvedValueOnce(readyLinks);
+
+    await store.refreshSources();
+
+    expect(srcApi.list).toHaveBeenCalledWith('nb1');
+    expect(lnkApi.list).toHaveBeenCalledWith('nb1');
+    expect(store.sources).toEqual(readySources);
+    expect(store.links).toEqual(readyLinks);
+  });
+
+  it('実行中に load() でノートが切り替わると、古い refreshSources 応答は破棄される', async () => {
+    const { store, srcApi } = makeStore([makeSource('a', { title: null })]);
+    await store.load('nb1');
+
+    // refreshSources() を発行するが、srcApi.list を保留状態にしておく
+    let resolveStale!: (v: Source[]) => void;
+    srcApi.list.mockImplementationOnce(() => new Promise((r) => (resolveStale = r)));
+    const stalePromise = store.refreshSources();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 保留中に別ノートへ切り替わる(=世代が進む)
+    const freshSources = [makeSource('x', { title: 'x' })];
+    srcApi.list.mockResolvedValueOnce(freshSources);
+    await store.load('nb2');
+    expect(store.sources).toEqual(freshSources);
+
+    // 保留していた古い refreshSources 応答を今解決しても、load() 後の状態を上書きしない
+    resolveStale([makeSource('a', { title: 'STALE-SHOULD-NOT-APPEAR' })]);
+    await stalePromise;
+    expect(store.sources).toEqual(freshSources);
+  });
+
+  it('ノート未ロード(notebook=null)では no-op で API を呼ばない', async () => {
+    const { store, srcApi, lnkApi } = makeStore([makeSource('a')]);
+    await store.refreshSources();
+    expect(srcApi.list).not.toHaveBeenCalled();
+    expect(lnkApi.list).not.toHaveBeenCalled();
   });
 });
