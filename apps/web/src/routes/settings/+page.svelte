@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
-  import { ArrowLeft, Megaphone } from '@lucide/svelte';
+  import { ArrowLeft, Megaphone, FlaskConical } from '@lucide/svelte';
   import { navMemoryStore } from '$lib/stores/navMemory.svelte';
   import { settingsStore } from '$lib/stores/settings.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
+  import { featuresStore } from '$lib/stores/features.svelte';
   import { formatBytes } from '$lib/utils/format';
   import { settingsApi } from '$lib/api/settings';
   import { openReindexEvents } from '$lib/api/reindexEvents';
@@ -14,6 +15,7 @@
   import PromptsSection from '$lib/components/settings/PromptsSection.svelte';
   import AccelerationPanel from '$lib/components/settings/AccelerationPanel.svelte';
   import CrashReportSection from '$lib/components/settings/CrashReportSection.svelte';
+  import BetaFeaturesSection from '$lib/components/settings/BetaFeaturesSection.svelte';
   import { pushToast } from '$lib/components/Toast.svelte';
   import type { ModelInfo } from '$lib/api/types';
 
@@ -27,6 +29,7 @@
     | 'storage'
     | 'modelsList'
     | 'crash'
+    | 'beta'
   >('audio');
 
   // --- 埋め込みモデル切替 (section==='models') の state ---
@@ -72,6 +75,7 @@
   onMount(() => {
     settingsStore.load();
     modelsStore.load();
+    featuresStore.load();
   });
 
   function goBack() {
@@ -329,6 +333,18 @@
         クラッシュレポート
       </button>
 
+      {#if featuresStore.betaFlags.length > 0}
+        <div class="grp" style="margin-top:6px">実験的機能</div>
+        <button
+          class="nitem"
+          class:active={section === 'beta'}
+          onclick={() => (section = 'beta')}
+        >
+          <FlaskConical size={16} strokeWidth={1.75} class="ni" aria-hidden="true" />
+          ベータ機能
+        </button>
+      {/if}
+
       <div class="grp" style="margin-top:6px">システム</div>
       <button
         class="nitem"
@@ -365,6 +381,8 @@
         <AccelerationPanel />
       {:else if section === 'crash'}
         <CrashReportSection />
+      {:else if section === 'beta'}
+        <BetaFeaturesSection />
       {:else if settingsStore.loading || modelsStore.loading}
         <div class="state"><Spinner /> 読み込み中…</div>
       {:else if settingsStore.error || modelsStore.error}

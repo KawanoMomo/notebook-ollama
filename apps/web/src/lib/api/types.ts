@@ -443,3 +443,22 @@ export interface SlideUtterancePage {
   page: number;
   items: SlideUtteranceItem[];
 }
+
+/* -------------------------------------------------------------------------- */
+/* ベータ機能フラグ                                                            */
+/* spec: docs/specs/2026-07-20-beta-feature-flags-design.md                   */
+/* backend: apps/api/routers/features.py, core/features.py, core/feature_service.py */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * ベータ機能フラグ 1 件。
+ * backend: `core/feature_service.py::FeatureService.list_flags()` の要素。
+ * `stage === 'ga'` はオプトイン変更不可 (常に `enabled: true`)。
+ */
+export interface FeatureFlagInfo {
+  id: string;
+  name: string;
+  description: string;
+  stage: 'beta' | 'ga';
+  enabled: boolean;
+}
