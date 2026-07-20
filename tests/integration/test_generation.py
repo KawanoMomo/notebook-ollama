@@ -272,6 +272,32 @@ async def test_continuation_error_degrades_gracefully():
     final = next(e for e in events if e.kind == "done")
     assert final.data["truncated"] is True
     assert final.data["answer"].startswith("前半")
+    # 打ち切り理由は「上限到達」ではなく「継続失敗」であることを明示する
+    # (round1はAppErrorで1トークンも生成していないので上限には数えない)
+    assert "続きの生成に失敗" in final.data["answer"]
+    assert "×1回" in final.data["answer"]
+
+
+@pytest.mark.asyncio
+async def test_round0_error_propagates_without_done_event():
+    """1回目(round0)のOllamaエラーは継続の対象外で、そのまま伝播する。"""
+    from core.exceptions import AppError, ErrorCode
+
+    class FailsImmediately:
+        calls = 0
+
+        async def chat_stream(self, *, model, messages, options=None, meta=None):
+            self.calls += 1
+            raise AppError(ErrorCode.OLLAMA_UNREACHABLE, "boom")
+            yield  # pragma: no cover — async generator 化のため
+
+    gw = FailsImmediately()
+    svc = GenerationService(deps=GenerationDeps(retrieval=FakeRetrieval(), ollama=gw))
+    events: list[GenerationEvent] = []
+    with pytest.raises(AppError):
+        async for ev in svc.run(**_run_args(auto_continue_max=2)):
+            events.append(ev)
+    assert not [e for e in events if e.kind == "done"]
 
 
 @pytest.mark.asyncio

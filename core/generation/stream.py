@@ -160,6 +160,8 @@ class GenerationService:
 
         answer_parts: list[str] = [prefill_answer] if prefill_answer else []
         continued_rounds = 0
+        length_hits = 0  # done_reason=="length" だった回数。通常打ち切り文言の回数表示に使う
+        continuation_failed = False  # 継続ラウンド(round>0)がAppErrorで失敗したか
         truncated = False
         for round_idx in range(1 + auto_continue_max):
             req_messages = list(messages)
@@ -187,16 +189,20 @@ class GenerationService:
                 if round_idx == 0:
                     raise
                 # 継続ラウンドの失敗は途中本文を失わない(graceful degradation)。
-                # truncated のまま完了させ、手動ボタンで再試行できる。
+                # truncated のまま完了させ、手動ボタンで再試行できる。この回は
+                # 1トークンも生成できていないため length_hits には数えない
+                # (誤って「上限到達」を打ち切り理由に含めない — レビュー指摘)。
                 log.warning("continuation_failed", model=model, round=round_idx)
                 answer_parts.extend(round_parts)
                 truncated = True
+                continuation_failed = True
                 break
             answer_parts.extend(round_parts)
             if stream_meta.get("done_reason") != "length":
                 truncated = False
                 break
             truncated = True
+            length_hits += 1
             if round_idx < auto_continue_max:
                 continued_rounds += 1
                 yield GenerationEvent(
@@ -206,12 +212,21 @@ class GenerationService:
 
         # num_predict 上限による打ち切りを無言にしない。思考モデル(qwen3 等)は
         # thinking トークンも予算を消費するため、見かけの回答が短くても到達しうる。
+        # continuation_failed の場合は「上限到達」ではなく「継続失敗」が打ち切りの
+        # 真因なので文言を分岐する(length_hits はどちらの文言でも実際に上限へ
+        # 到達した回数をそのまま表す)。
         if truncated:
-            total = 1 + continued_rounds
-            note = (
-                f"{TRUNCATION_NOTE_PREFIX}"
-                f"({response_budget_tokens}×{total}回)に達したため打ち切られました。"
-            )
+            if continuation_failed:
+                note = (
+                    f"{TRUNCATION_NOTE_PREFIX}"
+                    f"({response_budget_tokens}×{length_hits}回)に達したのち、"
+                    "続きの生成に失敗したため途中までの応答を表示しています。"
+                )
+            else:
+                note = (
+                    f"{TRUNCATION_NOTE_PREFIX}"
+                    f"({response_budget_tokens}×{length_hits}回)に達したため打ち切られました。"
+                )
             answer_parts.append(note)
             yield GenerationEvent(kind="token", data={"text": note})
             log.warning(
@@ -219,6 +234,7 @@ class GenerationService:
                 model=model,
                 response_budget_tokens=response_budget_tokens,
                 continued_rounds=continued_rounds,
+                continuation_failed=continuation_failed,
             )
 
         answer = "".join(answer_parts)
