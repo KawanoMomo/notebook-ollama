@@ -39,6 +39,9 @@ tags:
 > - [[2026-06-25-source-guide-design|Source Guide(ソースガイド)]] ✅
 > - [[2026-07-02-job-status-bar-optimistic-ui-design|ジョブ状態可視化 + Optimistic UI]] ✅
 
+> [!abstract] 取込 (ingestion)
+> - [[2026-07-20-pdf-table-figure-sidecar-design|PDF表・図サイドカー抽出 (Stage 1)]] 👀
+
 > [!abstract] 要約 (summary)
 > - [[2026-06-26-meeting-adr-templates|議事録テンプレ + ADR 抽出機能]] ✅
 > - [[2026-06-26-summary-prompt-tune|要約プロンプト改善 — 選定根拠]] ✅
