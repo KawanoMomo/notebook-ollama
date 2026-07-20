@@ -18,6 +18,7 @@ related:
   - "[[2026-07-20-pdf-table-figure-sidecar-design]]"
   - "[[2026-07-20-vlm-figure-ocr-design]]"
   - "[[2026-06-19-model-selection-design]]"
+  - "[[2026-07-20-beta-feature-flags-design]]"
 ---
 
 # 視覚埋め込み第2インデックス (Stage 3) 設計書
@@ -48,6 +49,14 @@ Stage 1/2 はテキスト化できるものを検索に乗せる改善だが、�
 |---|---|
 | 埋め込み対象 | ページ全体(PixelRAG本来の思想。原本保持済みなので再取込不要でレンダリング可能) |
 | 検索統合 | RRF自動融合。UI不変、視覚インデックス未構築ノートブックは自動スキップ、設定でOFF可 |
+| 提供形態 | ベータ(シリーズ共通フラグ `table-figure-rag`、既定OFF、[[2026-07-20-beta-feature-flags-design]]) |
+
+## 提供形態(ベータ) — フラグOFF時の挙動
+
+本機能は `table-figure-rag` フラグ(表・図シリーズ共通)配下のベータ機能として提供する。
+
+- **OFF時**: RRF融合はスキップし従来のテキスト検索のみ。ノートブック設定の「視覚インデックス」セクションは非表示、構築/削除APIは403+有効化ヒント
+- **構築済みデータ**: pages_visual コレクション・ページPNG・visual_index_meta はOFF後も保持され、ONに戻せばそのまま利用再開できる
 
 ## 4. アーキテクチャ
 

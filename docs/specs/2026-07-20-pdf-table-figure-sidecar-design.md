@@ -18,6 +18,7 @@ related:
   - "[[draft-2026-07-06-pptx-render-powerpoint-com]]"
   - "[[2026-06-19-model-selection-design]]"
   - "[[2026-07-02-job-status-bar-optimistic-ui-design]]"
+  - "[[2026-07-20-beta-feature-flags-design]]"
 ---
 
 # PDF表・図サイドカー抽出 (Stage 1) 設計書
@@ -73,6 +74,15 @@ PixelRAG(文書を画像のまま検索する視覚RAG)とUnlimited-OCR(画像�
 | 既存ソース | 手動再取込(ソース単位で選んで実行、コストを明示的に制御) |
 | UI露出 | 再取込操作+表のHTMLレンダリング表示まで |
 | 実現方式 | A案: パーサ拡張型(ParsedDocumentにアセット追加、PdfParser内で抽出) |
+| 提供形態 | ベータ(シリーズ共通フラグ `table-figure-rag`、既定OFF、[[2026-07-20-beta-feature-flags-design]]) |
+
+## 提供形態(ベータ) — フラグOFF時の挙動
+
+本機能は `table-figure-rag` フラグ(表・図シリーズ共通)配下のベータ機能として提供する。
+
+- **OFF時**: PdfParserは従来のテキスト抽出のみ(抽出段はスキップ)。再取込API/メニュー、表HTMLレンダリング表示は非露出(APIは403+有効化ヒント)
+- **ON期間中のデータ**: OFFに戻しても chunk_assets・クロップPNGは保持され、露出だけが消える(フレームワークのデータ規約)
+- **注意**: チャンク本文に挿入済みのMarkdown表はOFF後も本文・埋め込みに残る。完全に従来状態へ戻すには当該ソースの再アップロード(または一時的にONへ戻して再取込)が必要
 
 ## 4. アーキテクチャ
 

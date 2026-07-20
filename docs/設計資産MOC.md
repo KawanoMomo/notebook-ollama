@@ -28,6 +28,7 @@ tags:
 
 > [!abstract] 基盤
 > - [[notebook-ollama-design|Notebook Ollama 設計仕様書(基盤)]] ✅
+> - [[2026-07-20-beta-feature-flags-design|汎用ベータ機能フレームワーク (Feature Flags)]] 👀
 
 > [!abstract] 録音 (recording)
 > - [[2026-06-17-recording-source-design|録音ソース機能]] ✅

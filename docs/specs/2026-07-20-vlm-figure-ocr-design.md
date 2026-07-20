@@ -18,6 +18,7 @@ related:
   - "[[2026-07-20-pdf-table-figure-sidecar-design]]"
   - "[[2026-07-20-visual-embedding-index-design]]"
   - "[[2026-06-19-model-selection-design]]"
+  - "[[2026-07-20-beta-feature-flags-design]]"
 ---
 
 # VLM図説明・スキャンPDF OCR (Stage 2) 設計書
@@ -51,6 +52,14 @@ Stage 1([[2026-07-20-pdf-table-figure-sidecar-design]])で図はクロップPNG+
 | 説明文の格納 | 図1つ=1独立チャンク(既存チャンク不変、再埋め込み不要、図単位の引用が可能) |
 | 処理タイミング | 新規取込はパイプライン組込みで自動(設定でOFF可)、既存ソースは手動「図を解析」 |
 | 生成時の図読込 | チャットモデルがVLMのときのみ画像投入。非VLMは説明文のみ(グレースフルデグラデーション) |
+| 提供形態 | ベータ(シリーズ共通フラグ `table-figure-rag`、既定OFF、[[2026-07-20-beta-feature-flags-design]]) |
+
+## 提供形態(ベータ) — フラグOFF時の挙動
+
+本機能は `table-figure-rag` フラグ(表・図シリーズ共通)配下のベータ機能として提供する。
+
+- **OFF時**: 取込のdescribe段・スキャンPDFのOCR経路はスキップ(スキャンPDFは従来どおり取込エラー)。「図を解析」・クロップ配信API・図画像投入・視覚モデル(VLM)スロットは非露出(APIは403+有効化ヒント)
+- **生成済みの図説明チャンク**: OFF時は検索から除外する(`kind='figure_desc'` をフィルタ)。データ自体は保持し、ONに戻せば再び検索に乗る
 
 ## 4. アーキテクチャ
 
