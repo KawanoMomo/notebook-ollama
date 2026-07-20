@@ -1,0 +1,55 @@
+{
+  "title": "設計仕様: チャット音声入力(Notebook Ollama)",
+  "date": "2026-07-05(改訂2: Claude Code と同じタップ/長押し判別を採用)",
+  "author": "Kawano Momo",
+  "status": "Approved",
+  "overview": "チャットの質問文をキーボードで打つ手間を減らすため、ChatInput に音声入力を追加する。認識は録音ソース機能で導入済みの faster-whisper 基盤(app.state.transcriber)を再利用し、完全ローカルで動作。操作は設定画面で 3 択: プッシュトゥトーク(既定キー Space。タップ=通常入力/長押し=録音の判別により textarea 入力中でも使える。Claude Code の hold モードと同じ操作感)/ 常時有効(ハンズフリー: ブラウザ側 VAD が発話区間を自動で切り出し逐次テキスト化)/ 無効。認識テキストは textarea のカーソル位置に挿入のみで自動送信はしない。",
+  "goals": [
+    "ChatInput へのマイクボタン追加(モード別の録音制御、認識テキストを textarea に追記)",
+    "音声変換 API POST /api/stt/transcribe の新設(既存 transcriber の薄いラッパー、ステートレス)",
+    "設定画面に「音声入力」セクション追加(モード 3 値 + PTT キー割当)、既存 /api/settings に永続化",
+    "プッシュトゥトーク: タップ(250ms未満)=キーの通常文字を挿入 / 長押し=録音の判別で、textarea フォーカス中でも動作。音声キャプチャは keydown で先行開始し語頭欠落を防止。IME 変換中(isComposing)と修飾キー同時押しは不介入",
+    "ハンズフリー: ブラウザ側 RMS VAD で発話区間を切り出し、区間ごとに WAV バッチ POST を反復(POST はキューで直列化)",
+    "recording extra 未導入環境でのグレースフルデグレード(503 + 導入ヒント)"
+  ],
+  "nonGoals": [
+    "サーバー側ストリーミング認識(WebSocket / LiveCaption 再利用)— ハンズフリーもバッチ反復で実現、精度不足時の v2 候補",
+    "Web Speech API フォールバック",
+    "認識後の自動送信(誤認識のまま RAG 検索が走るリスクを避ける)",
+    "録音ソース機能との統合(チャット用音声は保存しない、使い捨て)",
+    "修飾キー組合せ(Ctrl+Space 等)の PTT キー割当 — v1 は単一キーのみ"
+  ],
+  "components": [
+    { "name": "ChatInput.svelte(改修)", "responsibility": "マイクボタン(送信ボタン横)。PTT=キー/ボタン長押し中のみ録音(赤・パルス+経過秒、120秒で自動停止)、ハンズフリー=クリックまたはキー長押しでトグルし常時パルス、無効=非表示。document キーフックはタップ/長押し判別(250ms)・repeat 無視・isComposing/修飾キー不介入。認識結果はカーソル位置に挿入" },
+    { "name": "設定画面「音声入力」セクション(新規)", "responsibility": "モード選択(無効/PTT/ハンズフリー)+ PTT キー割当(「キーを押して設定」方式、Esc キャンセル)。PTT 以外ではキー割当 UI をグレーアウト" },
+    { "name": "apps/api/routers/stt.py(新規)", "responsibility": "POST /api/stt/transcribe。multipart 音声受領 → 必要なら ffmpeg で 16kHz mono WAV 化 → 共有 transcriber で認識 → {text, duration_ms} 返却。extra 未導入は 503、20MB 超過は 413。モードによらずこの 1 本" },
+    { "name": "core/config.py + schemas/settings.py(改修)", "responsibility": "voice_input_mode(off/push_to_talk/hands_free、既定 push_to_talk)と voice_input_ptt_key(KeyboardEvent.code、既定 Space)を既存パターンで追加" },
+    { "name": "core/recording/transcriber.py(既存)", "responsibility": "変更なし。_get_transcriber() 経由で共有 WhisperModel を再利用(language=ja、_serial_lock で直列化済み)" },
+    { "name": "ブラウザ側 VAD(新規・フロント)", "responsibility": "RMS しきい値+ハングオーバー(プリロール約300ms/無音約800ms/1区間最大30秒)。純粋関数に切り出し、しきい値は定数で調整可能に" }
+  ],
+  "dataflow": {
+    "nodes": ["マイク(PCM)", "VAD/キー制御", "WAV化POST", "Whisper認識", "textarea追記"],
+    "edges": [
+      ["マイク(PCM)", "VAD/キー制御"],
+      ["VAD/キー制御", "WAV化POST"],
+      ["WAV化POST", "Whisper認識"],
+      ["Whisper認識", "textarea追記"]
+    ]
+  },
+  "acceptance": [
+    "統合: fake transcriber(transcriber_factory 注入)で正常系 — text 連結と duration_ms を検証",
+    "統合: recording extra 未導入時に 503 + 導入ヒントを返す",
+    "統合: 認識セグメント 0 件で text=\"\" を返す / 20MB 超過で 413",
+    "統合: 設定 roundtrip — voice_input_mode / voice_input_ptt_key の GET/PUT 永続化、不正値は 422",
+    "実機: evaluator スクリーンショット検証 — マイクボタン(各モード)・録音中状態・認識テキスト挿入・設定画面の音声入力セクション(自動テスト GREEN のみでは PASS としない)",
+    "実機: マイク実音声の代替として Chromium fake デバイスフラグまたは UI 状態・エラーパス検証(手段は plan で確定)"
+  ],
+  "risks": [
+    { "risk": "初回リクエストで WhisperModel ロード(数秒〜十数秒)が走る", "mitigation": "録音ソース機能と共用キャッシュのため 2 回目以降は即時。変換中 Spinner で待ちを可視化" },
+    { "risk": "会議録音のライブ字幕と同時実行で認識が待たされる(ハンズフリーは特に体感されやすい)", "mitigation": "_serial_lock 直列化で壊れはしない。チャット用途では数秒許容、体感悪化時は v2 でサーバー側移行を検討" },
+    { "risk": "RMS ベース簡易 VAD は騒音環境で区切りを誤る可能性", "mitigation": "しきい値・ハングオーバーを定数に切り出し調整可能に。精度不足なら v2 で既存 webrtcvad(サーバー側)へ移行" },
+    { "risk": "既定キー Space が空白入力・IME 変換・スクロールと競合", "mitigation": "タップ=通常入力/長押し=PTT の判別で共存(Claude Code と同じ)。keydown で preventDefault し、タップ時は undo 履歴を保つ方法で文字を挿入(plan で確定)。IME 変換中は isComposing ガードで不介入。トレードオフとしてキーリピート入力(空白連打)は不可" },
+    { "risk": "ハンズフリー中の変換失敗が無限ループ化", "mitigation": "3 連続失敗で自動オフ + Toast" },
+    { "risk": "getUserMedia は secure context 必須", "mitigation": "localhost は平文 HTTP でも許可されるため、ローカル利用形態では問題なし" }
+  ]
+}
