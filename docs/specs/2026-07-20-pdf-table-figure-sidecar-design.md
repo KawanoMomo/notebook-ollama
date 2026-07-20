@@ -5,7 +5,7 @@ summary: "PDF取込時に表をMarkdown化してチャンクに反映+完全HTML
 aliases:
   - 表・図サイドカー
   - table-figure-sidecar
-status: review
+status: approved
 date: 2026-07-20
 project: NotebookOllama
 area: ingestion

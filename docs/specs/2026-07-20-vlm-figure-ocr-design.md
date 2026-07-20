@@ -5,7 +5,7 @@ summary: "Ollama VLMで図クロップの説明文を独立チャンク化して
 aliases:
   - VLM図説明
   - vlm-figure-ocr
-status: review
+status: approved
 date: 2026-07-20
 project: NotebookOllama
 area: ingestion

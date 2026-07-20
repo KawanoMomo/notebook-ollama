@@ -28,7 +28,7 @@ tags:
 
 > [!abstract] 基盤
 > - [[notebook-ollama-design|Notebook Ollama 設計仕様書(基盤)]] ✅
-> - [[2026-07-20-beta-feature-flags-design|汎用ベータ機能フレームワーク (Feature Flags)]] 👀
+> - [[2026-07-20-beta-feature-flags-design|汎用ベータ機能フレームワーク (Feature Flags)]] ✅
 
 > [!abstract] 録音 (recording)
 > - [[2026-06-17-recording-source-design|録音ソース機能]] ✅
@@ -41,9 +41,9 @@ tags:
 > - [[2026-07-02-job-status-bar-optimistic-ui-design|ジョブ状態可視化 + Optimistic UI]] ✅
 
 > [!abstract] 取込・検索 (ingestion / retrieval)
-> - [[2026-07-20-pdf-table-figure-sidecar-design|PDF表・図サイドカー抽出 (Stage 1)]] 👀
-> - [[2026-07-20-vlm-figure-ocr-design|VLM図説明・スキャンPDF OCR (Stage 2)]] 👀
-> - [[2026-07-20-visual-embedding-index-design|視覚埋め込み第2インデックス (Stage 3)]] 👀
+> - [[2026-07-20-pdf-table-figure-sidecar-design|PDF表・図サイドカー抽出 (Stage 1)]] ✅
+> - [[2026-07-20-vlm-figure-ocr-design|VLM図説明・スキャンPDF OCR (Stage 2)]] ✅
+> - [[2026-07-20-visual-embedding-index-design|視覚埋め込み第2インデックス (Stage 3)]] ✅
 
 > [!abstract] 要約 (summary)
 > - [[2026-06-26-meeting-adr-templates|議事録テンプレ + ADR 抽出機能]] ✅
@@ -71,6 +71,13 @@ tags:
 > - [[draft-2026-07-06-recording-timeline-markers|ページ遷移の記録は録音タイムラインマーカー機構]] — アーキテクチャ/結合度（発表モード起票）
 > - [[draft-2026-07-06-pptx-render-powerpoint-com|PPTX見た目再現は PowerPoint COM で取込時PDF化]] — 外部依存/取込パイプライン（発表モード起票）
 > - [[chat-voice-input-stateless-stt|チャット音声入力はステートレスSTT + ブラウザ側VAD構成]] — アーキテクチャ/結合度（音声入力起票）
+> - [[draft-2026-07-20-chunk-asset-sidecar|表・図はチャンク紐付きサイドカーアセット方式]] — データモデル/取込（表・図Stage 1起票）
+> - [[draft-2026-07-20-table-dual-representation|表は本文Markdown+サイドカーHTMLの二重表現]] — データ表現（表・図Stage 1起票）
+> - [[draft-2026-07-20-figure-desc-standalone-chunk|VLM図説明は独立チャンク方式]] — データモデル（表・図Stage 2起票）
+> - [[draft-2026-07-20-vlm-ocr-ollama-only|VLM/OCRはOllama一本+エンジン抽象化]] — アーキテクチャ/外部依存（表・図Stage 2起票）
+> - [[draft-2026-07-20-visual-index-qdrant-rrf|視覚インデックスはQdrant別コレクション+RRF融合]] — アーキテクチャ/検索（表・図Stage 3起票）
+> - [[draft-2026-07-20-visual-embedding-ondemand-transformers|視覚埋め込みはOllama外(transformers)でオンデマンド実行]] — 外部依存/リソース管理（表・図Stage 3起票）
+> - [[draft-2026-07-20-beta-feature-flag-registry|機能提供はコード内フラグレジストリ+設定オプトインのベータ機構]] — アーキテクチャ/リリース管理（ベータ基盤起票）
 
 ## 🏷️ ステータス凡例
 

@@ -5,7 +5,7 @@ summary: "機能をベータとして設定オプトインで提供し、評価�
 aliases:
   - ベータ機能
   - feature-flags
-status: review
+status: approved
 date: 2026-07-20
 project: NotebookOllama
 area: platform

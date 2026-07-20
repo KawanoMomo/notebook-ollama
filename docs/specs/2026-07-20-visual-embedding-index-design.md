@@ -5,7 +5,7 @@ summary: "PDFページ全体を視覚埋め込み(Qwen3-VL-Embedding)でQdrant�
 aliases:
   - 視覚インデックス
   - visual-embedding-index
-status: review
+status: approved
 date: 2026-07-20
 project: NotebookOllama
 area: retrieval
