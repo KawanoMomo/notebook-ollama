@@ -1,3 +1,20 @@
+---
+type: spec
+title: Intel iGPU/NPU・AMD Ryzen AI 対応設計
+summary: "Intel iGPU/NPU・AMD Ryzen AI対応。NVIDIA dGPU前提を緩和する設計。"
+aliases:
+  - アクセラレータ対応
+  - iGPU/NPU
+status: review
+date: 2026-06-28
+project: NotebookOllama
+area: accel
+tags:
+  - spec
+related:
+  - "[[2026-06-19-model-selection-design]]"
+---
+
 # Intel iGPU/NPU・AMD Ryzen AI 対応設計
 
 - 日付: 2026-06-28

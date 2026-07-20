@@ -1,3 +1,18 @@
+---
+type: spec
+title: Ollama モデル選択(LLM/埋め込み)切替
+summary: "OllamaモデルをチャットLLMと埋め込みに分類し用途別に選択。既定+ノートブック上書き、次元不一致は再インデックス警告。"
+aliases:
+  - モデル選択
+status: approved
+status_inferred: true
+date: 2026-06-19
+project: NotebookOllama
+area: model
+tags:
+  - spec
+---
+
 # Ollama モデル選択(LLM / 埋め込み)切替 設計仕様
 
 > 対象: 群2 #2「Ollama モデルの切り替え」。チャットLLMと埋め込みモデルを分類し、誤選択を防ぎつつ切替可能にする。

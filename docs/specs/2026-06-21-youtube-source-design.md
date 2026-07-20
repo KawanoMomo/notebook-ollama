@@ -1,3 +1,17 @@
+---
+type: spec
+title: YouTube ソース機能【保留/DEFERRED】
+summary: "YouTube動画のソース化設計(タイムスタンプ引用)。ガバナンス判断待ちで保留。"
+aliases:
+  - YouTubeソース
+status: deferred
+date: 2026-06-21
+project: NotebookOllama
+area: youtube
+tags:
+  - spec
+---
+
 # 設計仕様: YouTube ソース機能(Notebook Ollama) — 【保留 / DEFERRED】
 
 - 日付: 2026-06-21

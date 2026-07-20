@@ -1,0 +1,77 @@
+filters:
+  or:
+    - file.hasTag("spec")
+    - file.hasTag("adr")
+formulas:
+  status_icon: if(status == "approved", "✅ 承認", if(status == "review", "👀 レビュー待ち", if(status == "draft", "✏️ ドラフト", if(status == "planned", "📋 プラン待ち", if(status == "deferred", "⏸️ 保留", if(status == "proposed", "💡 提案(ADR)", status))))))
+  inferred: if(status_inferred, "推定", "")
+properties:
+  title:
+    displayName: タイトル
+  summary:
+    displayName: 要約
+  status:
+    displayName: ステータス
+  area:
+    displayName: 領域
+  date:
+    displayName: 日付
+  category:
+    displayName: カテゴリ
+  type:
+    displayName: 種別
+  formula.status_icon:
+    displayName: 状態
+  formula.inferred:
+    displayName: 備考
+  file.name:
+    displayName: ファイル
+views:
+  - type: table
+    name: 設計書一覧
+    filters:
+      and:
+        - type == "spec"
+    groupBy:
+      property: area
+      direction: ASC
+    order:
+      - file.name
+      - title
+      - summary
+      - formula.status_icon
+      - area
+      - date
+      - formula.inferred
+  - type: table
+    name: ステータス別
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - type
+      - area
+      - date
+  - type: table
+    name: ADR台帳
+    filters:
+      and:
+        - type == "adr-draft"
+    order:
+      - file.name
+      - title
+      - summary
+      - category
+      - formula.status_icon
+      - date
+  - type: cards
+    name: 領域別カード
+    groupBy:
+      property: area
+      direction: ASC
+    order:
+      - file.name
+      - title
+      - type
+      - formula.status_icon

@@ -1,3 +1,18 @@
+---
+type: spec
+title: 録音の自動命名・ソース名編集
+summary: "録音タイトルのLLM自動命名+全ソース名インライン編集、名前採用しきい値スライダー表示改善。"
+aliases:
+  - 録音命名
+status: approved
+status_inferred: true
+date: 2026-06-19
+project: NotebookOllama
+area: recording
+tags:
+  - spec
+---
+
 # 録音の自動命名・ソース名編集 + しきい値表示改善 設計仕様
 
 > 対象バッチ: (a) 名前採用しきい値スライダーの値表示改善 / (c) 録音タイトルのLLM自動命名 + 全ソース名のインライン編集。

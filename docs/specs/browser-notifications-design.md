@@ -1,3 +1,21 @@
+---
+type: spec
+title: Browser Notifications
+summary: "取込/LLM応答の完了をWeb Notifications APIでOS通知(非フォーカス時のみ)。"
+aliases:
+  - Browser Notifications
+  - ブラウザ通知
+status: approved
+status_inferred: true
+date: 2026-05-21
+project: NotebookOllama
+area: notifications
+tags:
+  - spec
+related:
+  - "[[notebook-ollama-design]]"
+---
+
 # Browser Notifications — 設計仕様書
 
 - **作成日**: 2026-05-21

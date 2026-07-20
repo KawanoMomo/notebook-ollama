@@ -1,3 +1,19 @@
+---
+type: spec
+title: Notebook Ollama — 設計仕様書(基盤)
+summary: "ローカルNotebookLMクローンの基盤設計。Ollama+Qdrant+SQLiteでノートブック単位RAG、MCP公開。"
+aliases:
+  - 基盤設計
+  - Notebook Ollama 設計
+status: approved
+date: 2026-05-19
+project: NotebookOllama
+area: foundation
+tags:
+  - spec
+note: 本文表記は「実装プラン待ち」だが実装済みのため approved に補正
+---
+
 # Notebook Ollama — 設計仕様書
 
 - **作成日**: 2026-05-19

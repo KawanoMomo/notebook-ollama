@@ -1,3 +1,21 @@
+---
+type: spec
+title: クラッシュレポート & お知らせ/フィードバックハブ
+summary: "クラッシュ報告+お知らせ+ご意見を拡声器アイコンのハブに統合しGitHubへ届ける。"
+aliases:
+  - フィードバックハブ
+  - クラッシュレポート
+status: approved
+status_inferred: true
+date: 2026-06-28
+project: NotebookOllama
+area: feedback
+tags:
+  - spec
+related:
+  - "[[notebook-ollama-design]]"
+---
+
 # クラッシュレポート & お知らせ/フィードバックハブ — 設計仕様
 
 - 対象プロジェクト: `10_NotebookOllama`

@@ -1,3 +1,18 @@
+---
+type: spec
+title: 録音ソース機能
+summary: "マイク+システム音を録音→オフライン文字起こし/話者分離→整形テキストをRAGソース化、引用から元音声を再生。"
+aliases:
+  - 録音ソース
+status: approved
+status_inferred: true
+date: 2026-06-17
+project: NotebookOllama
+area: recording
+tags:
+  - spec
+---
+
 # 設計仕様: 録音ソース機能(Notebook Ollama)
 
 - 日付: 2026-06-17

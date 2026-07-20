@@ -1,3 +1,19 @@
+---
+type: spec
+title: 開発者モード
+summary: "サーバ側の挙動(アプリログ/Ollama req-res/SSE)をブラウザから可視化する開発者モード。"
+aliases:
+  - 開発者モード
+status: draft
+date: 2026-07-02
+project: NotebookOllama
+area: dev-mode
+tags:
+  - spec
+related:
+  - "[[notebook-ollama-design]]"
+---
+
 # 開発者モード 設計書
 
 - Status: Draft

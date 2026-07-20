@@ -1,3 +1,19 @@
+---
+type: spec
+title: Prompt Injection(プロンプト挿入ツールバー)
+summary: "チャット入力欄上に定型プロンプト挿入ツールバー(設定登録→ワンクリック発火)。"
+aliases:
+  - プロンプト挿入
+  - Prompt Injection
+status: approved
+status_inferred: true
+date: 2026-06-26
+project: NotebookOllama
+area: prompts
+tags:
+  - spec
+---
+
 # Prompt Injection — 設計仕様書
 
 > 作成: 2026-06-26
