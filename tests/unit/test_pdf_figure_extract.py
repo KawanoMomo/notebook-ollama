@@ -3,8 +3,8 @@ import pytest
 pymupdf = pytest.importorskip("pymupdf")
 pytestmark = pytest.mark.pdf
 
-from core.ingestion.parsers.pdf import PdfParser
-from tests.unit.fixtures_pdf import build_pdf_with_image
+from core.ingestion.parsers.pdf import PdfParser  # noqa: E402
+from tests.unit.fixtures_pdf import build_pdf_with_image  # noqa: E402
 
 
 def test_figure_cropped_as_png_asset():

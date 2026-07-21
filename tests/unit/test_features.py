@@ -1,4 +1,4 @@
-from core.features import REGISTRY, get_flag, is_enabled
+from core.features import get_flag, is_enabled
 
 
 def test_registry_contains_table_figure_rag():

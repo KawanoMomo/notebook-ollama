@@ -10,8 +10,6 @@ import pytest
 pymupdf = pytest.importorskip("pymupdf")
 pytestmark = pytest.mark.pdf
 
-from tests.unit.fixtures_pdf import build_pdf_with_image, build_pdf_with_table  # noqa: E402
-
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps  # noqa: E402
 from core.storage.assets_repo import list_assets_for_source  # noqa: E402
 from core.storage.chunks_repo import get_chunks_by_ids  # noqa: E402
@@ -19,6 +17,7 @@ from core.storage.database import connect, migrate  # noqa: E402
 from core.storage.notebooks_repo import create_notebook  # noqa: E402
 from core.storage.sources_repo import SourceStatus, create_source, get_source  # noqa: E402
 from core.storage.vector_store import VectorStore  # noqa: E402
+from tests.unit.fixtures_pdf import build_pdf_with_image, build_pdf_with_table  # noqa: E402
 
 ROWS = [["品名", "数量"], ["ネジ", "10"]]
 

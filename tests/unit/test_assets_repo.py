@@ -1,8 +1,12 @@
 import sqlite3
 
 from core.storage.assets_repo import (
-    AssetRecord, delete_assets_for_source, insert_assets,
-    list_assets_for_chunk_ids, list_assets_for_source, set_chunk_link,
+    AssetRecord,
+    delete_assets_for_source,
+    insert_assets,
+    list_assets_for_chunk_ids,
+    list_assets_for_source,
+    set_chunk_link,
 )
 from core.storage.migrations import run_chunk_assets_migration
 

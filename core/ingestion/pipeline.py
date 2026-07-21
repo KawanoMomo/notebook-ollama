@@ -4,7 +4,7 @@ import json
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -87,7 +87,7 @@ class IngestionPipeline:
                         html=asset.html,
                         md_snippet=asset.md_snippet,
                         image_path=image_path,
-                        created_at=datetime.now(timezone.utc).isoformat(),
+                        created_at=datetime.now(UTC).isoformat(),
                     )
                 )
             insert_assets(conn, records)

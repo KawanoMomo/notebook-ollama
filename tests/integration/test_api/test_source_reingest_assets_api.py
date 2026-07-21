@@ -1,7 +1,7 @@
 """Task 8: reingest / assets API のベータゲート・ディスパッチ・共通クリーンアップ。
 
-実 Ollama やパース処理は不要な層なので ctx.pipeline を calls 記録用フェイクに
-差し替える(パイプライン内部のアセット抽出・紐付けは tests/integration/test_ingest_assets.py 側で検証)。
+実 Ollama やパース処理は不要な層なので ctx.pipeline を calls 記録用フェイクに差し替える
+(パイプライン内部のアセット抽出・紐付けは tests/integration/test_ingest_assets.py 側で検証)。
 """
 from __future__ import annotations
 

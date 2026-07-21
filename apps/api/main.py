@@ -23,8 +23,8 @@ from apps.api.routers import (  # noqa: E402
     chat,
     crash,
     events,
-    feedback_hub,
     features,
+    feedback_hub,
     health,
     links,
     notebooks,
@@ -212,6 +212,7 @@ async def lifespan(app: FastAPI):
         # broker に event loop を渡し、設定が ON で永続化されていれば収集を開始。
         # tail は購読者 0→1 で開始、1→0 で停止(I12)。フックはプロセスで 1 回だけ。
         import asyncio as _asyncio
+
         from core.dev_logs.broker import broker as _dev_broker
         from core.dev_logs.ring import ring as _dev_ring
         _dev_broker.set_loop(_asyncio.get_running_loop())
