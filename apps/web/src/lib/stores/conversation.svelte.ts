@@ -6,6 +6,7 @@ import type {
 } from "$lib/api/types";
 import { chatApi, type ChatEvent } from "$lib/api/chat";
 import { notify, requestPermissionOnce } from "$lib/utils/notifications";
+import { stripTruncationNote } from "$lib/utils/truncation";
 
 export interface ConversationStore {
   readonly conversation: Conversation | null;
@@ -241,7 +242,9 @@ export function createConversationStore(api = chatApi): ConversationStore {
       // 最後のメッセージを streaming 表示へ載せ替える(1つの吹き出しに見せる)。
       messages = messages.slice(0, -1);
       streaming = true;
-      streamingText = last.content;
+      // 旧注記(打ち切り警告)を残したまま継続表示すると、継続ストリーミング中
+      // ずっと本文中央に警告が挟まって見えるため、シード時点で除去する。
+      streamingText = stripTruncationNote(last.content);
       thinkingChars = 0;
       streamingHits = [];
       continuingInfo = null;
@@ -297,6 +300,20 @@ export function createConversationStore(api = chatApi): ConversationStore {
             truncated: error ? last.truncated : lastTruncated,
           },
         ];
+        // send() と同様の通知。中断(abort)時は send() 同様エラー扱いしない
+        // ので通知もしない。質問文は continueLast からは直接見えないため
+        // body は固定短文で済ませる。
+        if (!abortController?.signal.aborted) {
+          if (error) {
+            notify({ title: "回答エラー", body: error.slice(0, 80), tag: "chat-error" });
+          } else {
+            notify({
+              title: "回答完了",
+              body: "続きの生成が完了しました",
+              tag: "chat-done",
+            });
+          }
+        }
         streaming = false;
         streamingText = "";
         streamingHits = [];
