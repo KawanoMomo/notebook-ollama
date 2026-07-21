@@ -92,6 +92,7 @@ async def ask_tool(
         {"role": "system", "content": SYSTEM_PROMPT + "\n" + style_hint},
         {"role": "user", "content": user_prompt},
     ]
+    from core.exceptions import AppError
     from core.generation.stream import TRUNCATION_NOTE_PREFIX
     from core.ollama.client import ThinkingChunk
 
@@ -100,30 +101,50 @@ async def ask_tool(
     answer_parts: list[str] = []
     length_hits = 0
     truncated = False
-    for _round_idx in range(1 + auto_continue_max):
+    continuation_failed = False  # 継続ラウンド(round>0)がAppErrorで失敗したか
+    for round_idx in range(1 + auto_continue_max):
         req_messages = list(messages)
         if answer_parts:
             # Ollama は末尾 assistant メッセージの続きから生成する(prefill)
             req_messages.append({"role": "assistant", "content": "".join(answer_parts)})
         stream_meta: dict[str, Any] = {}
-        async for tok in ollama.chat_stream(
-            model=chosen_model,
-            messages=req_messages,
-            options={"num_ctx": num_ctx, "num_predict": budget_tokens},
-            meta=stream_meta,
-        ):
-            if isinstance(tok, ThinkingChunk):
-                continue  # 思考は回答に含めない
-            answer_parts.append(tok)
+        round_parts: list[str] = []
+        try:
+            async for tok in ollama.chat_stream(
+                model=chosen_model,
+                messages=req_messages,
+                options={"num_ctx": num_ctx, "num_predict": budget_tokens},
+                meta=stream_meta,
+            ):
+                if isinstance(tok, ThinkingChunk):
+                    continue  # 思考は回答に含めない
+                round_parts.append(tok)
+        except AppError:
+            if round_idx == 0:
+                raise
+            # core/generation/stream.py の同処理と同じ graceful degradation。
+            # 継続ラウンドの失敗は途中本文を失わない。この回は1トークンも
+            # 生成できていないため length_hits には数えない。
+            answer_parts.extend(round_parts)
+            truncated = True
+            continuation_failed = True
+            break
+        answer_parts.extend(round_parts)
         if stream_meta.get("done_reason") != "length":
             truncated = False
             break
         truncated = True
         length_hits += 1
     if truncated:
-        answer_parts.append(
-            f"{TRUNCATION_NOTE_PREFIX}({budget_tokens}×{length_hits}回)に達したため打ち切られました。"
-        )
+        if continuation_failed:
+            answer_parts.append(
+                f"{TRUNCATION_NOTE_PREFIX}({budget_tokens}×{length_hits}回)に達したのち、"
+                "続きの生成に失敗したため途中までの応答を表示しています。"
+            )
+        else:
+            answer_parts.append(
+                f"{TRUNCATION_NOTE_PREFIX}({budget_tokens}×{length_hits}回)に達したため打ち切られました。"
+            )
     answer = "".join(answer_parts)
     citations = [
         {

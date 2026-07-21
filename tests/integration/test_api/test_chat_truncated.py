@@ -10,6 +10,9 @@ from apps.api.main import create_app
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("NOTEBOOK_OLLAMA_OLLAMA__ENDPOINT", "http://fake")
+    # 既定値(auto_continue_max=2)が将来変わってもこのテストの respx 応答数
+    # (初回+継続2回=3)が巻き込まれないよう明示 pin する(トリアージ#8)。
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_GENERATION__AUTO_CONTINUE_MAX", "2")
     app = create_app()
     with TestClient(app) as c:
         yield c
