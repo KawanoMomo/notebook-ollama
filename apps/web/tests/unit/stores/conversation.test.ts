@@ -48,6 +48,8 @@ describe('conversation store', () => {
         citations: [],
         model_used: 'qwen2.5:14b',
         dropped_history: 0,
+        truncated: false,
+        continued_rounds: 0,
       },
     ];
     const store = createConversationStore(makeApi(events) as never);

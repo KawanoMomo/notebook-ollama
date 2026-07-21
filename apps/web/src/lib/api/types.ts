@@ -102,6 +102,8 @@ export interface Message {
   citations: Citation[];
   model: string | null;
   created_at: string;
+  /** 出力トークン上限で打ち切られたままの応答(issue #22)。手動継続の対象。 */
+  truncated?: boolean;
 }
 
 export interface Conversation {
