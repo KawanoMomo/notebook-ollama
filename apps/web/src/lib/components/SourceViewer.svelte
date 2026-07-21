@@ -554,13 +554,16 @@
     line-height: 1.6;
     margin: 0;
   }
-  :global(.chunk table) {
+  :global(.chunk table),
+  :global(.doc-section table) {
     border-collapse: collapse;
     margin: 8px 0;
     font-size: 12px;
   }
   :global(.chunk td),
-  :global(.chunk th) {
+  :global(.chunk th),
+  :global(.doc-section td),
+  :global(.doc-section th) {
     border: 1px solid var(--color-border);
     padding: 3px 8px;
     text-align: left;
