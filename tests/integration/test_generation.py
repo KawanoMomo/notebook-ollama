@@ -2,6 +2,7 @@ import pytest
 
 from core.generation.stream import GenerationDeps, GenerationEvent, GenerationService
 from core.retrieval.search import RetrievedChunk
+from core.storage.assets_repo import AssetRecord
 
 
 class FakeRetrieval:
@@ -188,3 +189,89 @@ async def test_generation_emits_thinking_events_but_excludes_from_answer():
     final = next(e for e in events if e.kind == "done")
     assert final.data["answer"] == "回答"
     assert "思考中の独り言" not in final.data["answer"]
+
+
+MERGED_MD = "| A | B |\n| --- | --- |\n| 1 |  |"
+MERGED_HTML = "<table><tr><th>A</th><th>B</th></tr><tr><td>1</td></tr></table>"
+
+
+class TableRetrieval:
+    async def search(self, *, notebook_id, query, limit, source_ids=None):
+        return [
+            RetrievedChunk(
+                chunk_id="c1",
+                source_id="s1",
+                source_title="ARM",
+                source_kind="pdf",
+                page=42,
+                heading_path="§3",
+                ord=0,
+                text=f"前文\n\n{MERGED_MD}\n\n後文",
+                token_count=10,
+                score=0.9,
+            ),
+        ]
+
+
+class RecordingGateway:
+    """chat_stream に渡された messages を観測用に保持する fake gateway。"""
+
+    def __init__(self):
+        self.received_messages: list[dict[str, str]] | None = None
+
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
+        self.received_messages = messages
+        for tok in ["回", "答", "[^1]"]:
+            yield tok
+        if meta is not None:
+            meta["done_reason"] = "stop"
+
+
+def _table_asset() -> AssetRecord:
+    return AssetRecord(
+        id="a1", source_id="s1", chunk_id="c1", kind="table", page=42,
+        bbox_json=None, html=MERGED_HTML, md_snippet=MERGED_MD, image_path=None,
+        created_at="",
+    )
+
+
+@pytest.mark.asyncio
+async def test_generation_substitutes_table_html_in_prompt_but_not_citation_snippet():
+    """結合セル表はLLMへのプロンプトのみHTML化され、引用スニペットは元のMarkdown
+    のまま(200文字切り詰めでHTMLタグが分断されるのを防ぐ設計、Task 9)。"""
+    gateway = RecordingGateway()
+    svc = GenerationService(
+        deps=GenerationDeps(
+            retrieval=TableRetrieval(),
+            ollama=gateway,
+            assets_lookup=lambda chunk_ids: {"c1": [_table_asset()]},
+        )
+    )
+    events: list[GenerationEvent] = []
+    async for ev in svc.run(**_run_args()):
+        events.append(ev)
+
+    assert gateway.received_messages is not None
+    user_content = gateway.received_messages[-1]["content"]
+    assert MERGED_HTML in user_content
+    assert MERGED_MD not in user_content
+
+    final = next(e for e in events if e.kind == "done")
+    citations = final.data["citations"]
+    assert citations
+    snippet = citations[0]["snippet"]
+    assert "<table" not in snippet
+    assert MERGED_MD in snippet
+
+
+@pytest.mark.asyncio
+async def test_generation_without_assets_lookup_leaves_text_unchanged():
+    """assets_lookup が None(既定)なら従来どおり素通り。"""
+    gateway = RecordingGateway()
+    svc = GenerationService(deps=GenerationDeps(retrieval=TableRetrieval(), ollama=gateway))
+    async for _ in svc.run(**_run_args()):
+        pass
+    assert gateway.received_messages is not None
+    user_content = gateway.received_messages[-1]["content"]
+    assert MERGED_MD in user_content
+    assert MERGED_HTML not in user_content

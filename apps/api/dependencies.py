@@ -21,6 +21,7 @@ from core.ollama.gateway import OllamaGateway
 from core.recording.session import RecordingRegistry
 from core.retrieval.search import RetrievalService
 from core.settings_store import load_overrides
+from core.storage.assets_repo import list_assets_for_chunk_ids
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
 from core.summary.registry import SummaryTaskRegistry
@@ -399,7 +400,17 @@ def build_context(config: AppConfig) -> AppContext:
         embedding_model=config.ollama.embedding_model,
         embedding_model_getter=lambda: config.ollama.embedding_model,
     )
-    generation = GenerationService(deps=GenerationDeps(retrieval=retrieval, ollama=gateway))
+    generation = GenerationService(
+        deps=GenerationDeps(
+            retrieval=retrieval,
+            ollama=gateway,
+            assets_lookup=lambda chunk_ids: (
+                list_assets_for_chunk_ids(conn, chunk_ids)
+                if _pipeline_features.is_enabled("table-figure-rag")
+                else {}
+            ),
+        )
+    )
     recordings = RecordingRegistry()
     # `recording` extra (faster-whisper / sherpa-onnx / soundfile …)が未導入の
     # ベース install では recording_pipeline.py の top-level import が
