@@ -151,6 +151,8 @@ export interface OllamaSettingsUpdate {
 export interface GenerationSettings {
   context_budget_ratio: number;
   response_budget_tokens: number;
+  /** done_reason=length 検知時の自動継続最大回数(issue #22)。0 で無効。 */
+  auto_continue_max: number;
 }
 
 export interface RetrievalSettings {

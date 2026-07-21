@@ -141,7 +141,7 @@ const FULL_SETTINGS_UNDECIDED: AppSettings = {
     request_timeout_seconds: 600,
     chat_read_timeout_seconds: 600,
   },
-  generation: { context_budget_ratio: 0.5, response_budget_tokens: 2048 },
+  generation: { context_budget_ratio: 0.5, response_budget_tokens: 2048, auto_continue_max: 0 },
   retrieval: { top_k: 5, top_k_max: 10, min_history_turns: 1 },
   audio: {
     mic_device_index: null,
