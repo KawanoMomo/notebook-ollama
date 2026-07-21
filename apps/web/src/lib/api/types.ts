@@ -462,3 +462,21 @@ export interface FeatureFlagInfo {
   stage: 'beta' | 'ga';
   enabled: boolean;
 }
+
+/**
+ * 表・図アセット 1 件。backend `core/storage/assets_repo.py::AssetRecord` を
+ * `vars()` でそのまま JSON 化したもの。図(kind='figure')は html/md_snippet が
+ * null、表(kind='table')は image_path が null。
+ */
+export interface AssetInfo {
+  id: string;
+  source_id: string;
+  chunk_id: string | null;
+  kind: 'table' | 'figure';
+  page: number | null;
+  bbox_json: string | null;
+  html: string | null;
+  md_snippet: string | null;
+  image_path: string | null;
+  created_at: string;
+}
