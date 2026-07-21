@@ -174,3 +174,4 @@ truncated = (最終 round でも done_reason == "length")
 | 手動継続の retrieval | 同一質問で再実行 | prefill 再構築に必要。決定的なので citation 番号は維持 |
 | MCP ask の手動継続 | なし | 機械呼び出しに人間の承認は不成立。自動分のみ |
 | DB 追記の方式 | 最終 assistant メッセージを update | 1つの回答として履歴・エクスポートの整合を保つ |
+| 手動継続完了時の通知 | send() と同様に notify する(abort 時なし) | 継続は数分かかりタブを離れがち。send() とのパリティ(2026-07-21 最終レビュー時に先行決定) |
