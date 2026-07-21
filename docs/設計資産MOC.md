@@ -66,6 +66,8 @@ tags:
 > - [[draft-2026-07-06-recording-timeline-markers|ページ遷移の記録は録音タイムラインマーカー機構]] — アーキテクチャ/結合度（発表モード起票）
 > - [[draft-2026-07-06-pptx-render-powerpoint-com|PPTX見た目再現は PowerPoint COM で取込時PDF化]] — 外部依存/取込パイプライン（発表モード起票）
 > - [[chat-voice-input-stateless-stt|チャット音声入力はステートレスSTT + ブラウザ側VAD構成]] — アーキテクチャ/結合度（音声入力起票）
+> - [[draft-2026-07-20-assistant-prefill-continuation|打ち切り継続は assistant prefill(末尾assistantメッセージ再送)]] — アーキテクチャ/結合度（自動継続起票）
+> - [[draft-2026-07-20-truncated-persistence-update-in-place|truncatedはmessagesカラム永続化+手動継続は最終assistantメッセージ追記更新]] — データモデル（自動継続起票）
 
 ## 🏷️ ステータス凡例
 

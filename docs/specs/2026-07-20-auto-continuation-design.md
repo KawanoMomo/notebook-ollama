@@ -92,6 +92,11 @@ truncated = (最終 round でも done_reason == "length")
 打ち切り警告注記は自動継続が尽きた場合のみ本文末尾に付け、文言を
 「⚠️ 応答が出力トークン上限(4096×3回)に達したため打ち切られました。」の形式に更新する。
 
+継続ラウンド(round>0)自体が Ollama エラーで失敗した場合(R7 graceful degradation)は、
+文言を「⚠️ 応答が出力トークン上限(4096×3回)に達したのち、続きの生成に失敗したため
+途中までの応答を表示しています。」に分岐する(`core/generation/stream.py` /
+`core/mcp/tools/ask.py` 共通)。
+
 ### 4.3 手動継続 API(チャットのみ)
 
 `POST /api/notebooks/{notebook_id}/conversations/{conv_id}/continue` (SSE)
