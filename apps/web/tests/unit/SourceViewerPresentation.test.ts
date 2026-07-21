@@ -40,6 +40,16 @@ vi.mock('$lib/stores/currentNotebook.svelte', () => ({
   currentNotebookStore: notebookStore,
 }));
 
+const sourcesApiMock = vi.hoisted(() => ({
+  listAssets: vi.fn(),
+}));
+vi.mock('$lib/api/sources', () => ({ sourcesApi: sourcesApiMock }));
+
+const featuresStoreMock = vi.hoisted(() => ({
+  flags: [] as { id: string; enabled: boolean }[],
+}));
+vi.mock('$lib/stores/features.svelte', () => ({ featuresStore: featuresStoreMock }));
+
 // SlideView は canvas/pdf.js を使うため差し替え(PresentationView.test.ts と同じ)。
 vi.mock('$lib/components/SlideView.svelte', async () => {
   const Stub = (await import('./stubs/SlideViewStub.svelte')).default;
@@ -70,6 +80,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   notebookStore.sources = [];
   notebookStore.links = [];
+  featuresStoreMock.flags = [];
+  sourcesApiMock.listAssets.mockResolvedValue({ assets: [] });
 });
 afterEach(() => cleanup());
 
@@ -233,5 +245,82 @@ describe('SourceViewer — スライド資料側のページ別発言の逆引�
       expect(screen.getByText('セグメント')).toBeTruthy();
     });
     expect(links.slideUtterances).not.toHaveBeenCalled();
+  });
+});
+
+describe('SourceViewer — 全文表示(チャンク未選択)時の表アセットHTML置換', () => {
+  it('table-figure-rag 有効 + ページ一致の表アセットがあれば、Markdown snippet を HTML に置換して描画する', async () => {
+    const content: SourceContent = {
+      kind: 'document',
+      sections: [{ heading_path: null, page: 1, text: '前文\n| 品名 | 数量 |\n後文' }],
+    };
+    sourceDetail.getSourceContent.mockResolvedValue(content);
+    sourcesApiMock.listAssets.mockResolvedValue({
+      assets: [
+        {
+          id: 'a1',
+          source_id: 'parent1',
+          chunk_id: null,
+          kind: 'table',
+          page: 1,
+          bbox_json: null,
+          html: '<table><tr><td>品名</td><td>数量</td></tr></table>',
+          md_snippet: '| 品名 | 数量 |',
+          image_path: null,
+          created_at: 't',
+        },
+      ],
+    });
+    featuresStoreMock.flags = [{ id: 'table-figure-rag', enabled: true }];
+    notebookStore.sources = [makeSource({ id: 'parent1', kind: 'pdf', title: '資料A' })];
+
+    const { container } = render(SourceViewer, {
+      props: { notebookId: 'nb1', selectedChunkId: null, selectedSourceId: 'parent1' },
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector('table')).toBeTruthy();
+    });
+    expect(screen.queryByText(/\| 品名 \| 数量 \|/)).toBeNull();
+  });
+
+  it('table-figure-rag が無効なら、表アセットが存在してもプレーンテキストのまま表示する', async () => {
+    const content: SourceContent = {
+      kind: 'document',
+      sections: [{ heading_path: null, page: 1, text: '前文\n| 品名 | 数量 |\n後文' }],
+    };
+    sourceDetail.getSourceContent.mockResolvedValue(content);
+    featuresStoreMock.flags = [];
+    notebookStore.sources = [makeSource({ id: 'parent1', kind: 'pdf', title: '資料A' })];
+
+    const { container } = render(SourceViewer, {
+      props: { notebookId: 'nb1', selectedChunkId: null, selectedSourceId: 'parent1' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/品名/)).toBeTruthy();
+    });
+    expect(container.querySelector('table')).toBeNull();
+    expect(sourcesApiMock.listAssets).not.toHaveBeenCalled();
+  });
+
+  it('一致する表アセットが無ければプレーンテキストのままフォールバックする', async () => {
+    const content: SourceContent = {
+      kind: 'document',
+      sections: [{ heading_path: null, page: 1, text: '表なし本文' }],
+    };
+    sourceDetail.getSourceContent.mockResolvedValue(content);
+    sourcesApiMock.listAssets.mockResolvedValue({ assets: [] });
+    featuresStoreMock.flags = [{ id: 'table-figure-rag', enabled: true }];
+    notebookStore.sources = [makeSource({ id: 'parent1', kind: 'pdf', title: '資料A' })];
+
+    const { container } = render(SourceViewer, {
+      props: { notebookId: 'nb1', selectedChunkId: null, selectedSourceId: 'parent1' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('表なし本文')).toBeTruthy();
+    });
+    expect(container.querySelector('table')).toBeNull();
   });
 });

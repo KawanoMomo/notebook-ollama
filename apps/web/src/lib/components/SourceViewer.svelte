@@ -64,6 +64,9 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let content = $state<SourceContent | null>(null);
+  // 全文表示(チャンク未選択)側: セクション index → 表アセット置換済み HTML。
+  // section には chunk_id が無く page のみ持つため、ページ単位でマッチングする。
+  let sectionTableHtml = $state<Record<number, string>>({});
   let contentLoading = $state(false);
   let contentError = $state<string | null>(null);
   // Bindable seek handlers published by the per-channel shared players.
@@ -137,10 +140,36 @@
     }
     contentLoading = true;
     contentError = null;
+    sectionTableHtml = {};
     sourceDetailApi
       .getSourceContent(notebookId, sid)
       .then((c) => {
         content = c;
+        if (c.kind === 'document' && isTableFigureRagEnabled() && sourceMeta?.kind === 'pdf') {
+          sourcesApi
+            .listAssets(notebookId, sid)
+            .then((res: { assets: AssetInfo[] }) => {
+              const next: Record<number, string> = {};
+              c.sections.forEach((section, i) => {
+                const tableAssets = res.assets.filter(
+                  (a) => a.kind === 'table' && a.page === section.page && a.html && a.md_snippet,
+                );
+                let text = section.text;
+                let changed = false;
+                for (const a of tableAssets) {
+                  if (text.includes(a.md_snippet!)) {
+                    text = text.replace(a.md_snippet!, a.html!);
+                    changed = true;
+                  }
+                }
+                if (changed) next[i] = text;
+              });
+              sectionTableHtml = next;
+            })
+            .catch(() => {
+              /* best-effort; プレーンテキスト表示にフォールバックしたままにする */
+            });
+        }
       })
       .catch((e) => {
         contentError = e instanceof Error ? e.message : String(e);
@@ -348,7 +377,11 @@
             {#if section.page}
               <div class="page">p.{section.page}</div>
             {/if}
-            <pre class="text">{section.text}</pre>
+            {#if sectionTableHtml[i]}
+              {@html tableHtmlToSafeMarkup(sectionTableHtml[i])}
+            {:else}
+              <pre class="text">{section.text}</pre>
+            {/if}
           </section>
         {/each}
         {#if isSlideKind && slideUtterances && slideUtterances.length > 0}
