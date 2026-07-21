@@ -391,7 +391,11 @@ async def get_source_content(
         )
     data = source_path.read_bytes()
     parser = get_parser(src.kind)
-    doc = parser.parse_bytes(data, source_hint=src.origin)
+    if src.kind == "pdf":
+        extract = ctx.features.is_enabled("table-figure-rag")
+        doc = parser.parse_bytes(data, source_hint=src.origin, extract_assets=extract)
+    else:
+        doc = parser.parse_bytes(data, source_hint=src.origin)
     sections = [
         DocumentSection(
             heading_path=" > ".join(s.heading_path) if s.heading_path else None,
