@@ -14,7 +14,7 @@ from core.ingestion.chunker import chunk_document
 from core.ingestion.parsers import get_parser
 from core.logging import get_logger
 from core.storage.assets_repo import AssetRecord, insert_assets
-from core.storage.chunks_repo import ChunkRecord, insert_chunks
+from core.storage.chunks_repo import ChunkRecord, insert_chunks, list_chunks_for_source
 from core.storage.sources_repo import SourceStatus, get_source, update_source_status
 from core.storage.vector_store import ChunkVector, VectorStore
 
@@ -146,6 +146,51 @@ class IngestionPipeline:
         except Exception:
             log.warning("describe_figures_failed", source_id=source_id, exc_info=True)
         return new_records
+
+    async def describe_existing_figures(self, *, source_id: str) -> None:
+        """既存ソースの未解析figureアセットをVLMで説明する(手動「図を解析」用)。
+        取込パイプライン外からの呼び出しを想定した公開メソッド。失敗しても例外は
+        投げない(呼び出し元は background task なので握りつぶしても実害がない)。"""
+        conn = self._deps.conn
+        try:
+            src = get_source(conn, source_id)
+        except Exception:
+            log.warning(
+                "describe_existing_figures_source_lookup_failed",
+                source_id=source_id,
+                exc_info=True,
+            )
+            return
+        chunk_records = list_chunks_for_source(conn, source_id)
+        new_records = await self._describe_figures(
+            conn, source_id=source_id, chunk_records=chunk_records, notebook_id=src.notebook_id,
+        )
+        if not new_records:
+            return
+        insert_chunks(conn, new_records)
+        for rec in new_records:
+            try:
+                vec = await self._deps.ollama.embed(model=self._embedding_model(), text=rec.text)
+            except Exception:
+                log.warning(
+                    "describe_existing_figures_embed_failed",
+                    source_id=source_id,
+                    chunk_id=rec.id,
+                    exc_info=True,
+                )
+                continue
+            self._deps.vector_store.upsert([
+                ChunkVector(
+                    id=rec.id,
+                    vector=vec,
+                    notebook_id=rec.notebook_id,
+                    source_id=rec.source_id,
+                    source_kind=src.kind,
+                    page=rec.page,
+                    heading_path=rec.heading_path,
+                    ord=rec.ord,
+                )
+            ])
 
     async def run(self, *, source_id: str, kind: str, data: bytes) -> None:
         conn = self._deps.conn

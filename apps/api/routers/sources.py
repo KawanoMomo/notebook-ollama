@@ -6,6 +6,7 @@ from typing import Annotated
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Path, Request, UploadFile
 from fastapi.responses import Response
+from starlette.responses import FileResponse
 
 from apps.api.routers.audio import _resolve_audio_path
 from apps.api.routers.features import require_feature
@@ -626,3 +627,40 @@ async def list_source_assets(request: Request, notebook_id: str, source_id: str)
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
     rows = list_assets_for_source(ctx.conn, source_id)
     return {"assets": [vars(a) for a in rows]}
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/describe-figures",
+    status_code=202,
+    dependencies=[Depends(require_feature("table-figure-rag"))],
+)
+async def describe_figures(
+    request: Request, background: BackgroundTasks, notebook_id: str, source_id: str
+) -> dict:
+    """未解析の図アセットをVLMで説明する(手動「図を解析」)。"""
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    background.add_task(ctx.pipeline.describe_existing_figures, source_id=source_id)
+    return {"status": "accepted"}
+
+
+@router.get(
+    "/{notebook_id}/sources/{source_id}/assets/{asset_id}",
+    dependencies=[Depends(require_feature("table-figure-rag"))],
+)
+async def get_asset_image(
+    request: Request, notebook_id: str, source_id: str, asset_id: str
+) -> Response:
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    assets = [a for a in list_assets_for_source(ctx.conn, source_id) if a.id == asset_id]
+    if not assets or not assets[0].image_path:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "asset not found")
+    path = ctx.config.assets_dir / assets[0].image_path
+    if not path.exists():
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "asset image not found on disk")
+    return FileResponse(path, media_type="image/png")
