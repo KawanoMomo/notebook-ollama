@@ -295,6 +295,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             "ollama.model_not_found": 404,
             "mcp.unauthorized": 401,
             "feature.disabled": 403,
+            "validation.failed": 400,
         }
         return JSONResponse(
             status_code=status_map.get(exc.code.value, 500),

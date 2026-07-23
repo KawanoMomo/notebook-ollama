@@ -90,8 +90,10 @@ describe('featuresApi.setOptin', () => {
   });
 
   it('throws ApiError on 400 for a GA flag (server rejects optin change)', async () => {
+    // 実装: core/feature_service.py::set_optin が ErrorCode.VALIDATION_FAILED
+    // ("validation.failed") を送出し、apps/api/main.py の status_map で 400 に写像される。
     fetchMock().mockResolvedValueOnce(
-      errorResponse(400, 'validation.body', 'GA機能のオプトインは変更できません'),
+      errorResponse(400, 'validation.failed', 'GA機能のオプトインは変更できません'),
     );
     await expect(featuresApi.setOptin('some-ga-flag', true)).rejects.toMatchObject({
       status: 400,

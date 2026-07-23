@@ -43,3 +43,20 @@ def test_require_feature_blocks_when_disabled(client):
     )
     assert res.status_code == 403
     assert res.json()["error"]["code"] == "feature.disabled"
+
+
+def test_put_ga_flag_returns_400_not_500(client, monkeypatch):
+    """GA昇格(stage='ga')後もオプトイン変更は拒否されるが、その拒否は
+    500 ではなく 400 で返らなければならない(status_map への
+    "validation.failed" 登録漏れの回帰テスト)。"""
+    import core.features as features_mod
+
+    ga_flag = features_mod.FeatureFlag(
+        id="already-ga", name="GA済み機能", description="", stage="ga",
+        since="2026-01-01", spec="",
+    )
+    monkeypatch.setattr(features_mod, "REGISTRY", (*features_mod.REGISTRY, ga_flag))
+
+    res = client.put("/api/features/already-ga", json={"enabled": False})
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == "validation.failed"

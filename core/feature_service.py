@@ -10,6 +10,14 @@ _SECTION = "beta_optins"
 
 
 class FeatureService:
+    """settings.json の beta_optins セクションを都度読み直すステートレスなサービス。
+
+    このステートレス性のおかげで、build_context() (pipeline/generation 用) と
+    main.py の lifespan (API 用) が独立に2つのインスタンスを持っても常に同じ
+    設定を読む。将来 in-memory キャッシュを足す場合は、この2インスタンス分離が
+    設定変更の反映漏れ(片方だけ古い値を見る)を起こさないか要検討。
+    """
+
     def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
 
