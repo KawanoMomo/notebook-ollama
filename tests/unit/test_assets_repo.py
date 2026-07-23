@@ -8,21 +8,23 @@ from core.storage.assets_repo import (
     list_assets_for_source,
     set_chunk_link,
 )
-from core.storage.migrations import run_chunk_assets_migration
+from core.storage.migrations import run_chunk_assets_migration, run_desc_chunk_id_migration
 
 
 def _conn():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     run_chunk_assets_migration(conn)
+    run_desc_chunk_id_migration(conn)
     return conn
 
 
-def _asset(aid="a1", chunk_id=None, kind="table"):
+def _asset(aid="a1", chunk_id=None, kind="table", desc_chunk_id=None):
     return AssetRecord(
         id=aid, source_id="s1", chunk_id=chunk_id, kind=kind, page=1,
         bbox_json="[0,0,100,50]", html="<table><tr><td>x</td></tr></table>",
         md_snippet="| x |", image_path=None, created_at="2026-07-20T00:00:00",
+        desc_chunk_id=desc_chunk_id,
     )
 
 

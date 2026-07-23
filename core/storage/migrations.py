@@ -84,3 +84,25 @@ def run_message_truncated_migration(conn: sqlite3.Connection) -> None:
     for name, sqltype in _MESSAGE_TRUNCATED_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE messages ADD COLUMN {name} {sqltype}")
+
+
+_CHUNK_KIND_COLUMNS = (("kind", "TEXT NOT NULL DEFAULT 'text'"),)
+
+
+def run_chunk_kind_migration(conn: sqlite3.Connection) -> None:
+    """Add chunks.kind to mark chunk type (text/figure_desc). Idempotent."""
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(chunks)")}
+    for name, sqltype in _CHUNK_KIND_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE chunks ADD COLUMN {name} {sqltype}")
+
+
+_DESC_CHUNK_ID_COLUMNS = (("desc_chunk_id", "TEXT"),)
+
+
+def run_desc_chunk_id_migration(conn: sqlite3.Connection) -> None:
+    """Add chunk_assets.desc_chunk_id to link to description chunk. Idempotent."""
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(chunk_assets)")}
+    for name, sqltype in _DESC_CHUNK_ID_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE chunk_assets ADD COLUMN {name} {sqltype}")

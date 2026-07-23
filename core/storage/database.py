@@ -25,7 +25,9 @@ def migrate(conn: sqlite3.Connection) -> None:
     from core.storage.migrations import (
         run_adr_migration,
         run_chunk_assets_migration,
+        run_chunk_kind_migration,
         run_chunk_timecode_migration,
+        run_desc_chunk_id_migration,
         run_message_truncated_migration,
         run_summary_migration,
     )
@@ -34,3 +36,5 @@ def migrate(conn: sqlite3.Connection) -> None:
     run_adr_migration(conn)
     run_chunk_assets_migration(conn)
     run_message_truncated_migration(conn)
+    run_chunk_kind_migration(conn)
+    run_desc_chunk_id_migration(conn)
