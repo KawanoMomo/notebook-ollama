@@ -9,6 +9,7 @@ from core.ollama.gateway import probe_embedding_dim
 from core.ollama.models_info import (
     classify_kind,
     classify_recommendation,
+    has_vision_capability,
     parse_context_window,
 )
 from core.storage import notebooks_repo
@@ -47,6 +48,7 @@ async def list_models(request: Request) -> dict[str, Any]:
                 "modified_at": tag.get("modified_at"),
                 "kind": kind,
                 "embedding_dim": embedding_dim,
+                "has_vision": has_vision_capability(capabilities),
                 "recommended_for": classify_recommendation(
                     name=name,
                     family=details.get("family", ""),

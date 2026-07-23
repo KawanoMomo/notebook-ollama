@@ -122,6 +122,7 @@ export interface ModelInfo {
   kind: "chat" | "embedding" | "both" | "unknown";
   recommended_for: string[];
   embedding_dim: number | null;
+  has_vision: boolean;
 }
 
 export interface NotebookDefault {
