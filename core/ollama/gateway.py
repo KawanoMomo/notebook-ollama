@@ -10,7 +10,7 @@ class _ClientLike(Protocol):
         self, *, model: str, text: str, options: dict[str, Any] | None = None
     ) -> list[float]: ...
     def chat_stream(
-        self, *, model: str, messages: list[dict[str, str]], options: dict[str, Any] | None = None
+        self, *, model: str, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
     ) -> AsyncIterator[str]: ...
 
 
@@ -41,7 +41,7 @@ class OllamaGateway:
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         options: dict[str, Any] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
