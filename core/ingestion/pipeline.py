@@ -42,6 +42,8 @@ class PipelineDeps:
     summary_runner: Callable[[str], Any] | None = None
     assets_dir: Path | None = None
     assets_enabled: Callable[[], bool] | None = None
+    figure_describer: Any | None = None  # FigureDescriber プロトコル
+    figure_describe_enabled: Callable[[], bool] | None = None
 
 
 class IngestionPipeline:
@@ -93,6 +95,57 @@ class IngestionPipeline:
             insert_assets(conn, records)
         except Exception:
             log.warning("asset_save_failed", source_id=source_id, exc_info=True)
+
+    async def _describe_figures(
+        self, conn, *, source_id: str, chunk_records: list[ChunkRecord], notebook_id: str
+    ) -> list[ChunkRecord]:
+        """未説明の figure アセットを VLM で説明し、独立チャンクとして追加する。
+        失敗しても取込全体は継続する(グレースフルデグレード)。"""
+        from core.storage.assets_repo import list_assets_for_source, set_desc_chunk_link
+
+        new_records: list[ChunkRecord] = []
+        try:
+            assets = list_assets_for_source(conn, source_id)
+            figures = [a for a in assets if a.kind == "figure" and a.desc_chunk_id is None]
+            assets_dir = self._deps.assets_dir
+            for asset in figures:
+                if not asset.image_path:
+                    continue
+                image_path = assets_dir / asset.image_path
+                if not image_path.exists():
+                    continue
+                try:
+                    text = await self._deps.figure_describer.describe(
+                        image_png=image_path.read_bytes()
+                    )
+                except Exception:
+                    log.warning(
+                        "figure_describe_call_failed",
+                        source_id=source_id,
+                        asset_id=asset.id,
+                        exc_info=True,
+                    )
+                    text = None
+                if not text:
+                    continue
+                chunk_id = new_id()
+                new_records.append(
+                    ChunkRecord(
+                        id=chunk_id,
+                        source_id=source_id,
+                        notebook_id=notebook_id,
+                        ord=len(chunk_records) + len(new_records),
+                        page=asset.page,
+                        heading_path=None,
+                        text=text,
+                        token_count=len(text),
+                        kind="figure_desc",
+                    )
+                )
+                set_desc_chunk_link(conn, asset.id, chunk_id)
+        except Exception:
+            log.warning("describe_figures_failed", source_id=source_id, exc_info=True)
+        return new_records
 
     async def run(self, *, source_id: str, kind: str, data: bytes) -> None:
         conn = self._deps.conn
@@ -154,6 +207,21 @@ class IngestionPipeline:
                 self._save_assets(
                     conn, source_id=source_id, doc=doc, chunk_records=chunk_records
                 )
+
+            describe = (
+                extract
+                and self._deps.figure_describer is not None
+                and self._deps.figure_describe_enabled is not None
+                and self._deps.figure_describe_enabled()
+            )
+            if describe:
+                desc_records = await self._describe_figures(
+                    conn, source_id=source_id, chunk_records=chunk_records,
+                    notebook_id=src.notebook_id,
+                )
+                if desc_records:
+                    insert_chunks(conn, desc_records)
+                    chunk_records = chunk_records + desc_records
 
             total = len(chunk_records)
             update_source_status(
