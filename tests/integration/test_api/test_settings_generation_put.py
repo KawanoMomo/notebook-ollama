@@ -67,3 +67,22 @@ def test_generation_overrides_restored_on_startup(tmp_path, monkeypatch):
     with TestClient(create_app()) as c:
         got = c.get("/api/settings").json()["generation"]
         assert got["response_budget_tokens"] == 8192
+
+
+def test_put_generation_updates_auto_continue_max(client):
+    r = client.put(
+        "/api/settings/generation",
+        json={"response_budget_tokens": 4096, "auto_continue_max": 0},
+    )
+    assert r.status_code == 200
+    assert r.json()["auto_continue_max"] == 0
+    got = client.get("/api/settings").json()
+    assert got["generation"]["auto_continue_max"] == 0
+
+
+def test_put_generation_rejects_out_of_range_auto_continue(client):
+    r = client.put(
+        "/api/settings/generation",
+        json={"response_budget_tokens": 4096, "auto_continue_max": 6},
+    )
+    assert r.status_code == 422

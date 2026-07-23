@@ -21,6 +21,7 @@ class DevSettingsUpdate(BaseModel):
 class GenerationSettingsSchema(BaseModel):
     context_budget_ratio: float
     response_budget_tokens: int
+    auto_continue_max: int
 
 
 class RetrievalSettingsSchema(BaseModel):
@@ -58,10 +59,14 @@ class GenerationSettingsUpdate(BaseModel):
     response_budget_tokens は num_predict にそのまま渡る応答上限。
     思考モデルは thinking もこの予算を消費するため下限は 64 とし、
     誤入力ガードとして 32768 を上限にする。
+
+    auto_continue_max は done_reason=length 検知時の自動継続最大回数
+    (issue #22)。0 で無効、上限5は num_ctx 押し出しの安全弁。
     """
 
     response_budget_tokens: int = Field(ge=64, le=32768)
     context_budget_ratio: float | None = Field(default=None, gt=0.1, lt=0.95)
+    auto_continue_max: int | None = Field(default=None, ge=0, le=5)
 
 
 class AudioSettingsSchema(BaseModel):

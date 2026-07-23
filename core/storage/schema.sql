@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS messages (
     content         TEXT NOT NULL,
     citations       TEXT,
     model           TEXT,
+    truncated       INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);

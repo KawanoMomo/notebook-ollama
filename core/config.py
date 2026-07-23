@@ -51,6 +51,9 @@ class GenerationSettings(BaseModel):
     # 応答の num_predict 上限。思考モデル(qwen3 等)は thinking トークンも
     # ここを消費するため、1024 では議事録等の長出力が途中で切れる(2026-07-05 実機FB)。
     response_budget_tokens: int = 2048
+    # done_reason=length 検知時に assistant prefill で自動継続する最大回数。
+    # 0 で無効(打ち切り注記のみ)。上限5は num_ctx 押し出しの安全弁(issue #22)。
+    auto_continue_max: int = 2
 
 
 class RetrievalSettings(BaseModel):

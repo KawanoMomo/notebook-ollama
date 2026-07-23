@@ -102,6 +102,8 @@ export interface Message {
   citations: Citation[];
   model: string | null;
   created_at: string;
+  /** 出力トークン上限で打ち切られたままの応答(issue #22)。手動継続の対象。 */
+  truncated?: boolean;
 }
 
 export interface Conversation {
@@ -149,6 +151,8 @@ export interface OllamaSettingsUpdate {
 export interface GenerationSettings {
   context_budget_ratio: number;
   response_budget_tokens: number;
+  /** done_reason=length 検知時の自動継続最大回数(issue #22)。0 で無効。 */
+  auto_continue_max: number;
 }
 
 export interface RetrievalSettings {

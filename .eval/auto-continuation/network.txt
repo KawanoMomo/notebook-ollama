@@ -1,0 +1,18 @@
+28. [GET] http://127.0.0.1:8766/api/prompts => [200] OK
+29. [GET] http://127.0.0.1:8766/api/settings => [200] OK
+30. [GET] http://127.0.0.1:8766/api/stats => [200] OK
+31. [GET] http://127.0.0.1:8766/api/notebooks/01KY12PTJGN9CHNA34FEG064G5/conversations => [200] OK
+32. [GET] http://127.0.0.1:8766/api/notebooks/01KY12PTJGN9CHNA34FEG064G5 => [200] OK
+33. [GET] http://127.0.0.1:8766/api/notebooks/01KY12PTJGN9CHNA34FEG064G5/sources => [200] OK
+34. [GET] http://127.0.0.1:8766/api/notebooks/01KY12PTJGN9CHNA34FEG064G5/source-links => [200] OK
+35. [GET] http://127.0.0.1:8766/api/settings => [200] OK
+36. [GET] http://127.0.0.1:8766/api/stats => [200] OK
+37. [GET] http://127.0.0.1:8766/api/notebooks/01KY12PTJGN9CHNA34FEG064G5/conversations/01KY1349A7TWMBAR7S8YW17HQ3/messages => [200] OK
+38. [GET] http://127.0.0.1:8766/api/models => [200] OK
+39. [GET] http://127.0.0.1:8766/api/settings => [200] OK
+40. [GET] http://127.0.0.1:8766/api/stats => [200] OK
+41. [GET] http://127.0.0.1:8766/api/notebooks/01KY12PTJGN9CHNA34FEG064G5/recordings/active => [204] No Content
+43. [POST] http://127.0.0.1:8766/api/notebooks/01KY12PTJGN9CHNA34FEG064G5/conversations/01KY1349A7TWMBAR7S8YW17HQ3/messages => [200] OK
+44. [POST] http://127.0.0.1:8766/api/notebooks/01KY12PTJGN9CHNA34FEG064G5/conversations/01KY1349A7TWMBAR7S8YW17HQ3/continue => [200] OK
+
+Note: 28 static requests not shown, run with "static" option to see them.
