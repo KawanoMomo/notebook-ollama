@@ -26,6 +26,7 @@ from apps.api.schemas.settings import (
     OllamaSettingsUpdate,
     OllamaTimeoutsUpdate,
     RetrievalSettingsSchema,
+    VisionModelUpdate,
     VoiceInputSettingsSchema,
 )
 from core.accel.plan import is_phase1_implementable
@@ -33,7 +34,7 @@ from core.crash_reporter.settings import CrashReportSettings
 from core.exceptions import AppError, ErrorCode
 from core.ollama.client import OllamaClient
 from core.ollama.gateway import probe_embedding_dim
-from core.ollama.models_info import classify_kind
+from core.ollama.models_info import classify_kind, has_vision_capability
 from core.settings_store import save_crash_report, save_section
 from core.storage import chunks_repo, notebooks_repo, sources_repo
 from core.storage.vector_store import ChunkVector
@@ -54,6 +55,7 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             text_embed_backend=cfg.ollama.text_embed_backend,
             request_timeout_seconds=cfg.ollama.request_timeout_seconds,
             chat_read_timeout_seconds=cfg.ollama.chat_read_timeout_seconds,
+            vision_model=cfg.ollama.vision_model,
         ),
         generation=GenerationSettingsSchema(
             context_budget_ratio=cfg.generation.context_budget_ratio,
@@ -246,6 +248,51 @@ async def put_ollama_settings(
         request_timeout_seconds=cfg.ollama.request_timeout_seconds,
         chat_read_timeout_seconds=cfg.ollama.chat_read_timeout_seconds,
     )
+
+
+@router.put("/settings/vision-model")
+async def put_vision_model(request: Request, body: VisionModelUpdate) -> dict:
+    """視覚モデル(VLM)スロットの更新(Stage 2)。
+
+    空文字列は「未設定に戻す」として vision capability 検証をスキップする
+    (describe段・OCR経路をスキップする合図)。既存の ollama 永続セクションは
+    load_overrides で読んだ現行値へ vision_model のみを上書きして保存する
+    (put_ollama_timeouts と同じ規約: 他フィールドを巻き戻さない)。
+    """
+    cfg = request.app.state.ctx.config
+    if body.model == "":
+        cfg.ollama = cfg.ollama.model_copy(update={"vision_model": ""})
+    else:
+        client = OllamaClient(
+            endpoint=cfg.ollama.endpoint, timeout=cfg.ollama.request_timeout_seconds
+        )
+        tags = await client.list_tags()
+        names = {t.get("name") for t in tags}
+        if body.model not in names:
+            raise AppError(
+                ErrorCode.INPUT_INVALID,
+                f"model {body.model} not found in Ollama",
+                remediation="ollama pull で取得済みのモデル名を指定してください。",
+            )
+        show = await client.show(body.model)
+        if not has_vision_capability(show.get("capabilities", []) or []):
+            raise AppError(
+                ErrorCode.INPUT_INVALID,
+                f"model {body.model} does not support vision",
+                remediation="vision capability を持つモデル(例: qwen3-vl系)を選択してください。",
+            )
+        cfg.ollama = cfg.ollama.model_copy(update={"vision_model": body.model})
+
+    from core.settings_store import load_overrides, save_section
+
+    existing = load_overrides(cfg.data_dir).get("ollama")
+    existing = existing if isinstance(existing, dict) else {}
+    save_section(
+        cfg.data_dir,
+        "ollama",
+        {**existing, "vision_model": cfg.ollama.vision_model},
+    )
+    return {"vision_model": cfg.ollama.vision_model}
 
 
 @router.put("/settings/ollama/timeouts")

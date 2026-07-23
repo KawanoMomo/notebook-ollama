@@ -41,10 +41,15 @@ class OllamaSettingsSchema(BaseModel):
     text_embed_backend: Literal["auto", "ollama-bge-m3-cpu"] = "auto"
     request_timeout_seconds: float = 600.0
     chat_read_timeout_seconds: float = 600.0
+    vision_model: str = ""
 
 
 class OllamaSettingsUpdate(BaseModel):
     default_model: str
+
+
+class VisionModelUpdate(BaseModel):
+    model: str  # 空文字列で未設定に戻す
 
 
 class OllamaTimeoutsUpdate(BaseModel):

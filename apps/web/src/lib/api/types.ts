@@ -143,6 +143,7 @@ export interface OllamaSettings {
   embedding_dim: number | null;
   request_timeout_seconds: number;
   chat_read_timeout_seconds: number;
+  vision_model: string;
 }
 
 export interface OllamaSettingsUpdate {

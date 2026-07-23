@@ -22,6 +22,11 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  putVisionModel: (model: string) =>
+    request<{ vision_model: string }>('/api/settings/vision-model', {
+      method: 'PUT',
+      body: JSON.stringify({ model }),
+    }),
   switchEmbedding: (model: string) =>
     request<unknown>('/api/settings/embedding/switch', {
       method: 'POST',

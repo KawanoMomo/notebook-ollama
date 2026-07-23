@@ -69,6 +69,7 @@ function makeAppSettings(crash_report: CrashReportSettings | undefined): AppSett
       embedding_dim: 768,
       request_timeout_seconds: 600,
       chat_read_timeout_seconds: 600,
+      vision_model: '',
     },
     generation: { context_budget_ratio: 0.8, response_budget_tokens: 1024, auto_continue_max: 0 },
     retrieval: { top_k: 8, top_k_max: 30, min_history_turns: 2 },

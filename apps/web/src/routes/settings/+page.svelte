@@ -103,6 +103,28 @@
     }
   }
 
+  function visionModelNames(): string[] {
+    return modelsStore.models.filter((m) => m.has_vision === true).map((m) => m.name);
+  }
+
+  async function onVisionModelChange(e: Event) {
+    const select = e.currentTarget as HTMLSelectElement;
+    const next = select.value;
+    const prev = settingsStore.settings?.ollama.vision_model ?? '';
+    if (next === prev) return;
+    try {
+      await settingsStore.putVisionModel(next);
+      pushToast(
+        next === '' ? '視覚モデルを未設定に戻しました' : `視覚モデルを ${next} に変更しました`,
+        'success',
+      );
+    } catch (err) {
+      select.value = prev; // 失敗時は選択を元に戻す
+      const msg = err instanceof Error ? err.message : String(err);
+      pushToast(`視覚モデルの変更に失敗しました: ${msg}`, 'error');
+    }
+  }
+
   onDestroy(() => {
     closeReindex?.();
   });
@@ -431,6 +453,19 @@
                       {m.name}{m.embedding_dim ? ` (${m.embedding_dim}次元)` : ''}
                     </option>
                   {/if}
+                {/each}
+              </select>
+            </dd>
+            <dt>視覚モデル(図の解析・OCR用)</dt>
+            <dd>
+              <select
+                class="vision-select"
+                value={settingsStore.settings.ollama.vision_model}
+                onchange={onVisionModelChange}
+              >
+                <option value="">(未設定)</option>
+                {#each visionModelNames() as name (name)}
+                  <option value={name}>{name}</option>
                 {/each}
               </select>
             </dd>
