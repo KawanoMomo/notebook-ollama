@@ -231,6 +231,13 @@ async def put_ollama_settings(
     embedding_dim = existing.get(
         "embedding_dim", getattr(cfg.ollama, "embedding_dim", 1024)
     )
+    # vision_model(Stage 2)も同じ「既存永続値 > in-memory cfg」の優先で保持する。
+    # これを省くと、視覚モデル設定後に既定チャットモデルを変えるたびに
+    # settings.json の ollama セクションが 3 キーで丸ごと再構築され、
+    # 次回起動時に vision_model が既定値(未設定)へ巻き戻ってしまう。
+    vision_model = existing.get(
+        "vision_model", getattr(cfg.ollama, "vision_model", "")
+    )
     save_section(
         cfg.data_dir,
         "ollama",
@@ -238,6 +245,7 @@ async def put_ollama_settings(
             "default_model": cfg.ollama.default_model,
             "embedding_model": embedding_model,
             "embedding_dim": embedding_dim,
+            "vision_model": vision_model,
         },
     )
     return OllamaSettingsSchema(
