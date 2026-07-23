@@ -52,6 +52,32 @@ def run_adr_migration(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE sources ADD COLUMN {name} {sqltype}")
 
 
+def run_chunk_assets_migration(conn: sqlite3.Connection) -> None:
+    """chunk_assets テーブルを作成。Idempotent。"""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chunk_assets (
+          id          TEXT PRIMARY KEY,
+          source_id   TEXT NOT NULL,
+          chunk_id    TEXT,
+          kind        TEXT NOT NULL,            -- 'table' | 'figure'
+          page        INTEGER,
+          bbox_json   TEXT,
+          html        TEXT,
+          md_snippet  TEXT,
+          image_path  TEXT,
+          created_at  TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chunk_assets_source ON chunk_assets(source_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chunk_assets_chunk ON chunk_assets(chunk_id)"
+    )
+
+
 def run_message_truncated_migration(conn: sqlite3.Connection) -> None:
     """Add truncated to messages if missing. Idempotent."""
     existing = {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}

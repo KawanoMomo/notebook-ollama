@@ -10,6 +10,7 @@
   import { recordingStore } from '$lib/stores/recording.svelte';
   import { presentationStore } from '$lib/stores/presentation.svelte';
   import { sourcesApi } from '$lib/api/sources';
+  import { featuresStore } from '$lib/stores/features.svelte';
   import { pushToast } from './Toast.svelte';
   import { computeBulkState } from './SourcesPanel.bulk';
   import { descendantIdsOf, orderWithChildren } from '$lib/utils/sourceTree';
@@ -187,6 +188,25 @@
       await sourcesApi.delete(notebookId, s.id);
       currentNotebookStore.removeSource(s.id);
       pushToast('削除しました', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  function isTableFigureRagEnabled(): boolean {
+    return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
+  }
+
+  async function onReingest(s: Source) {
+    if (!confirm('チャンクと埋め込みを作り直します。よろしいですか？')) return;
+    try {
+      await sourcesApi.reingest(notebookId, s.id);
+      // reingest は {status:"accepted"} のみを返す(retry/recordingRetry と同じ理由で
+      // Source 全体を取り直して即時反映する。以降の状態遷移は既存の SSE/JobStatusBar が追従する)。
+      const fresh = await sourcesApi.list(notebookId);
+      const updated = fresh.find((x) => x.id === s.id);
+      if (updated) currentNotebookStore.upsertSource(updated);
+      pushToast('再取込を開始しました', 'info');
     } catch (e) {
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
@@ -386,6 +406,7 @@
         onStartPresentation={() => onStartPresentation(s)}
         onSetParent={() => openParentPicker(s)}
         onRemoveParent={childIdsWithParent.has(s.id) ? () => onRemoveParent(s) : undefined}
+        onReingest={isTableFigureRagEnabled() ? () => onReingest(s) : undefined}
       />
     {/each}
     {#if filteredSources.length === 0}

@@ -23,6 +23,7 @@ from apps.api.routers import (  # noqa: E402
     chat,
     crash,
     events,
+    features,
     feedback_hub,
     health,
     links,
@@ -44,6 +45,7 @@ from core.config import AppConfig  # noqa: E402
 from core.crash_reporter import collector as crash_collector  # noqa: E402
 from core.crash_reporter import lifecycle as crash_lifecycle  # noqa: E402
 from core.exceptions import AppError  # noqa: E402
+from core.feature_service import FeatureService  # noqa: E402
 from core.logging import configure_logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -197,6 +199,7 @@ async def lifespan(app: FastAPI):
             configure_logging()
 
         app.state.ctx = build_context(config)
+        app.state.ctx.features = FeatureService(app.state.ctx.config.data_dir)
         # --- 起動時リコンシリエーション -------------------------------------
         # 前プロセスで中断されたジョブの status 残骸(pending/parsing 等、
         # summary/adr の generating)を整理する。放置すると UI 上は「入室した
@@ -209,6 +212,7 @@ async def lifespan(app: FastAPI):
         # broker に event loop を渡し、設定が ON で永続化されていれば収集を開始。
         # tail は購読者 0→1 で開始、1→0 で停止(I12)。フックはプロセスで 1 回だけ。
         import asyncio as _asyncio
+
         from core.dev_logs.broker import broker as _dev_broker
         from core.dev_logs.ring import ring as _dev_ring
         _dev_broker.set_loop(_asyncio.get_running_loop())
@@ -290,6 +294,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             "ollama.unreachable": 503,
             "ollama.model_not_found": 404,
             "mcp.unauthorized": 401,
+            "feature.disabled": 403,
+            "validation.failed": 400,
         }
         return JSONResponse(
             status_code=status_map.get(exc.code.value, 500),
@@ -314,6 +320,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(events.router)
     app.include_router(feedback_hub.router)
     app.include_router(crash.router)
+    app.include_router(features.router)
     app.mount("/mcp", _McpAsgiProxy())
 
     from pathlib import Path

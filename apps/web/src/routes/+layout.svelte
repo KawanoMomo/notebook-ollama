@@ -15,6 +15,7 @@
   import { feedbackHubStore } from '$lib/stores/feedbackHub.svelte';
   import { crashReportsStore } from '$lib/stores/crashReports.svelte';
   import { settingsStore } from '$lib/stores/settings.svelte';
+  import { featuresStore } from '$lib/stores/features.svelte';
   import { devmode } from '$lib/stores/devmode.svelte';
   import DevPanel from '$lib/components/DevPanel.svelte';
   import { noticesStore } from '$lib/stores/notices.svelte';
@@ -230,6 +231,10 @@
     // depth for the race window between this call and its resolution, so we
     // don't need to await before wiring `initErrorBoundary` below.
     void settingsStore.load();
+    // ベータ機能フラグもレイアウトレベルで読み込む。設定画面の onMount だけに
+    // 頼ると、ノートブック画面(再取込ボタン・表HTML表示の判定に使う)では
+    // featuresStore.flags が空のままになってしまう。
+    void featuresStore.load();
 
     unbindShortcuts = bindShortcuts([
       {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -10,6 +10,7 @@ from core.generation.citations import (
 )
 from core.generation.locations import format_location
 from core.generation.prompts import SYSTEM_PROMPT, PromptChunk, build_user_prompt
+from core.generation.table_assets import substitute_table_html
 from core.logging import get_logger
 from core.retrieval.budgeter import (
     BudgetInput,
@@ -17,6 +18,7 @@ from core.retrieval.budgeter import (
     allocate_budget,
 )
 from core.retrieval.search import RetrievedChunk
+from core.storage.assets_repo import AssetRecord
 
 log = get_logger("generation")
 
@@ -55,6 +57,7 @@ class _GatewayLike(Protocol):
 class GenerationDeps:
     retrieval: _RetrievalLike
     ollama: _GatewayLike
+    assets_lookup: Callable[[list[str]], dict[str, list[AssetRecord]]] | None = None
 
 
 @dataclass
@@ -89,6 +92,9 @@ class GenerationService:
             limit=retrieval_top_k,
             source_ids=source_ids,
         )
+        assets_by_chunk: dict[str, list[AssetRecord]] = {}
+        if self._deps.assets_lookup is not None and hits:
+            assets_by_chunk = self._deps.assets_lookup([h.chunk_id for h in hits])
         yield GenerationEvent(
             kind="retrieval",
             data={
@@ -118,8 +124,12 @@ class GenerationService:
                 start_ms=hit.start_ms,
                 speaker=hit.speaker,
             )
+            prompt_text = hit.text
+            chunk_assets = assets_by_chunk.get(hit.chunk_id)
+            if chunk_assets:
+                prompt_text = substitute_table_html(hit.text, chunk_assets)
             prompt_chunks.append(
-                PromptChunk(n=idx, title=hit.source_title, location=location, text=hit.text)
+                PromptChunk(n=idx, title=hit.source_title, location=location, text=prompt_text)
             )
             spec_by_n[idx] = CitationSpec(
                 chunk_id=hit.chunk_id,

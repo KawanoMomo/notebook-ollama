@@ -4,10 +4,11 @@ import shutil
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, File, Path, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Path, Request, UploadFile
 from fastapi.responses import Response
 
 from apps.api.routers.audio import _resolve_audio_path
+from apps.api.routers.features import require_feature
 from apps.api.schemas.source import Source, SourceRename, SourceUrlCreate
 from apps.api.schemas.source_content import (
     DocumentContent,
@@ -22,6 +23,7 @@ from core.ingestion.parsers import get_parser
 from core.ingestion.pptx_to_pdf import slides_pdf_path
 from core.logging import get_logger
 from core.storage import notebooks_repo, sources_repo
+from core.storage.assets_repo import delete_assets_for_source, list_assets_for_source
 from core.storage.chunks_repo import (
     delete_chunks_for_source,
     list_chunks_for_source,
@@ -389,7 +391,11 @@ async def get_source_content(
         )
     data = source_path.read_bytes()
     parser = get_parser(src.kind)
-    doc = parser.parse_bytes(data, source_hint=src.origin)
+    if src.kind == "pdf":
+        extract = ctx.features.is_enabled("table-figure-rag")
+        doc = parser.parse_bytes(data, source_hint=src.origin, extract_assets=extract)
+    else:
+        doc = parser.parse_bytes(data, source_hint=src.origin)
     sections = [
         DocumentSection(
             heading_path=" > ".join(s.heading_path) if s.heading_path else None,
@@ -535,6 +541,17 @@ async def delete_adr(
     return Response(status_code=204)
 
 
+def _clear_source_derived_data(ctx, source_id: str) -> None:
+    """チャンク・ベクタ・アセット(sqlite行 + PNGディレクトリ)を消す。
+
+    retry / reingest の共通処理。sources テーブルの行と原本ファイルは消さない。
+    """
+    delete_chunks_for_source(ctx.conn, source_id)
+    ctx.vector_store.delete_by_source(source_id)
+    delete_assets_for_source(ctx.conn, source_id)
+    shutil.rmtree(ctx.config.assets_dir / source_id, ignore_errors=True)
+
+
 @router.post("/{notebook_id}/sources/{source_id}/retry", response_model=Source)
 async def retry_source(
     request: Request,
@@ -555,9 +572,7 @@ async def retry_source(
             remediation="re-upload the file",
         )
     data = source_path.read_bytes()
-    # clear prior chunks (vector + sqlite)
-    delete_chunks_for_source(ctx.conn, source_id)
-    ctx.vector_store.delete_by_source(source_id)
+    _clear_source_derived_data(ctx, source_id)
     # reset status
     sources_repo.update_source_status(
         ctx.conn, source_id,
@@ -566,3 +581,48 @@ async def retry_source(
     )
     background.add_task(ctx.pipeline.run, source_id=src.id, kind=src.kind, data=data)
     return _to_schema(sources_repo.get_source(ctx.conn, source_id), ctx.config.sources_dir)
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/reingest",
+    status_code=202,
+    dependencies=[Depends(require_feature("table-figure-rag"))],
+)
+async def reingest_source(
+    request: Request, background: BackgroundTasks, notebook_id: str, source_id: str
+) -> dict:
+    """ベータ機能(表/図アセット抽出)を後から有効化した既存ソースを再取込する。"""
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    if src.status not in (sources_repo.SourceStatus.READY, sources_repo.SourceStatus.ERROR):
+        raise AppError(ErrorCode.STORAGE_CONFLICT, "取込処理中は再取込できません")
+    ext = _EXT_BY_KIND.get(src.kind, ".bin")
+    source_path = ctx.config.sources_dir / f"{source_id}{ext}"
+    if not source_path.exists():
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "原本ファイルがありません",
+            remediation="ファイルを再アップロードしてください",
+        )
+    data = source_path.read_bytes()
+    _clear_source_derived_data(ctx, source_id)
+    sources_repo.update_source_status(
+        ctx.conn, source_id, status=sources_repo.SourceStatus.PENDING, error_msg=None,
+    )
+    background.add_task(ctx.pipeline.run, source_id=source_id, kind=src.kind, data=data)
+    return {"status": "accepted"}
+
+
+@router.get(
+    "/{notebook_id}/sources/{source_id}/assets",
+    dependencies=[Depends(require_feature("table-figure-rag"))],
+)
+async def list_source_assets(request: Request, notebook_id: str, source_id: str) -> dict:
+    ctx = request.app.state.ctx
+    src = sources_repo.get_source(ctx.conn, source_id)
+    if src.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
+    rows = list_assets_for_source(ctx.conn, source_id)
+    return {"assets": [vars(a) for a in rows]}

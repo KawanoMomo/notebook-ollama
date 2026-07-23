@@ -1,5 +1,5 @@
 import { request } from './client';
-import type { Source } from './types';
+import type { AssetInfo, Source } from './types';
 
 export const sourcesApi = {
   list: (notebookId: string) =>
@@ -71,5 +71,14 @@ export const sourcesApi = {
     request<void>(
       `/api/notebooks/${notebookId}/sources/${sourceId}/adr`,
       { method: 'DELETE' },
+    ),
+  reingest: (notebookId: string, sourceId: string) =>
+    request<{ status: string }>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/reingest`,
+      { method: 'POST' },
+    ),
+  listAssets: (notebookId: string, sourceId: string) =>
+    request<{ assets: AssetInfo[] }>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/assets`,
     ),
 };

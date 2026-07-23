@@ -13,6 +13,7 @@ from core.accel.probe import HardwareProbe
 from core.accel.profile import HwProfile
 from core.adr.adr_job import AdrDeps, AdrJob
 from core.config import AppConfig
+from core.feature_service import FeatureService
 from core.generation.stream import GenerationDeps, GenerationService
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
 from core.logging import get_logger
@@ -20,6 +21,7 @@ from core.ollama.gateway import OllamaGateway
 from core.recording.session import RecordingRegistry
 from core.retrieval.search import RetrievalService
 from core.settings_store import load_overrides
+from core.storage.assets_repo import list_assets_for_chunk_ids
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
 from core.summary.registry import SummaryTaskRegistry
@@ -373,6 +375,11 @@ def build_context(config: AppConfig) -> AppContext:
         except Exception:  # noqa: S110 — AdrJob logs + persists its own error / skipped status
             pass
 
+    # ctx.features は build_context() の戻り値に main.py の lifespan で後付けされる
+    # (循環依存: AppContext がまだ存在しないためここでは参照できない)。FeatureService は
+    # settings.json を毎回読み直すだけの stateless なクラスなので、ここでもう一つ
+    # 独立インスタンスを作って参照しても、常に同じ設定を読むため問題ない。
+    _pipeline_features = FeatureService(config.data_dir)
     pipeline = IngestionPipeline(
         deps=PipelineDeps(
             conn=conn,
@@ -382,6 +389,8 @@ def build_context(config: AppConfig) -> AppContext:
             embedding_model_getter=lambda: config.ollama.embedding_model,
             broker=sse_broker,
             summary_runner=_summary_runner,
+            assets_dir=config.assets_dir,
+            assets_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
         )
     )
     retrieval = RetrievalService(
@@ -391,7 +400,17 @@ def build_context(config: AppConfig) -> AppContext:
         embedding_model=config.ollama.embedding_model,
         embedding_model_getter=lambda: config.ollama.embedding_model,
     )
-    generation = GenerationService(deps=GenerationDeps(retrieval=retrieval, ollama=gateway))
+    generation = GenerationService(
+        deps=GenerationDeps(
+            retrieval=retrieval,
+            ollama=gateway,
+            assets_lookup=lambda chunk_ids: (
+                list_assets_for_chunk_ids(conn, chunk_ids)
+                if _pipeline_features.is_enabled("table-figure-rag")
+                else {}
+            ),
+        )
+    )
     recordings = RecordingRegistry()
     # `recording` extra (faster-whisper / sherpa-onnx / soundfile …)が未導入の
     # ベース install では recording_pipeline.py の top-level import が

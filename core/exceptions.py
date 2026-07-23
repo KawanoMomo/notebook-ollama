@@ -13,6 +13,7 @@ class ErrorCode(StrEnum):
     # HTTP ステータスへ写像できる。
     INPUT_PAYLOAD_TOO_LARGE = "input.payload_too_large"
     INPUT_UNSUPPORTED_MEDIA = "input.unsupported_media"
+    VALIDATION_FAILED = "validation.failed"
     INGESTION_PARSE_FAILED = "ingestion.parse_failed"
     INGESTION_FETCH_FAILED = "ingestion.fetch_failed"
     INGESTION_UNSUPPORTED_KIND = "ingestion.unsupported_kind"
@@ -27,6 +28,7 @@ class ErrorCode(StrEnum):
     STORAGE_CONFLICT = "storage.conflict"
     QDRANT_UNREACHABLE = "qdrant.unreachable"
     MCP_UNAUTHORIZED = "mcp.unauthorized"
+    FEATURE_DISABLED = "feature.disabled"
 
 
 @dataclass

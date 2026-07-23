@@ -72,6 +72,33 @@ vi.mock('$lib/stores/settings.svelte', () => ({
   },
 }));
 
+// featuresStore (Task 10): +layout now also calls `featuresStore.load()` on
+// mount, which would otherwise issue a `GET /api/features` through the same
+// mocked `fetch` and land as `fetchMock.mock.calls[0]`, shadowing the
+// crash-report POST the "fetch is called when an error fires" assertion
+// below pins. Mock it the same way as settingsStore above (no-op load) so
+// the only fetch this suite observes is the crash report POST.
+vi.mock('$lib/stores/features.svelte', () => ({
+  featuresStore: {
+    get flags() {
+      return [];
+    },
+    get betaFlags() {
+      return [];
+    },
+    get loading() {
+      return false;
+    },
+    get error() {
+      return null;
+    },
+    async load() {
+      // no-op for layout-wiring (unrelated to this suite's assertions).
+    },
+    async setOptin() {},
+  },
+}));
+
 // Real init/teardown lives in errorBoundary.ts. We spy on it (instead
 // of fully replacing) so the test still exercises the real listener
 // registration code path against window.

@@ -6,9 +6,11 @@
     type RecordingSegmentContent,
   } from '$lib/api/source_outline';
   import { linksApi } from '$lib/api/links';
-  import type { SlideUtterancePage } from '$lib/api/types';
+  import type { AssetInfo, SlideUtterancePage } from '$lib/api/types';
+  import { sourcesApi } from '$lib/api/sources';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
+  import { featuresStore } from '$lib/stores/features.svelte';
   import Spinner from './Spinner.svelte';
   import AudioCitationPlayer from './AudioCitationPlayer.svelte';
   import SharedAudioPlayer from './SharedAudioPlayer.svelte';
@@ -16,6 +18,29 @@
   import SpeakerChip from './SpeakerChip.svelte';
   import { pushToast } from './Toast.svelte';
   import { formatBytes } from '$lib/utils/format';
+  import { sanitizeTableHtml } from '$lib/utils/tableHtml';
+
+  function isTableFigureRagEnabled(): boolean {
+    return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
+  }
+
+  // チャンク本文に埋め込まれた <table>...</table> だけを sanitize して
+  // {@html} で描画し、それ以外は従来どおりエスケープ済みプレーンテキストにする
+  // (chunk.text 全体を無条件で {@html} しないためのガード)。
+  function tableHtmlToSafeMarkup(text: string): string {
+    const parts = text.split(/(<table>[\s\S]*?<\/table>)/);
+    return parts
+      .map((part) =>
+        part.startsWith('<table>')
+          ? sanitizeTableHtml(part)
+          : part
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/\n/g, '<br>'),
+      )
+      .join('');
+  }
 
   function formatTimecode(ms: number): string {
     const total = Math.floor(ms / 1000);
@@ -32,9 +57,16 @@
   let { notebookId, selectedChunkId, selectedSourceId }: Props = $props();
 
   let chunk = $state<ChunkDetail | null>(null);
+  // 選択中チャンクに対応する表アセットの HTML(chunk.text 中の md_snippet を
+  // asset.html で置換した全文)。一致するアセットが無ければ null のまま
+  // (プレーンテキスト表示にフォールバック)。
+  let tableAssetHtml = $state<string | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
   let content = $state<SourceContent | null>(null);
+  // 全文表示(チャンク未選択)側: セクション index → 表アセット置換済み HTML。
+  // section には chunk_id が無く page のみ持つため、ページ単位でマッチングする。
+  let sectionTableHtml = $state<Record<number, string>>({});
   let contentLoading = $state(false);
   let contentError = $state<string | null>(null);
   // Bindable seek handlers published by the per-channel shared players.
@@ -70,10 +102,26 @@
     showParentSlide = false; // チャンク切替でトグル状態をリセット
     loading = true;
     error = null;
+    tableAssetHtml = null;
     sourceDetailApi
       .getChunk(notebookId, sid, cid)
       .then((c) => {
         chunk = c;
+        if (c && isTableFigureRagEnabled() && sourceMeta?.kind === 'pdf') {
+          sourcesApi
+            .listAssets(notebookId, sid)
+            .then((res: { assets: AssetInfo[] }) => {
+              const tableAsset = res.assets.find(
+                (a) => a.chunk_id === cid && a.kind === 'table' && a.html && a.md_snippet,
+              );
+              if (tableAsset && c.text.includes(tableAsset.md_snippet!)) {
+                tableAssetHtml = c.text.replace(tableAsset.md_snippet!, tableAsset.html!);
+              }
+            })
+            .catch(() => {
+              /* best-effort; プレーンテキスト表示にフォールバックしたままにする */
+            });
+        }
       })
       .catch((e) => {
         error = e instanceof Error ? e.message : String(e);
@@ -92,10 +140,36 @@
     }
     contentLoading = true;
     contentError = null;
+    sectionTableHtml = {};
     sourceDetailApi
       .getSourceContent(notebookId, sid)
       .then((c) => {
         content = c;
+        if (c.kind === 'document' && isTableFigureRagEnabled() && sourceMeta?.kind === 'pdf') {
+          sourcesApi
+            .listAssets(notebookId, sid)
+            .then((res: { assets: AssetInfo[] }) => {
+              const next: Record<number, string> = {};
+              c.sections.forEach((section, i) => {
+                const tableAssets = res.assets.filter(
+                  (a) => a.kind === 'table' && a.page === section.page && a.html && a.md_snippet,
+                );
+                let text = section.text;
+                let changed = false;
+                for (const a of tableAssets) {
+                  if (text.includes(a.md_snippet!)) {
+                    text = text.replace(a.md_snippet!, a.html!);
+                    changed = true;
+                  }
+                }
+                if (changed) next[i] = text;
+              });
+              sectionTableHtml = next;
+            })
+            .catch(() => {
+              /* best-effort; プレーンテキスト表示にフォールバックしたままにする */
+            });
+        }
       })
       .catch((e) => {
         contentError = e instanceof Error ? e.message : String(e);
@@ -281,7 +355,11 @@
         {#if chunk.page}
           <div class="page">p.{chunk.page}</div>
         {/if}
-        <pre class="text">{chunk.text}</pre>
+        {#if tableAssetHtml}
+          {@html tableHtmlToSafeMarkup(tableAssetHtml)}
+        {:else}
+          <pre class="text">{chunk.text}</pre>
+        {/if}
       {/if}
     </div>
   {:else if selectedChunkId === null && resolvedSourceId}
@@ -299,7 +377,11 @@
             {#if section.page}
               <div class="page">p.{section.page}</div>
             {/if}
-            <pre class="text">{section.text}</pre>
+            {#if sectionTableHtml[i]}
+              {@html tableHtmlToSafeMarkup(sectionTableHtml[i])}
+            {:else}
+              <pre class="text">{section.text}</pre>
+            {/if}
           </section>
         {/each}
         {#if isSlideKind && slideUtterances && slideUtterances.length > 0}
@@ -471,6 +553,20 @@
     font-size: 13px;
     line-height: 1.6;
     margin: 0;
+  }
+  :global(.chunk table),
+  :global(.doc-section table) {
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 12px;
+  }
+  :global(.chunk td),
+  :global(.chunk th),
+  :global(.doc-section td),
+  :global(.doc-section th) {
+    border: 1px solid var(--color-border);
+    padding: 3px 8px;
+    text-align: left;
   }
   .fulltext {
     border-top: 1px solid var(--color-border);
