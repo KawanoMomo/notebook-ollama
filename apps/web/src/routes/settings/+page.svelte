@@ -143,21 +143,25 @@
     }
   }
 
-  // --- 生成設定(応答トークン上限) ---
-  let genDraft = $state<{ budget: number } | null>(null);
+  // --- 生成設定(応答トークン上限 / 自動継続回数) ---
+  let genDraft = $state<{ budget: number; autoContinue: number } | null>(null);
   let savingGen = $state(false);
 
   $effect(() => {
     const g = settingsStore.settings?.generation;
     if (g && genDraft === null) {
-      genDraft = { budget: g.response_budget_tokens };
+      genDraft = {
+        budget: g.response_budget_tokens,
+        autoContinue: g.auto_continue_max,
+      };
     }
   });
 
   const genDirty = $derived(
     genDraft !== null &&
       settingsStore.settings !== null &&
-      genDraft.budget !== settingsStore.settings.generation.response_budget_tokens,
+      (genDraft.budget !== settingsStore.settings.generation.response_budget_tokens ||
+        genDraft.autoContinue !== settingsStore.settings.generation.auto_continue_max),
   );
 
   async function saveDevMode(enabled: boolean) {
@@ -188,7 +192,7 @@
     if (!genDraft) return;
     savingGen = true;
     try {
-      await settingsApi.putGeneration(genDraft.budget);
+      await settingsApi.putGeneration(genDraft.budget, genDraft.autoContinue);
       await settingsStore.load();
       pushToast('生成設定を更新しました', 'success');
     } catch (e) {
@@ -538,6 +542,26 @@
                 </p>
               {:else}
                 {settingsStore.settings.generation.response_budget_tokens}
+              {/if}
+            </dd>
+            <dt>auto_continue_max(自動継続回数)</dt>
+            <dd>
+              {#if genDraft}
+                <input
+                  class="num"
+                  type="number"
+                  min="0"
+                  max="5"
+                  step="1"
+                  bind:value={genDraft.autoContinue}
+                  aria-label="auto_continue_max"
+                />
+                <p class="t-hint">
+                  上限打ち切り時に自動で続きを生成する回数。0で無効。
+                  打ち切り時の「続きを生成」ボタンは設定に関わらず使えます。
+                </p>
+              {:else}
+                {settingsStore.settings.generation.auto_continue_max}
               {/if}
             </dd>
           </dl>

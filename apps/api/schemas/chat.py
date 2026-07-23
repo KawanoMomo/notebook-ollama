@@ -10,6 +10,12 @@ class MessageInput(BaseModel):
     source_ids: list[str] | None = None
 
 
+class ContinueInput(BaseModel):
+    """手動継続(issue #22)。元質問の source_ids は保存されないため FE が現選択を送る。"""
+
+    source_ids: list[str] | None = None
+
+
 class Message(BaseModel):
     id: str
     conversation_id: str
@@ -17,6 +23,7 @@ class Message(BaseModel):
     content: str
     citations: list[dict[str, Any]] = []
     model: str | None = None
+    truncated: bool = False
     created_at: str
 
 

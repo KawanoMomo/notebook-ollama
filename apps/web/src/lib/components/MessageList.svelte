@@ -4,6 +4,7 @@
   import { renderMarkdown } from '$lib/utils/markdown';
   import { injectCitationBadges } from '$lib/utils/citations';
   import { conversationStore } from '$lib/stores/conversation.svelte';
+  import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
 
   interface Props {
     onCitationClick: (chunkId: string) => void;
@@ -12,6 +13,11 @@
 
   let scroller: HTMLDivElement | undefined = $state();
   let userScrolled = $state(false);
+
+  const lastTruncated = $derived.by(() => {
+    const m = conversationStore.messages[conversationStore.messages.length - 1];
+    return !conversationStore.streaming && m?.role === 'assistant' && m?.truncated === true;
+  });
 
   $effect(() => {
     // re-run when messages change or streaming text grows
@@ -35,6 +41,16 @@
     <ChatMessage message={m} {onCitationClick} />
   {/each}
 
+  {#if lastTruncated}
+    <div class="continue-row">
+      <button
+        class="continue-btn"
+        type="button"
+        onclick={() => conversationStore.continueLast(Array.from(currentNotebookStore.selectedSourceIds))}
+      >▶ 続きを生成</button>
+    </div>
+  {/if}
+
   {#if conversationStore.streaming}
     <article class="msg streaming">
       <div class="role">アシスタント</div>
@@ -43,7 +59,11 @@
           <div class="hits">参照中: {conversationStore.streamingHits.length} ソース</div>
         {/if}
         <div class="content">{@html injectCitationBadges(renderMarkdown(conversationStore.streamingText), [])}</div>
-        <div class="caret"><Spinner size={10} /> 生成中…</div>
+        {#if conversationStore.continuingInfo}
+          <div class="caret"><Spinner size={10} /> 続きを生成中… ({conversationStore.continuingInfo.round}/{conversationStore.continuingInfo.max})</div>
+        {:else}
+          <div class="caret"><Spinner size={10} /> 生成中…</div>
+        {/if}
       {:else if conversationStore.thinkingChars > 0}
         <div class="pending">
           <Spinner size={12} />
@@ -111,5 +131,22 @@
   .err {
     padding: var(--space-4);
     color: var(--color-error);
+  }
+  .continue-row {
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .continue-btn {
+    font: inherit;
+    font-size: 12px;
+    color: var(--color-accent);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-1) var(--space-3);
+    cursor: pointer;
+  }
+  .continue-btn:hover {
+    border-color: var(--color-accent);
   }
 </style>

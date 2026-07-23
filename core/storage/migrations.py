@@ -21,6 +21,10 @@ _SOURCE_ADR_COLUMNS = (
     ("adr_generated_at", "TEXT"),
 )
 
+_MESSAGE_TRUNCATED_COLUMNS = (
+    ("truncated", "INTEGER NOT NULL DEFAULT 0"),
+)
+
 
 def run_chunk_timecode_migration(conn: sqlite3.Connection) -> None:
     """Add start_ms/end_ms/speaker to chunks if missing. Idempotent."""
@@ -72,3 +76,11 @@ def run_chunk_assets_migration(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_chunk_assets_chunk ON chunk_assets(chunk_id)"
     )
+
+
+def run_message_truncated_migration(conn: sqlite3.Connection) -> None:
+    """Add truncated to messages if missing. Idempotent."""
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}
+    for name, sqltype in _MESSAGE_TRUNCATED_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE messages ADD COLUMN {name} {sqltype}")

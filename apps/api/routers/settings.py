@@ -58,6 +58,7 @@ async def get_settings(request: Request) -> AppSettingsSchema:
         generation=GenerationSettingsSchema(
             context_budget_ratio=cfg.generation.context_budget_ratio,
             response_budget_tokens=cfg.generation.response_budget_tokens,
+            auto_continue_max=cfg.generation.auto_continue_max,
         ),
         retrieval=RetrievalSettingsSchema(
             top_k=cfg.retrieval.top_k,
@@ -302,6 +303,8 @@ async def put_generation_settings(
     update: dict = {"response_budget_tokens": body.response_budget_tokens}
     if body.context_budget_ratio is not None:
         update["context_budget_ratio"] = body.context_budget_ratio
+    if body.auto_continue_max is not None:
+        update["auto_continue_max"] = body.auto_continue_max
     cfg.generation = cfg.generation.model_copy(update=update)
 
     from core.settings_store import load_overrides, save_section
@@ -314,11 +317,13 @@ async def put_generation_settings(
             **existing,
             "response_budget_tokens": cfg.generation.response_budget_tokens,
             "context_budget_ratio": cfg.generation.context_budget_ratio,
+            "auto_continue_max": cfg.generation.auto_continue_max,
         },
     )
     return GenerationSettingsSchema(
         context_budget_ratio=cfg.generation.context_budget_ratio,
         response_budget_tokens=cfg.generation.response_budget_tokens,
+        auto_continue_max=cfg.generation.auto_continue_max,
     )
 
 

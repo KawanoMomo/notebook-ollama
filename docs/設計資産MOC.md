@@ -60,6 +60,7 @@ tags:
 > - [[2026-07-02-developer-mode-design|開発者モード]] ✏️
 > - [[2026-07-06-presentation-mode-design|発表モード (Presentation Mode)]] ✅
 > - [[2026-07-05-chat-voice-input-design|チャット音声入力]] ✅
+> - [[2026-07-20-auto-continuation-design|応答自動継続 (Auto Continuation)]] ✅
 > - [[2026-06-21-youtube-source-design|YouTube ソース機能]] ⏸️（保留）
 
 ## 🧭 ADR ドラフト（未採番）
@@ -78,6 +79,8 @@ tags:
 > - [[draft-2026-07-20-visual-index-qdrant-rrf|視覚インデックスはQdrant別コレクション+RRF融合]] — アーキテクチャ/検索（表・図Stage 3起票）
 > - [[draft-2026-07-20-visual-embedding-ondemand-transformers|視覚埋め込みはOllama外(transformers)でオンデマンド実行]] — 外部依存/リソース管理（表・図Stage 3起票）
 > - [[draft-2026-07-20-beta-feature-flag-registry|機能提供はコード内フラグレジストリ+設定オプトインのベータ機構]] — アーキテクチャ/リリース管理（ベータ基盤起票）
+> - [[draft-2026-07-20-assistant-prefill-continuation|打ち切り継続は assistant prefill(末尾assistantメッセージ再送)]] — アーキテクチャ/結合度（自動継続起票）
+> - [[draft-2026-07-20-truncated-persistence-update-in-place|truncatedはmessagesカラム永続化+手動継続は最終assistantメッセージ追記更新]] — データモデル（自動継続起票）
 
 ## 🏷️ ステータス凡例
 

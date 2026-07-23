@@ -37,7 +37,14 @@ async def test_send_message_forwards_source_ids(client):
         yield GenerationEvent(kind="retrieval", data={"hits": []})
         yield GenerationEvent(
             kind="done",
-            data={"answer": "", "citations": [], "model_used": "m", "dropped_history": 0},
+            data={
+                "answer": "",
+                "citations": [],
+                "model_used": "m",
+                "dropped_history": 0,
+                "truncated": False,
+                "continued_rounds": 0,
+            },
         )
 
     ctx.generation.run = fake_run

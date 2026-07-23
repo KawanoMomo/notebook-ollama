@@ -6,6 +6,7 @@ import type {
 } from "$lib/api/types";
 import { chatApi, type ChatEvent } from "$lib/api/chat";
 import { notify, requestPermissionOnce } from "$lib/utils/notifications";
+import { stripTruncationNote } from "$lib/utils/truncation";
 
 export interface ConversationStore {
   readonly conversation: Conversation | null;
@@ -18,11 +19,15 @@ export interface ConversationStore {
   readonly error: string | null;
   readonly warning: string | null;
   readonly lastBeatAt: number | null;
+  /** continuing イベント受信中の進捗(自動継続ラウンド)。token 到着 or done で null に戻る。 */
+  readonly continuingInfo: { round: number; max: number } | null;
   load(notebookId: string, conversationId: string): Promise<void>;
   /** ノートを開いた時に、そのノートの最新会話を復元する(履歴のノートスコープ化)。 */
   loadLatest(notebookId: string): Promise<void>;
   ensureConversation(notebookId: string): Promise<Conversation>;
   send(notebookId: string, content: string, sourceIds?: string[]): Promise<void>;
+  /** 打ち切られた最後の応答(truncated=true)の続きを生成し、1通のメッセージに載せ替える(issue #22)。 */
+  continueLast(sourceIds?: string[]): Promise<void>;
   cancel(): void;
   /** 会話・メッセージ・ストリーミング状態を全クリアする(ノート切替時に呼ぶ)。 */
   reset(): void;
@@ -39,6 +44,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
   let error = $state<string | null>(null);
   let warning = $state<string | null>(null);
   let lastBeatAt = $state<number | null>(null);
+  let continuingInfo = $state<{ round: number; max: number } | null>(null);
   let beatTimer: ReturnType<typeof setInterval> | null = null;
   const NO_BEAT_WARNING_MS = 60_000;
 
@@ -94,6 +100,9 @@ export function createConversationStore(api = chatApi): ConversationStore {
     get lastBeatAt() {
       return lastBeatAt;
     },
+    get continuingInfo() {
+      return continuingInfo;
+    },
     async load(notebookId, conversationId) {
       const items = await api.listMessages(notebookId, conversationId);
       messages = items;
@@ -133,6 +142,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
       error = null;
       warning = null;
       lastBeatAt = null;
+      continuingInfo = null;
     },
     async send(notebookId, content, sourceIds) {
       void requestPermissionOnce();
@@ -154,12 +164,14 @@ export function createConversationStore(api = chatApi): ConversationStore {
       streamingHits = [];
       error = null;
       warning = null;
+      continuingInfo = null;
       abortController = new AbortController();
       startBeatWatch();
       const questionPreview = content.slice(0, 40);
       try {
         let citations: Citation[] = [];
         let modelUsed: string | null = null;
+        let lastTruncated = false;
         for await (const ev of api.sendMessage(
           notebookId,
           conv.id,
@@ -174,12 +186,16 @@ export function createConversationStore(api = chatApi): ConversationStore {
             streamingHits = ev.hits;
           } else if (ev.kind === "thinking") {
             thinkingChars += ev.text.length;
+          } else if (ev.kind === "continuing") {
+            continuingInfo = { round: ev.round, max: ev.max };
           } else if (ev.kind === "token") {
+            if (continuingInfo) continuingInfo = null; // 続きが流れ始めたら表示解除
             streamingText += ev.text;
           } else if (ev.kind === "done") {
             citations = ev.citations;
             modelUsed = ev.model_used;
             streamingText = ev.answer;
+            lastTruncated = ev.truncated;
           } else if (ev.kind === "error") {
             error = ev.message;
           }
@@ -192,6 +208,7 @@ export function createConversationStore(api = chatApi): ConversationStore {
           citations,
           model: modelUsed,
           created_at: new Date().toISOString(),
+          truncated: lastTruncated,
         };
         messages = [...messages, assistantMsg];
         if (error) {
@@ -210,6 +227,97 @@ export function createConversationStore(api = chatApi): ConversationStore {
         streaming = false;
         streamingText = "";
         streamingHits = [];
+        continuingInfo = null;
+        abortController = null;
+        stopBeatWatch();
+        lastBeatAt = null;
+        warning = null;
+      }
+    },
+    async continueLast(sourceIds) {
+      if (!conversation) return;
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== "assistant" || !last.truncated || streaming) return;
+      const nbId = conversation.notebook_id;
+      // 最後のメッセージを streaming 表示へ載せ替える(1つの吹き出しに見せる)。
+      messages = messages.slice(0, -1);
+      streaming = true;
+      // 旧注記(打ち切り警告)を残したまま継続表示すると、継続ストリーミング中
+      // ずっと本文中央に警告が挟まって見えるため、シード時点で除去する。
+      streamingText = stripTruncationNote(last.content);
+      thinkingChars = 0;
+      streamingHits = [];
+      continuingInfo = null;
+      error = null;
+      warning = null;
+      abortController = new AbortController();
+      startBeatWatch();
+      let citations = last.citations;
+      let modelUsed = last.model;
+      let lastTruncated = true;
+      let finalText = last.content;
+      try {
+        for await (const ev of api.continueMessage(
+          nbId,
+          conversation.id,
+          sourceIds,
+          abortController.signal,
+        ) as AsyncGenerator<ChatEvent>) {
+          beat();
+          if (ev.kind === "ping") {
+            // 接続生存のみ
+          } else if (ev.kind === "retrieval") {
+            streamingHits = ev.hits;
+          } else if (ev.kind === "thinking") {
+            thinkingChars += ev.text.length;
+          } else if (ev.kind === "continuing") {
+            continuingInfo = { round: ev.round, max: ev.max };
+          } else if (ev.kind === "token") {
+            if (continuingInfo) continuingInfo = null;
+            streamingText += ev.text;
+          } else if (ev.kind === "done") {
+            citations = ev.citations;
+            modelUsed = ev.model_used;
+            streamingText = ev.answer;
+            finalText = ev.answer;
+            lastTruncated = ev.truncated;
+          } else if (ev.kind === "error") {
+            error = ev.message;
+          }
+        }
+      } catch (e) {
+        if (!abortController?.signal.aborted) {
+          error = e instanceof Error ? e.message : String(e);
+        }
+      } finally {
+        messages = [
+          ...messages,
+          {
+            ...last,
+            content: error ? last.content : finalText || streamingText || last.content,
+            citations,
+            model: modelUsed,
+            truncated: error ? last.truncated : lastTruncated,
+          },
+        ];
+        // send() と同様の通知。中断(abort)時は send() 同様エラー扱いしない
+        // ので通知もしない。質問文は continueLast からは直接見えないため
+        // body は固定短文で済ませる。
+        if (!abortController?.signal.aborted) {
+          if (error) {
+            notify({ title: "回答エラー", body: error.slice(0, 80), tag: "chat-error" });
+          } else {
+            notify({
+              title: "回答完了",
+              body: "続きの生成が完了しました",
+              tag: "chat-done",
+            });
+          }
+        }
+        streaming = false;
+        streamingText = "";
+        streamingHits = [];
+        continuingInfo = null;
         abortController = null;
         stopBeatWatch();
         lastBeatAt = null;

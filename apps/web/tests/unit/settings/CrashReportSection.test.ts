@@ -70,7 +70,7 @@ function makeAppSettings(crash_report: CrashReportSettings | undefined): AppSett
       request_timeout_seconds: 600,
       chat_read_timeout_seconds: 600,
     },
-    generation: { context_budget_ratio: 0.8, response_budget_tokens: 1024 },
+    generation: { context_budget_ratio: 0.8, response_budget_tokens: 1024, auto_continue_max: 0 },
     retrieval: { top_k: 8, top_k_max: 30, min_history_turns: 2 },
     audio: BASE_AUDIO,
     crash_report,

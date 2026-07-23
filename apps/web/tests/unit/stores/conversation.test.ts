@@ -48,6 +48,8 @@ describe('conversation store', () => {
         citations: [],
         model_used: 'qwen2.5:14b',
         dropped_history: 0,
+        truncated: false,
+        continued_rounds: 0,
       },
     ];
     const store = createConversationStore(makeApi(events) as never);
@@ -232,5 +234,215 @@ describe('conversation store', () => {
     await p;
     expect(store.streaming).toBe(false);
     expect(store.warning).toBeNull();
+  });
+
+  // --- 自動/手動継続(issue #22, Task 8) ----------------------------------
+  describe('自動/手動継続', () => {
+    const doneTruncated: ChatEvent = {
+      kind: 'done',
+      answer: '途中まで',
+      citations: [],
+      model_used: 'm',
+      dropped_history: 0,
+      truncated: true,
+      continued_rounds: 2,
+    };
+
+    function makeContinueApi(
+      events: ChatEvent[],
+      continueEvents: ChatEvent[],
+      captured?: Record<string, unknown>,
+    ) {
+      return {
+        createConversation: vi.fn().mockResolvedValue(conv),
+        listConversations: vi.fn().mockResolvedValue([]),
+        listMessages: vi.fn().mockResolvedValue([]),
+        sendMessage: vi.fn(function* () {
+          for (const ev of events) yield ev;
+        }),
+        continueMessage: vi.fn(function* (...args: unknown[]) {
+          if (captured) captured.continueArgs = args;
+          for (const ev of continueEvents) yield ev;
+        }),
+      };
+    }
+
+    it('send: done.truncated が最後のメッセージに反映される', async () => {
+      const store = createConversationStore(
+        makeContinueApi(
+          [{ kind: 'token', text: '途中まで' }, doneTruncated],
+          [],
+        ) as never,
+      );
+      await store.send('nb1', '質問', ['s1']);
+      const last = store.messages[store.messages.length - 1];
+      expect(last.role).toBe('assistant');
+      expect(last.truncated).toBe(true);
+    });
+
+    it('continuing イベントで continuingInfo が立ち、done で消える', async () => {
+      const store = createConversationStore(
+        makeContinueApi(
+          [
+            { kind: 'continuing', round: 1, max: 2 },
+            { kind: 'token', text: 'x' },
+            { ...doneTruncated, truncated: false },
+          ],
+          [],
+        ) as never,
+      );
+      await store.send('nb1', '質問', ['s1']);
+      expect(store.continuingInfo).toBeNull(); // 完了後はクリア
+    });
+
+    it('continueLast: 最後の truncated メッセージを置換し truncated を解除する', async () => {
+      const store2 = createConversationStore(
+        makeContinueApi(
+          [{ kind: 'token', text: '途中まで' }, doneTruncated],
+          [],
+        ) as never,
+      );
+      await store2.send('nb1', '質問', ['s1']);
+      expect(store2.messages[store2.messages.length - 1].truncated).toBe(true);
+    });
+
+    it('continueLast は messages 件数を変えず全文を置換する', async () => {
+      const captured: Record<string, unknown> = {};
+      const api = makeContinueApi(
+        [{ kind: 'token', text: '途中まで' }, doneTruncated],
+        [
+          { kind: 'token', text: 'と続き' },
+          { ...doneTruncated, answer: '途中までと続き', truncated: false },
+        ],
+        captured,
+      );
+      const store = createConversationStore(api as never);
+      await store.send('nb1', '質問', ['s1']);
+      const countBefore = store.messages.length;
+
+      await store.continueLast(['s1']);
+
+      expect(store.messages.length).toBe(countBefore);
+      const last = store.messages[store.messages.length - 1];
+      expect(last.content).toBe('途中までと続き');
+      expect(last.truncated).toBe(false);
+      const args = captured.continueArgs as unknown[];
+      expect(args[0]).toBe('nb1');
+      expect(args[1]).toBe('c1');
+      expect(args[2]).toEqual(['s1']);
+    });
+
+    it('continueLast: truncated でない最終メッセージには何もしない', async () => {
+      const api = makeContinueApi(
+        [{ kind: 'token', text: 'x' }, { ...doneTruncated, truncated: false }],
+        [{ kind: 'token', text: '呼ばれないはず' }],
+      );
+      const store = createConversationStore(api as never);
+      await store.send('nb1', '質問', ['s1']);
+      const before = [...store.messages];
+
+      await store.continueLast(['s1']);
+
+      expect(store.messages).toEqual(before);
+      expect(api.continueMessage).not.toHaveBeenCalled();
+    });
+
+    // --- FE: 手動継続の旧注記残留(issue #22 レビュー指摘) -------------------
+    const notePrefix = '\n\n---\n⚠️ 応答が出力トークン上限';
+    const truncatedAnswerWithNote = `途中まで${notePrefix}(1024×2回)に達したため打ち切られました。`;
+
+    it('continueLast: streamingText の初期シードに旧注記が含まれない', async () => {
+      let resolveGen!: () => void;
+      const gate = new Promise<void>((r) => (resolveGen = r));
+      const api = {
+        createConversation: vi.fn().mockResolvedValue(conv),
+        listConversations: vi.fn().mockResolvedValue([]),
+        listMessages: vi.fn().mockResolvedValue([]),
+        sendMessage: vi.fn(function* () {
+          yield { kind: 'token', text: truncatedAnswerWithNote } as ChatEvent;
+          yield { ...doneTruncated, answer: truncatedAnswerWithNote } as ChatEvent;
+        }),
+        continueMessage: vi.fn(async function* () {
+          await gate;
+        }),
+      };
+      const store = createConversationStore(api as never);
+      await store.send('nb1', '質問', ['s1']);
+
+      const p = store.continueLast(['s1']);
+      // continueLast は最初の await 直前までシードを同期的にセットする
+      expect(store.streamingText).toBe('途中まで');
+      expect(store.streamingText).not.toContain('⚠️');
+      resolveGen();
+      await p;
+    });
+
+    // --- FEテスト強化: continueLast のエラー/abort 復元(トリアージ#14) -----
+    it('continueLast: continueMessage が例外を投げたら件数不変・元の内容(注記含む)を維持し error をセットする', async () => {
+      const api = {
+        createConversation: vi.fn().mockResolvedValue(conv),
+        listConversations: vi.fn().mockResolvedValue([]),
+        listMessages: vi.fn().mockResolvedValue([]),
+        sendMessage: vi.fn(function* () {
+          yield { kind: 'token', text: truncatedAnswerWithNote } as ChatEvent;
+          yield { ...doneTruncated, answer: truncatedAnswerWithNote } as ChatEvent;
+        }),
+        continueMessage: vi.fn(async function* () {
+          throw new Error('boom');
+        }),
+      };
+      const store = createConversationStore(api as never);
+      await store.send('nb1', '質問', ['s1']);
+      const before = [...store.messages];
+
+      await store.continueLast(['s1']);
+
+      expect(store.messages.length).toBe(before.length);
+      const last = store.messages[store.messages.length - 1];
+      expect(last.content).toBe(truncatedAnswerWithNote);
+      expect(last.truncated).toBe(true);
+      expect(store.error).toBe('boom');
+    });
+
+    it('continueLast: abort 時は error をセットせず元の内容を復元する', async () => {
+      let resolveGen!: () => void;
+      const gate = new Promise<void>((r) => (resolveGen = r));
+      const api = {
+        createConversation: vi.fn().mockResolvedValue(conv),
+        listConversations: vi.fn().mockResolvedValue([]),
+        listMessages: vi.fn().mockResolvedValue([]),
+        sendMessage: vi.fn(function* () {
+          yield { kind: 'token', text: truncatedAnswerWithNote } as ChatEvent;
+          yield { ...doneTruncated, answer: truncatedAnswerWithNote } as ChatEvent;
+        }),
+        continueMessage: vi.fn(async function* (
+          _nb: string,
+          _cid: string,
+          _sourceIds?: string[],
+          signal?: AbortSignal,
+        ) {
+          yield { kind: 'token', text: 'x' } as ChatEvent;
+          await gate;
+          if (signal?.aborted) {
+            throw new DOMException('The user aborted a request.', 'AbortError');
+          }
+        }),
+      };
+      const store = createConversationStore(api as never);
+      await store.send('nb1', '質問', ['s1']);
+      const before = [...store.messages];
+
+      const p = store.continueLast(['s1']);
+      await vi.advanceTimersByTimeAsync(0);
+      store.cancel();
+      resolveGen();
+      await p;
+
+      expect(store.error).toBeNull();
+      expect(store.messages.length).toBe(before.length);
+      const last = store.messages[store.messages.length - 1];
+      expect(last.content).toBe(truncatedAnswerWithNote);
+      expect(last.truncated).toBe(true);
+    });
   });
 });
