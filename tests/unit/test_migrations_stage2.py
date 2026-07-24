@@ -1,11 +1,16 @@
 import sqlite3
 
+from core.storage.assets_repo import (
+    AssetRecord,
+    insert_assets,
+    list_assets_for_source,
+    set_desc_chunk_link,
+)
 from core.storage.chunks_repo import ChunkRecord, insert_chunks, list_chunks_for_source
 from core.storage.migrations import (
-    run_desc_chunk_id_migration, run_chunk_kind_migration, run_chunk_assets_migration,
-)
-from core.storage.assets_repo import (
-    AssetRecord, insert_assets, list_assets_for_source, set_desc_chunk_link,
+    run_chunk_assets_migration,
+    run_chunk_kind_migration,
+    run_desc_chunk_id_migration,
 )
 
 
@@ -43,7 +48,7 @@ def test_chunk_kind_defaults_to_text_and_accepts_figure_desc():
         heading_path=None, text="図の説明文", token_count=4, kind="figure_desc",
     )
     insert_chunks(conn, [rec2])
-    row2 = [r for r in list_chunks_for_source(conn, "s1") if r.id == "c2"][0]
+    row2 = next(r for r in list_chunks_for_source(conn, "s1") if r.id == "c2")
     assert row2.kind == "figure_desc"
 
 

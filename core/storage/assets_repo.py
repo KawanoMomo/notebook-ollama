@@ -88,7 +88,9 @@ def set_chunk_link(conn: sqlite3.Connection, asset_id: str, chunk_id: str) -> No
 
 
 def set_desc_chunk_link(conn: sqlite3.Connection, asset_id: str, desc_chunk_id: str) -> None:
-    conn.execute("UPDATE chunk_assets SET desc_chunk_id = ? WHERE id = ?", (desc_chunk_id, asset_id))
+    conn.execute(
+        "UPDATE chunk_assets SET desc_chunk_id = ? WHERE id = ?", (desc_chunk_id, asset_id)
+    )
 
 
 def delete_assets_for_source(conn: sqlite3.Connection, source_id: str) -> None:

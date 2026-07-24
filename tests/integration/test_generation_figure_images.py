@@ -2,7 +2,7 @@ import base64
 
 import pytest
 
-from core.generation.stream import GenerationDeps, GenerationEvent, GenerationService
+from core.generation.stream import GenerationDeps, GenerationService
 from core.retrieval.search import RetrievedChunk
 
 FIGURE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 10

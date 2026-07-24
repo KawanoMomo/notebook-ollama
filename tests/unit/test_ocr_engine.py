@@ -16,7 +16,9 @@ class FakeGateway:
 
 @pytest.mark.asyncio
 async def test_ocr_page_returns_transcribed_text():
-    engine = OllamaOcrEngine(client=FakeGateway("これはOCRされたページ本文です。"), model="qwen3-vl")
+    engine = OllamaOcrEngine(
+        client=FakeGateway("これはOCRされたページ本文です。"), model="qwen3-vl"
+    )
     result = await engine.ocr_page(image_png=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10)
     assert result == "これはOCRされたページ本文です。"
 

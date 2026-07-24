@@ -181,7 +181,9 @@ class GenerationService:
                         images_b64.append(base64.b64encode(images_by_chunk[cid]).decode("ascii"))
 
         if images_b64:
-            messages.append(build_image_message(role="user", content=user_prompt, images_b64=images_b64))
+            messages.append(
+                build_image_message(role="user", content=user_prompt, images_b64=images_b64)
+            )
         else:
             messages.append({"role": "user", "content": user_prompt})
 
