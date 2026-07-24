@@ -1148,6 +1148,9 @@ recording = [
     { name = "soundfile" },
     { name = "webrtcvad-wheels" },
 ]
+slides = [
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1183,6 +1186,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "python-pptx", specifier = ">=1.0" },
     { name = "python-ulid", specifier = ">=3.0" },
+    { name = "pywin32", marker = "sys_platform == 'win32' and extra == 'slides'", specifier = ">=306" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "qdrant-client", specifier = ">=1.12" },
     { name = "scipy", marker = "extra == 'recording'", specifier = ">=1.11" },
@@ -1198,7 +1202,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
     { name = "webrtcvad-wheels", marker = "extra == 'recording'", specifier = ">=2.0" },
 ]
-provides-extras = ["pdf", "recording"]
+provides-extras = ["pdf", "slides", "recording"]
 
 [package.metadata.requires-dev]
 dev = [
