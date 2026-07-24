@@ -6,9 +6,10 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from sse_starlette.sse import EventSourceResponse
 
+from apps.api.routers.features import require_feature
 from apps.api.schemas.settings import (
     AccelerationResponseSchema,
     AppSettingsSchema,
@@ -258,7 +259,10 @@ async def put_ollama_settings(
     )
 
 
-@router.put("/settings/vision-model")
+@router.put(
+    "/settings/vision-model",
+    dependencies=[Depends(require_feature("table-figure-rag"))],
+)
 async def put_vision_model(request: Request, body: VisionModelUpdate) -> dict:
     """視覚モデル(VLM)スロットの更新(Stage 2)。
 

@@ -5,6 +5,19 @@ from fastapi.testclient import TestClient
 from apps.api.main import create_app
 
 
+def _enable_beta(client) -> None:
+    client.put("/api/features/table-figure-rag", json={"enabled": True})
+
+
+def test_put_vision_model_403_when_beta_off(memory_data_dir):
+    """回帰テスト: spec の「OFF時: 視覚モデル(VLM)スロットは非露出(APIは403+
+    有効化ヒント)」に対し、put_vision_model が require_feature ガードなしで
+    ベータOFFでも 200 を返していた(evaluator scenario 8で発覚)。"""
+    with TestClient(create_app()) as client:
+        res = client.put("/api/settings/vision-model", json={"model": "qwen3-vl"})
+        assert res.status_code == 403
+
+
 def test_put_vision_model_rejects_non_vision_model(memory_data_dir, monkeypatch):
     import apps.api.routers.settings as settings_mod
 
@@ -17,6 +30,7 @@ def test_put_vision_model_rejects_non_vision_model(memory_data_dir, monkeypatch)
 
     monkeypatch.setattr(settings_mod, "OllamaClient", lambda **kw: FakeClient())
     with TestClient(create_app()) as client:
+        _enable_beta(client)
         res = client.put("/api/settings/vision-model", json={"model": "qwen2.5:14b"})
         assert res.status_code == 400
 
@@ -33,6 +47,7 @@ def test_put_vision_model_accepts_vision_model(memory_data_dir, monkeypatch):
 
     monkeypatch.setattr(settings_mod, "OllamaClient", lambda **kw: FakeClient())
     with TestClient(create_app()) as client:
+        _enable_beta(client)
         res = client.put("/api/settings/vision-model", json={"model": "qwen3-vl"})
         assert res.status_code == 200
         assert res.json()["vision_model"] == "qwen3-vl"
@@ -41,7 +56,7 @@ def test_put_vision_model_accepts_vision_model(memory_data_dir, monkeypatch):
         res2 = client.get("/api/settings")
         assert res2.json()["ollama"]["vision_model"] == "qwen3-vl"
 
-    # 再起動(新 app・同 data_dir)後も永続化されている
+    # 再起動(新 app・同 data_dir)後も永続化されている(ベータ opt-in も同様に永続化)
     with TestClient(create_app()) as client2:
         again = client2.get("/api/settings").json()
         assert again["ollama"]["vision_model"] == "qwen3-vl"
@@ -59,6 +74,7 @@ def test_put_vision_model_empty_string_clears_selection(memory_data_dir, monkeyp
 
     monkeypatch.setattr(settings_mod, "OllamaClient", lambda **kw: FakeClient())
     with TestClient(create_app()) as client:
+        _enable_beta(client)
         client.put("/api/settings/vision-model", json={"model": "qwen3-vl"})
         res = client.put("/api/settings/vision-model", json={"model": ""})
         assert res.status_code == 200
@@ -84,6 +100,7 @@ def test_vision_model_survives_default_model_change_and_restart(memory_data_dir,
 
     monkeypatch.setattr(settings_mod, "OllamaClient", lambda **kw: FakeClient())
     with TestClient(create_app()) as client:
+        _enable_beta(client)
         res = client.put("/api/settings/vision-model", json={"model": "qwen3-vl"})
         assert res.json()["vision_model"] == "qwen3-vl"
 

@@ -107,6 +107,10 @@
     return modelsStore.models.filter((m) => m.has_vision === true).map((m) => m.name);
   }
 
+  function isTableFigureRagEnabled(): boolean {
+    return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
+  }
+
   async function onVisionModelChange(e: Event) {
     const select = e.currentTarget as HTMLSelectElement;
     const next = select.value;
@@ -456,19 +460,21 @@
                 {/each}
               </select>
             </dd>
-            <dt>視覚モデル(図の解析・OCR用)</dt>
-            <dd>
-              <select
-                class="vision-select"
-                value={settingsStore.settings.ollama.vision_model}
-                onchange={onVisionModelChange}
-              >
-                <option value="">(未設定)</option>
-                {#each visionModelNames() as name (name)}
-                  <option value={name}>{name}</option>
-                {/each}
-              </select>
-            </dd>
+            {#if isTableFigureRagEnabled()}
+              <dt>視覚モデル(図の解析・OCR用)</dt>
+              <dd>
+                <select
+                  class="vision-select"
+                  value={settingsStore.settings.ollama.vision_model}
+                  onchange={onVisionModelChange}
+                >
+                  <option value="">(未設定)</option>
+                  {#each visionModelNames() as name (name)}
+                    <option value={name}>{name}</option>
+                  {/each}
+                </select>
+              </dd>
+            {/if}
           </dl>
 
           {#if dimWarning}
