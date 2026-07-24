@@ -5,8 +5,10 @@ from core.storage.assets_repo import (
     delete_assets_for_source,
     insert_assets,
     list_assets_for_chunk_ids,
+    list_assets_for_desc_chunk_ids,
     list_assets_for_source,
     set_chunk_link,
+    set_desc_chunk_link,
 )
 from core.storage.migrations import run_chunk_assets_migration, run_desc_chunk_id_migration
 
@@ -42,6 +44,15 @@ def test_chunk_link_and_lookup_by_chunk_ids():
     by_chunk = list_assets_for_chunk_ids(conn, ["c9", "c-none"])
     assert [a.id for a in by_chunk["c9"]] == ["a1"]
     assert "c-none" not in by_chunk
+
+
+def test_desc_chunk_link_and_lookup_by_desc_chunk_ids():
+    conn = _conn()
+    insert_assets(conn, [_asset(kind="figure")])
+    set_desc_chunk_link(conn, "a1", "dc9")
+    by_desc_chunk = list_assets_for_desc_chunk_ids(conn, ["dc9", "dc-none"])
+    assert by_desc_chunk["dc9"].id == "a1"
+    assert "dc-none" not in by_desc_chunk
 
 
 def test_delete_for_source():

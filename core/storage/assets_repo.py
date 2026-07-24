@@ -69,6 +69,20 @@ def list_assets_for_chunk_ids(
     return out
 
 
+def list_assets_for_desc_chunk_ids(
+    conn: sqlite3.Connection, desc_chunk_ids: list[str]
+) -> dict[str, AssetRecord]:
+    """figure_desc チャンクID → そのチャンクを生んだ図アセット(1件、画像取得用)。"""
+    if not desc_chunk_ids:
+        return {}
+    placeholders = ",".join("?" * len(desc_chunk_ids))
+    rows = conn.execute(
+        f"SELECT * FROM chunk_assets WHERE desc_chunk_id IN ({placeholders})",  # noqa: S608
+        desc_chunk_ids,
+    ).fetchall()
+    return {r["desc_chunk_id"]: AssetRecord.from_row(r) for r in rows}
+
+
 def set_chunk_link(conn: sqlite3.Connection, asset_id: str, chunk_id: str) -> None:
     conn.execute("UPDATE chunk_assets SET chunk_id = ? WHERE id = ?", (chunk_id, asset_id))
 
