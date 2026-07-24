@@ -44,6 +44,7 @@ class PipelineDeps:
     assets_enabled: Callable[[], bool] | None = None
     figure_describer: Any | None = None  # FigureDescriber プロトコル
     figure_describe_enabled: Callable[[], bool] | None = None
+    ocr_engine: Any | None = None  # OcrEngine プロトコル。None ならOCRフォールバックなし
 
 
 class IngestionPipeline:
@@ -215,10 +216,11 @@ class IngestionPipeline:
                 and self._deps.assets_dir is not None
             )
             if kind == "pdf":
-                doc = parser.parse_bytes(
+                doc = await parser.parse_bytes(
                     data,
                     source_hint=get_source(conn, source_id).origin,
                     extract_assets=extract,
+                    ocr_engine=self._deps.ocr_engine,
                 )
             else:
                 doc = parser.parse_bytes(data, source_hint=get_source(conn, source_id).origin)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.parsers import register
 from core.ingestion.types import ParsedAsset, ParsedDocument, ParsedSection
@@ -8,8 +10,13 @@ from core.ingestion.types import ParsedAsset, ParsedDocument, ParsedSection
 class PdfParser:
     kind = "pdf"
 
-    def parse_bytes(
-        self, data: bytes, *, source_hint: str | None = None, extract_assets: bool = False
+    async def parse_bytes(
+        self,
+        data: bytes,
+        *,
+        source_hint: str | None = None,
+        extract_assets: bool = False,
+        ocr_engine: Any | None = None,
     ) -> ParsedDocument:
         try:
             import pymupdf  # type: ignore[import-not-found]
@@ -61,12 +68,33 @@ class PdfParser:
         title = (doc.metadata.get("title") if doc.metadata else None) or (
             source_hint or "document.pdf"
         )
-        doc.close()
         if not sections:
-            raise AppError(
-                ErrorCode.INGESTION_PARSE_FAILED,
-                "no extractable text in PDF (image-only?)",
-            )
+            if ocr_engine is None:
+                doc.close()
+                raise AppError(
+                    ErrorCode.INGESTION_PARSE_FAILED,
+                    "no extractable text in PDF (image-only?)",
+                )
+            ocr_sections: list[ParsedSection] = []
+            for page_index, page in enumerate(doc):
+                pix = page.get_pixmap(dpi=150)
+                text = await ocr_engine.ocr_page(image_png=pix.tobytes("png"))
+                if text:
+                    ocr_sections.append(
+                        ParsedSection(
+                            text=text, page=page_index + 1, heading_path=[], ord=page_index,
+                        )
+                    )
+            doc.close()
+            if not ocr_sections:
+                raise AppError(
+                    ErrorCode.INGESTION_PARSE_FAILED,
+                    "OCR failed to extract text from any page",
+                    remediation="視覚モデル(VLM)の設定を確認してください。",
+                )
+            sections = ocr_sections
+        else:
+            doc.close()
         return ParsedDocument(title=title, sections=sections, assets=assets)
 
 

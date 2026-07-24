@@ -16,6 +16,7 @@ from core.config import AppConfig
 from core.feature_service import FeatureService
 from core.generation.stream import GenerationDeps, GenerationService
 from core.ingestion.figure_describer import OllamaFigureDescriber
+from core.ingestion.ocr_engine import OllamaOcrEngine
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
 from core.logging import get_logger
 from core.ollama.gateway import OllamaGateway
@@ -401,6 +402,11 @@ def build_context(config: AppConfig) -> AppContext:
                 config.ollama.auto_describe_figures
                 and bool(config.ollama.vision_model)
                 and _pipeline_features.is_enabled("table-figure-rag")
+            ),
+            ocr_engine=(
+                OllamaOcrEngine(client=gateway, model=config.ollama.vision_model)
+                if config.ollama.vision_model
+                else None
             ),
         )
     )

@@ -20,6 +20,7 @@ from apps.api.schemas.source_content import (
 )
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.hashing import sha256_bytes
+from core.ingestion.ocr_engine import OllamaOcrEngine
 from core.ingestion.parsers import get_parser
 from core.ingestion.pptx_to_pdf import slides_pdf_path
 from core.logging import get_logger
@@ -394,7 +395,14 @@ async def get_source_content(
     parser = get_parser(src.kind)
     if src.kind == "pdf":
         extract = ctx.features.is_enabled("table-figure-rag")
-        doc = parser.parse_bytes(data, source_hint=src.origin, extract_assets=extract)
+        ocr_engine = (
+            OllamaOcrEngine(client=ctx.ollama, model=ctx.config.ollama.vision_model)
+            if ctx.config.ollama.vision_model
+            else None
+        )
+        doc = await parser.parse_bytes(
+            data, source_hint=src.origin, extract_assets=extract, ocr_engine=ocr_engine
+        )
     else:
         doc = parser.parse_bytes(data, source_hint=src.origin)
     sections = [

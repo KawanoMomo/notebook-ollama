@@ -9,9 +9,9 @@ from tests.unit.fixtures_pdf import build_pdf_with_table  # noqa: E402
 ROWS = [["品名", "数量"], ["ネジ", "10"], ["ナット", "20"]]
 
 
-def test_table_extracted_as_asset_and_markdown_in_body():
+async def test_table_extracted_as_asset_and_markdown_in_body():
     data = build_pdf_with_table(ROWS)
-    doc = PdfParser().parse_bytes(data, extract_assets=True)
+    doc = await PdfParser().parse_bytes(data, extract_assets=True)
     tables = [a for a in doc.assets if a.kind == "table"]
     assert len(tables) == 1
     t = tables[0]
@@ -24,8 +24,8 @@ def test_table_extracted_as_asset_and_markdown_in_body():
     assert body.count("ネジ") == 1
 
 
-def test_extract_assets_false_keeps_legacy_behavior():
+async def test_extract_assets_false_keeps_legacy_behavior():
     data = build_pdf_with_table(ROWS)
-    doc = PdfParser().parse_bytes(data, extract_assets=False)
+    doc = await PdfParser().parse_bytes(data, extract_assets=False)
     assert doc.assets == []
     assert "ネジ" in "\n".join(s.text for s in doc.sections)  # 従来どおり生テキスト
