@@ -81,4 +81,11 @@ export const sourcesApi = {
     request<{ assets: AssetInfo[] }>(
       `/api/notebooks/${notebookId}/sources/${sourceId}/assets`,
     ),
+  describeFigures: (notebookId: string, sourceId: string) =>
+    request<{ status: string }>(
+      `/api/notebooks/${notebookId}/sources/${sourceId}/describe-figures`,
+      { method: 'POST' },
+    ),
+  assetImageUrl: (notebookId: string, sourceId: string, assetId: string) =>
+    `/api/notebooks/${notebookId}/sources/${sourceId}/assets/${assetId}`,
 };
