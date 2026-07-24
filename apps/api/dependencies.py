@@ -15,8 +15,8 @@ from core.adr.adr_job import AdrDeps, AdrJob
 from core.config import AppConfig
 from core.feature_service import FeatureService
 from core.generation.stream import GenerationDeps, GenerationService
-from core.ingestion.figure_describer import OllamaFigureDescriber
-from core.ingestion.ocr_engine import OllamaOcrEngine
+from core.ingestion.figure_describer import LazyFigureDescriber
+from core.ingestion.ocr_engine import LazyOcrEngine
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
 from core.logging import get_logger
 from core.ollama.client import OllamaClient
@@ -394,20 +394,20 @@ def build_context(config: AppConfig) -> AppContext:
             summary_runner=_summary_runner,
             assets_dir=config.assets_dir,
             assets_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
-            figure_describer=(
-                OllamaFigureDescriber(client=gateway, model=config.ollama.vision_model)
-                if config.ollama.vision_model
-                else None
+            figure_describer=LazyFigureDescriber(
+                client=gateway,
+                model_getter=lambda: config.ollama.vision_model,
+                enabled_getter=lambda: _pipeline_features.is_enabled("table-figure-rag"),
             ),
             figure_describe_enabled=lambda: (
                 config.ollama.auto_describe_figures
                 and bool(config.ollama.vision_model)
                 and _pipeline_features.is_enabled("table-figure-rag")
             ),
-            ocr_engine=(
-                OllamaOcrEngine(client=gateway, model=config.ollama.vision_model)
-                if config.ollama.vision_model
-                else None
+            ocr_engine=LazyOcrEngine(
+                client=gateway,
+                model_getter=lambda: config.ollama.vision_model,
+                enabled_getter=lambda: _pipeline_features.is_enabled("table-figure-rag"),
             ),
         )
     )
