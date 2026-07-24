@@ -17,6 +17,27 @@ _OCR_PROMPT = (
     "この画像はスキャン文書のページです。書かれている文章をそのまま日本語で"
     "書き起こしてください。レイアウトの説明や要約は不要です、本文のみを出力してください。"
 )
+_MIN_LENGTH = 10
+# 小型VLM(実機: llava:7b)は書き起こしを拒否したり要約に逃げたりすることがある。
+# 拒否文はそのまま採用すると非空なので「成功」扱いになり、RAG索引を汚染する
+# (evaluator実機確認: 拒否文/ハルシネーションがそのまま ready 化していた)。
+_REFUSAL_MARKERS = (
+    "申し訳",
+    "できません",
+    "ご理解",
+    "cannot provide",
+    "unable to",
+    "i'm sorry",
+    "i am sorry",
+    "as an ai",
+)
+
+
+def _is_low_quality(text: str) -> bool:
+    if len(text) < _MIN_LENGTH:
+        return True
+    lowered = text.lower()
+    return any(marker.lower() in lowered for marker in _REFUSAL_MARKERS)
 
 
 class OcrEngine(Protocol):
@@ -32,7 +53,7 @@ class OllamaOcrEngine:
         self._client = client
         self._model = model
 
-    async def ocr_page(self, *, image_png: bytes) -> str | None:
+    async def _one_attempt(self, image_png: bytes) -> str | None:
         from core.ollama.messages import build_image_message
 
         b64 = base64.b64encode(image_png).decode("ascii")
@@ -45,7 +66,16 @@ class OllamaOcrEngine:
         except Exception:
             log.warning("ocr_page_failed", exc_info=True)
             return None
-        return text or None
+        if _is_low_quality(text):
+            return None
+        return text
+
+    async def ocr_page(self, *, image_png: bytes) -> str | None:
+        result = await self._one_attempt(image_png)
+        if result is not None:
+            return result
+        log.info("ocr_page_low_quality_retry")
+        return await self._one_attempt(image_png)
 
 
 class LazyOcrEngine:
