@@ -106,3 +106,30 @@ def run_desc_chunk_id_migration(conn: sqlite3.Connection) -> None:
     for name, sqltype in _DESC_CHUNK_ID_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE chunk_assets ADD COLUMN {name} {sqltype}")
+
+
+def run_visual_index_migration(conn: sqlite3.Connection) -> None:
+    """Add visual_index_meta / visual_index_sources (Stage 3). Idempotent."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS visual_index_meta (
+          notebook_id TEXT PRIMARY KEY,
+          embedding_model TEXT NOT NULL,
+          built_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS visual_index_sources (
+          source_id TEXT PRIMARY KEY,
+          notebook_id TEXT NOT NULL,
+          page_count INTEGER NOT NULL,
+          built_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visual_index_sources_nb "
+        "ON visual_index_sources(notebook_id)"
+    )
