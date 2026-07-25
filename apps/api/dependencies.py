@@ -417,6 +417,7 @@ def build_context(config: AppConfig) -> AppContext:
         ollama=gateway,
         embedding_model=config.ollama.embedding_model,
         embedding_model_getter=lambda: config.ollama.embedding_model,
+        figure_desc_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
     )
 
     async def _probe_vision() -> bool:

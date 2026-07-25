@@ -20,7 +20,6 @@ from apps.api.schemas.source_content import (
 )
 from core.exceptions import AppError, ErrorCode
 from core.ingestion.hashing import sha256_bytes
-from core.ingestion.ocr_engine import OllamaOcrEngine
 from core.ingestion.parsers import get_parser
 from core.ingestion.pptx_to_pdf import slides_pdf_path
 from core.logging import get_logger
@@ -395,14 +394,27 @@ async def get_source_content(
     parser = get_parser(src.kind)
     if src.kind == "pdf":
         extract = ctx.features.is_enabled("table-figure-rag")
-        ocr_engine = (
-            OllamaOcrEngine(client=ctx.ollama, model=ctx.config.ollama.vision_model)
-            if ctx.config.ollama.vision_model
-            else None
-        )
-        doc = await parser.parse_bytes(
-            data, source_hint=src.origin, extract_assets=extract, ocr_engine=ocr_engine
-        )
+        try:
+            doc = await parser.parse_bytes(data, source_hint=src.origin, extract_assets=extract)
+        except AppError as exc:
+            if exc.code != ErrorCode.INGESTION_PARSE_FAILED:
+                raise
+            # スキャンPDF(テキストレイヤー無し)。取込時にOCR済みの本文チャンクを
+            # そのまま返す。閲覧のたびに全ページを再OCRしない — VLM呼び出しは
+            # 1ページ数十秒かかり、グローバルchatロックも占有するため。またこの
+            # フォールバックはベータOFFでも機能する(取込済みデータの閲覧は
+            # spec の「データ自体は保持」の範囲で、OCR経路の再実行ではない)。
+            text_chunks = [
+                c for c in list_chunks_for_source(ctx.conn, source_id) if c.kind == "text"
+            ]
+            if not text_chunks:
+                raise
+            return DocumentContent(
+                sections=[
+                    DocumentSection(heading_path=c.heading_path, page=c.page, text=c.text)
+                    for c in text_chunks
+                ]
+            )
     else:
         doc = parser.parse_bytes(data, source_hint=src.origin)
     sections = [
