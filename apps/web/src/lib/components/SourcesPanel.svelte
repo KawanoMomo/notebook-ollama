@@ -1,16 +1,19 @@
 <script lang="ts">
-  import { Plus, Mic, Check, Minus } from '@lucide/svelte';
+  import { Plus, Mic, Check, Minus, ScanSearch } from '@lucide/svelte';
   import SourceCard from './SourceCard.svelte';
   import SourceUploadModal from './SourceUploadModal.svelte';
   import ParentPickerModal from './ParentPickerModal.svelte';
   import RecordingControls from './RecordingControls.svelte';
+  import VisualIndexModal from './VisualIndexModal.svelte';
   import Button from './Button.svelte';
   import Spinner from './Spinner.svelte';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
   import { presentationStore } from '$lib/stores/presentation.svelte';
   import { sourcesApi } from '$lib/api/sources';
+  import { visualIndexApi, type VisualIndexStatus } from '$lib/api/visualIndex';
   import { featuresStore } from '$lib/stores/features.svelte';
+  import { eventsStore } from '$lib/stores/events.svelte';
   import { pushToast } from './Toast.svelte';
   import { computeBulkState } from './SourcesPanel.bulk';
   import { descendantIdsOf, orderWithChildren } from '$lib/utils/sourceTree';
@@ -197,6 +200,67 @@
     return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
   }
 
+  // 視覚インデックス管理モーダル。開いている間だけ状態を保持する(null=閉じている)。
+  let visualIndexStatus = $state<VisualIndexStatus | null>(null);
+  let visualIndexModalOpen = $state(false);
+
+  async function openVisualIndexModal() {
+    visualIndexModalOpen = true;
+    try {
+      visualIndexStatus = await visualIndexApi.status(notebookId);
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+      visualIndexModalOpen = false;
+    }
+  }
+
+  function closeVisualIndexModal() {
+    visualIndexModalOpen = false;
+  }
+
+  async function refreshVisualIndexStatus() {
+    try {
+      visualIndexStatus = await visualIndexApi.status(notebookId);
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function onVisualIndexBuild() {
+    try {
+      await visualIndexApi.build(notebookId);
+      pushToast('視覚インデックスの構築を開始しました', 'info');
+      await refreshVisualIndexStatus();
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  async function onVisualIndexDelete() {
+    try {
+      await visualIndexApi.remove(notebookId);
+      pushToast('視覚インデックスを削除しました', 'success');
+      await refreshVisualIndexStatus();
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
+  // SSE 完了/失敗の検知: eventsStore.visualIndexOutcome は発生の都度 `at` が
+  // 更新されるので、直前に見た値と比較して「新規発生」だけをトースト+再取得する
+  // (モーダルが閉じていても構築は進むため、開閉状態に依存させない)。
+  let lastSeenVisualIndexOutcomeAt = 0;
+  $effect(() => {
+    const outcome = eventsStore.visualIndexOutcome;
+    if (!outcome || outcome.at === lastSeenVisualIndexOutcomeAt) return;
+    lastSeenVisualIndexOutcomeAt = outcome.at;
+    pushToast(
+      outcome.ok ? '視覚インデックスの構築が完了しました' : '視覚インデックスの構築に失敗しました',
+      outcome.ok ? 'success' : 'error',
+    );
+    if (visualIndexModalOpen) void refreshVisualIndexStatus();
+  });
+
   async function onReingest(s: Source) {
     if (!confirm('チャンクと埋め込みを作り直します。よろしいですか？')) return;
     try {
@@ -375,6 +439,21 @@
         <Mic size="16" />
       {/if}
     </button>
+    {#if isTableFigureRagEnabled()}
+      <button
+        class="scan-icon"
+        title="視覚インデックス"
+        aria-label="視覚インデックス"
+        aria-busy={eventsStore.visualIndexProgress !== null}
+        onclick={openVisualIndexModal}
+      >
+        {#if eventsStore.visualIndexProgress !== null}
+          <Spinner size={16} />
+        {:else}
+          <ScanSearch size="16" />
+        {/if}
+      </button>
+    {/if}
   </div>
   <RecordingControls {notebookId} />
   <button
@@ -446,6 +525,17 @@
     candidates={parentPickerCandidates}
     onPick={pickParent}
     onClose={closeParentPicker}
+  />
+{/if}
+
+{#if visualIndexModalOpen && visualIndexStatus}
+  <VisualIndexModal
+    {notebookId}
+    status={visualIndexStatus}
+    progress={eventsStore.visualIndexProgress}
+    onBuild={onVisualIndexBuild}
+    onDelete={onVisualIndexDelete}
+    onClose={closeVisualIndexModal}
   />
 {/if}
 
@@ -522,6 +612,23 @@
   }
   .rec-icon:disabled {
     cursor: default;
+  }
+  .scan-icon {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    color: var(--color-fg-muted);
+    display: grid;
+    place-items: center;
+    transition: background-color 0.12s, border-color 0.12s;
+  }
+  .scan-icon:hover {
+    background: var(--color-bg-elevated);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
   }
   .list {
     flex: 1;

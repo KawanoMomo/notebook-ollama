@@ -5,7 +5,7 @@
 
   interface Props {
     message: Message;
-    onCitationClick: (chunkId: string) => void;
+    onCitationClick: (chunkId: string, sourceId: string) => void;
   }
   let { message, onCitationClick }: Props = $props();
 
@@ -24,7 +24,7 @@
     if (t instanceof HTMLElement && t.classList.contains('citation-badge')) {
       const n = Number(t.dataset.n);
       const c = Number.isFinite(n) ? citationByN(n) : undefined;
-      if (c) onCitationClick(c.chunk_id);
+      if (c) onCitationClick(c.chunk_id, c.source_id);
     }
   }
 </script>
@@ -38,7 +38,7 @@
       <ul class="cards">
         {#each message.citations as c (c.n)}
           <li>
-            <button class="card" onclick={() => onCitationClick(c.chunk_id)} type="button">
+            <button class="card" onclick={() => onCitationClick(c.chunk_id, c.source_id)} type="button">
               <div class="card-head">
                 <span class="num">{c.n}</span>
                 <span class="title" title={c.source_title}>{c.source_title}</span>

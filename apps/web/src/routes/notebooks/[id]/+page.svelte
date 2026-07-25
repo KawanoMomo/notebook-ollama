@@ -176,7 +176,15 @@
         {:else}
           <ChatPanel
             notebookId={data.notebookId}
-            onCitationClick={(cid) => {
+            onCitationClick={(cid, sourceId) => {
+              if (cid.startsWith('vp:')) {
+                // 視覚インデックス由来の合成チャンク(vp:<source_id>:<page>)は
+                // BE 側に実チャンク行が無く getChunk が失敗するため、
+                // 通常のソース選択(全文ビュー)へフォールバックする。
+                selectedSourceId = sourceId;
+                selectedChunkId = null;
+                return;
+              }
               // 引用クリック時は古いソース選択を消し、引用の source_id を解決させる。
               selectedChunkId = cid;
               selectedSourceId = null;

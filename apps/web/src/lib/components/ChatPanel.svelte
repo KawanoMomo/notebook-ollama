@@ -6,7 +6,7 @@
 
   interface Props {
     notebookId: string;
-    onCitationClick: (chunkId: string) => void;
+    onCitationClick: (chunkId: string, sourceId: string) => void;
   }
   let { notebookId, onCitationClick }: Props = $props();
 

@@ -9,10 +9,24 @@ export interface ConvStep {
   progress: number;
 }
 
+export interface VisualIndexProgress {
+  done: number;
+  total: number;
+}
+
+export interface VisualIndexOutcome {
+  ok: boolean;
+  // SSE イベントは同一 {ok} でも別の発生を区別できないため、発生時刻を
+  // change-detection のキーとして使う(購読側 $effect が「新しい完了/失敗」を検知する)。
+  at: number;
+}
+
 export interface EventsStore {
   start(notebookId: string): void;
   stop(): void;
   convStepFor(sourceId: string): ConvStep | undefined;
+  readonly visualIndexProgress: VisualIndexProgress | null;
+  readonly visualIndexOutcome: VisualIndexOutcome | null;
 }
 
 export function createEventsStore(): EventsStore {
@@ -20,16 +34,48 @@ export function createEventsStore(): EventsStore {
   const lastStatus = new Map<string, string>();
   // Latest pipeline step per source_id, driven by SSE payloads that carry `step`.
   let convSteps = $state<Record<string, ConvStep>>({});
+  // 視覚インデックス構築ジョブはノートブック単位(ソース単位の activeJobs 機構とは
+  // 別系統)なので、進捗/結果を専用の state として持つ(events.ts は全イベントを
+  // 単一の "source_status" SSE イベント名で運ぶため、type で分岐する)。
+  let visualIndexProgress = $state<VisualIndexProgress | null>(null);
+  let visualIndexOutcome = $state<VisualIndexOutcome | null>(null);
 
   return {
     convStepFor(sourceId) {
       return convSteps[sourceId];
     },
+    get visualIndexProgress() {
+      return visualIndexProgress;
+    },
+    get visualIndexOutcome() {
+      return visualIndexOutcome;
+    },
     start(notebookId) {
       close?.();
       lastStatus.clear();
       convSteps = {};
+      visualIndexProgress = null;
+      visualIndexOutcome = null;
       close = openNotebookEvents(notebookId, (ev: SourceStatusEvent) => {
+        // 視覚インデックスジョブのイベントには source_id が無いため、
+        // 通常のソース状態パッチに入る前に分岐して処理する。
+        if (ev.type === "visual_index_progress") {
+          visualIndexProgress = {
+            done: typeof ev.done === "number" ? ev.done : 0,
+            total: typeof ev.total === "number" ? ev.total : 0,
+          };
+          return;
+        }
+        if (ev.type === "visual_index_complete") {
+          visualIndexProgress = null;
+          visualIndexOutcome = { ok: true, at: Date.now() };
+          return;
+        }
+        if (ev.type === "visual_index_error") {
+          visualIndexProgress = null;
+          visualIndexOutcome = { ok: false, at: Date.now() };
+          return;
+        }
         // Record the latest pipeline step for this source (if the payload carries one).
         if (typeof ev.step === "string") {
           convSteps = {
@@ -107,6 +153,8 @@ export function createEventsStore(): EventsStore {
       close?.();
       lastStatus.clear();
       convSteps = {};
+      visualIndexProgress = null;
+      visualIndexOutcome = null;
       close = null;
     },
   };

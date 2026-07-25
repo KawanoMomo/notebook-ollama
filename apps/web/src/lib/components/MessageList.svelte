@@ -7,7 +7,7 @@
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
 
   interface Props {
-    onCitationClick: (chunkId: string) => void;
+    onCitationClick: (chunkId: string, sourceId: string) => void;
   }
   let { onCitationClick }: Props = $props();
 
