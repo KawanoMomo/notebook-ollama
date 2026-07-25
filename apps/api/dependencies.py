@@ -15,13 +15,16 @@ from core.adr.adr_job import AdrDeps, AdrJob
 from core.config import AppConfig
 from core.feature_service import FeatureService
 from core.generation.stream import GenerationDeps, GenerationService
+from core.ingestion.figure_describer import LazyFigureDescriber
+from core.ingestion.ocr_engine import LazyOcrEngine
 from core.ingestion.pipeline import IngestionPipeline, PipelineDeps
 from core.logging import get_logger
-from core.ollama.gateway import OllamaGateway
+from core.ollama.client import OllamaClient
+from core.ollama.gateway import OllamaGateway, probe_vision_capability
 from core.recording.session import RecordingRegistry
 from core.retrieval.search import RetrievalService
 from core.settings_store import load_overrides
-from core.storage.assets_repo import list_assets_for_chunk_ids
+from core.storage.assets_repo import list_assets_for_chunk_ids, list_assets_for_desc_chunk_ids
 from core.storage.database import connect, migrate
 from core.storage.vector_store import VectorStore
 from core.summary.registry import SummaryTaskRegistry
@@ -391,6 +394,21 @@ def build_context(config: AppConfig) -> AppContext:
             summary_runner=_summary_runner,
             assets_dir=config.assets_dir,
             assets_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
+            figure_describer=LazyFigureDescriber(
+                client=gateway,
+                model_getter=lambda: config.ollama.vision_model,
+                enabled_getter=lambda: _pipeline_features.is_enabled("table-figure-rag"),
+            ),
+            figure_describe_enabled=lambda: (
+                config.ollama.auto_describe_figures
+                and bool(config.ollama.vision_model)
+                and _pipeline_features.is_enabled("table-figure-rag")
+            ),
+            ocr_engine=LazyOcrEngine(
+                client=gateway,
+                model_getter=lambda: config.ollama.vision_model,
+                enabled_getter=lambda: _pipeline_features.is_enabled("table-figure-rag"),
+            ),
         )
     )
     retrieval = RetrievalService(
@@ -399,7 +417,30 @@ def build_context(config: AppConfig) -> AppContext:
         ollama=gateway,
         embedding_model=config.ollama.embedding_model,
         embedding_model_getter=lambda: config.ollama.embedding_model,
+        figure_desc_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
     )
+
+    async def _probe_vision() -> bool:
+        # 判定対象は「現在チャット応答を生成しているモデル」(default_model)。
+        # 取込時の図説明/OCR専用モデル(vision_model)とは別軸(spec §7)。
+        if not config.ollama.vision_model or not _pipeline_features.is_enabled("table-figure-rag"):
+            return False
+        client = OllamaClient(
+            endpoint=config.ollama.endpoint, timeout=config.ollama.request_timeout_seconds
+        )
+        return await probe_vision_capability(client, config.ollama.default_model)
+
+    def _lookup_figure_images(chunk_ids: list[str]) -> dict[str, bytes]:
+        assets_by_desc_chunk = list_assets_for_desc_chunk_ids(conn, chunk_ids)
+        out: dict[str, bytes] = {}
+        for cid, asset in assets_by_desc_chunk.items():
+            if not asset.image_path:
+                continue
+            path = config.assets_dir / asset.image_path
+            if path.exists():
+                out[cid] = path.read_bytes()
+        return out
+
     generation = GenerationService(
         deps=GenerationDeps(
             retrieval=retrieval,
@@ -409,6 +450,8 @@ def build_context(config: AppConfig) -> AppContext:
                 if _pipeline_features.is_enabled("table-figure-rag")
                 else {}
             ),
+            vision_check=_probe_vision,
+            figure_images_lookup=_lookup_figure_images,
         )
     )
     recordings = RecordingRegistry()

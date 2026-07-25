@@ -33,6 +33,10 @@ class OllamaSettings(BaseModel):
     runtime_backend: Literal["auto", "ollama-cuda"] = "auto"
     # Phase 2 will widen to include ollama-bge-m3-gpu / openvino-bge-m3-{igpu,npu}.
     text_embed_backend: Literal["auto", "ollama-bge-m3-cpu"] = "auto"
+    # 視覚モデル(Stage 2)。空文字列 = 未設定(describe段・OCR経路はスキップ)。
+    vision_model: str = ""
+    # 取込時に図を自動でVLM解析するか(既定ON)。OFFでも「図を解析」で手動実行可能。
+    auto_describe_figures: bool = True
 
 
 class DevModeSettings(BaseModel):

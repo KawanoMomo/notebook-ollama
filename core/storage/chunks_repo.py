@@ -18,6 +18,7 @@ class ChunkRecord:
     start_ms: int | None = None
     end_ms: int | None = None
     speaker: str | None = None
+    kind: str = "text"
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> ChunkRecord:
@@ -34,19 +35,20 @@ class ChunkRecord:
             start_ms=row["start_ms"] if "start_ms" in keys else None,
             end_ms=row["end_ms"] if "end_ms" in keys else None,
             speaker=row["speaker"] if "speaker" in keys else None,
+            kind=row["kind"] if "kind" in keys else "text",
         )
 
 
 def insert_chunks(conn: sqlite3.Connection, chunks: Iterable[ChunkRecord]) -> None:
     rows = [
         (c.id, c.source_id, c.notebook_id, c.ord, c.page, c.heading_path,
-         c.text, c.token_count, c.start_ms, c.end_ms, c.speaker)
+         c.text, c.token_count, c.start_ms, c.end_ms, c.speaker, c.kind)
         for c in chunks
     ]
     conn.executemany(
         "INSERT INTO chunks(id, source_id, notebook_id, ord, page, heading_path, "
-        "text, token_count, start_ms, end_ms, speaker) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "text, token_count, start_ms, end_ms, speaker, kind) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
 

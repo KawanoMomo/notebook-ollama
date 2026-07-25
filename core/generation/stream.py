@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -12,6 +13,7 @@ from core.generation.locations import format_location
 from core.generation.prompts import SYSTEM_PROMPT, PromptChunk, build_user_prompt
 from core.generation.table_assets import substitute_table_html
 from core.logging import get_logger
+from core.ollama.messages import build_image_message
 from core.retrieval.budgeter import (
     BudgetInput,
     HistoryTurn,
@@ -58,6 +60,8 @@ class GenerationDeps:
     retrieval: _RetrievalLike
     ollama: _GatewayLike
     assets_lookup: Callable[[list[str]], dict[str, list[AssetRecord]]] | None = None
+    vision_check: Callable[[], Any] | None = None  # -> Awaitable[bool]
+    figure_images_lookup: Callable[[list[str]], dict[str, bytes]] | None = None
 
 
 @dataclass
@@ -163,7 +167,25 @@ class GenerationService:
         for turn in budget.included_history:
             messages.append({"role": "user", "content": turn.user})
             messages.append({"role": "assistant", "content": turn.assistant})
-        messages.append({"role": "user", "content": user_prompt})
+
+        images_b64: list[str] = []
+        if self._deps.vision_check is not None and self._deps.figure_images_lookup is not None:
+            is_vision = await self._deps.vision_check()
+            if is_vision:
+                figure_chunk_ids = [h.chunk_id for h in hits[: budget.included_chunks]]
+                images_by_chunk = self._deps.figure_images_lookup(figure_chunk_ids)
+                # hits は検索スコア降順(RetrievalService.search が保証)なので、
+                # 上位から最大2枚まで採用する。
+                for cid in figure_chunk_ids:
+                    if cid in images_by_chunk and len(images_b64) < 2:
+                        images_b64.append(base64.b64encode(images_by_chunk[cid]).decode("ascii"))
+
+        if images_b64:
+            messages.append(
+                build_image_message(role="user", content=user_prompt, images_b64=images_b64)
+            )
+        else:
+            messages.append({"role": "user", "content": user_prompt})
 
         from core.exceptions import AppError
         from core.ollama.client import ThinkingChunk

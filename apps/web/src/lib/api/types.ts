@@ -122,6 +122,7 @@ export interface ModelInfo {
   kind: "chat" | "embedding" | "both" | "unknown";
   recommended_for: string[];
   embedding_dim: number | null;
+  has_vision: boolean;
 }
 
 export interface NotebookDefault {
@@ -142,6 +143,7 @@ export interface OllamaSettings {
   embedding_dim: number | null;
   request_timeout_seconds: number;
   chat_read_timeout_seconds: number;
+  vision_model: string;
 }
 
 export interface OllamaSettingsUpdate {

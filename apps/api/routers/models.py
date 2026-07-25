@@ -4,14 +4,18 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from core.logging import get_logger
 from core.ollama.client import OllamaClient
 from core.ollama.gateway import probe_embedding_dim
 from core.ollama.models_info import (
     classify_kind,
     classify_recommendation,
+    has_vision_capability,
     parse_context_window,
 )
 from core.storage import notebooks_repo
+
+log = get_logger("api.models")
 
 router = APIRouter(prefix="/api", tags=["models"])
 
@@ -28,7 +32,15 @@ async def list_models(request: Request) -> dict[str, Any]:
     for tag in tags:
         name = tag["name"]
         details = tag.get("details", {}) or {}
-        show = await client.show(name)
+        try:
+            show = await client.show(name)
+        except Exception:
+            # 一部モデルは Ollama 自身の /api/show が 500 を返すことがある
+            # (実機確認: gpt-oss 系の一部タグ)。1モデルの show 失敗で
+            # モデル一覧全体を巻き込んで 500 にしない — そのモデルだけ
+            # 除外して残りを返す(設定画面のモデル選択が全滅するのを防ぐ)。
+            log.warning("model_show_failed", model=name, exc_info=True)
+            continue
         params_str = show.get("parameters", "")
         ctx_window = parse_context_window(params_str)
         capabilities = show.get("capabilities", []) or []
@@ -47,6 +59,7 @@ async def list_models(request: Request) -> dict[str, Any]:
                 "modified_at": tag.get("modified_at"),
                 "kind": kind,
                 "embedding_dim": embedding_dim,
+                "has_vision": has_vision_capability(capabilities),
                 "recommended_for": classify_recommendation(
                     name=name,
                     family=details.get("family", ""),

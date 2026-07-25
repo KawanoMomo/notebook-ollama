@@ -41,12 +41,14 @@ class RetrievalService:
         ollama: _GatewayLike,
         embedding_model: str,
         embedding_model_getter: Callable[[], str] | None = None,
+        figure_desc_enabled: Callable[[], bool] | None = None,
     ) -> None:
         self._conn = conn
         self._vs = vector_store
         self._ollama = ollama
         self._embedding_model = embedding_model
         self._embedding_model_getter = embedding_model_getter
+        self._figure_desc_enabled = figure_desc_enabled
 
     def _resolve_embedding_model(self) -> str:
         if self._embedding_model_getter is not None:
@@ -70,6 +72,11 @@ class RetrievalService:
         if not hits:
             return []
         records = get_chunks_by_ids(self._conn, [h.id for h in hits])
+        if self._figure_desc_enabled is not None and not self._figure_desc_enabled():
+            # ベータOFF時は図説明チャンクを検索から除外する(spec: 2026-07-20-
+            # vlm-figure-ocr-design.md §提供形態。データ・ベクトルは保持し、
+            # ONに戻せば再び検索に乗る)。
+            records = [r for r in records if r.kind != "figure_desc"]
         score_by_id = {h.id: h.score for h in hits}
 
         # cache source titles to avoid N+1

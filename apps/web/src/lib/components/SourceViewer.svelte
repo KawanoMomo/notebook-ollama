@@ -61,6 +61,8 @@
   // asset.html で置換した全文)。一致するアセットが無ければ null のまま
   // (プレーンテキスト表示にフォールバック)。
   let tableAssetHtml = $state<string | null>(null);
+  // チャンク選択時に表示する図クロップの assetId 一覧(Stage 2)。
+  let figureAssetIds = $state<string[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
   let content = $state<SourceContent | null>(null);
@@ -103,6 +105,7 @@
     loading = true;
     error = null;
     tableAssetHtml = null;
+    figureAssetIds = [];
     sourceDetailApi
       .getChunk(notebookId, sid, cid)
       .then((c) => {
@@ -117,6 +120,9 @@
               if (tableAsset && c.text.includes(tableAsset.md_snippet!)) {
                 tableAssetHtml = c.text.replace(tableAsset.md_snippet!, tableAsset.html!);
               }
+              figureAssetIds = res.assets
+                .filter((a) => a.chunk_id === cid && a.kind === 'figure' && a.image_path)
+                .map((a) => a.id);
             })
             .catch(() => {
               /* best-effort; プレーンテキスト表示にフォールバックしたままにする */
@@ -360,6 +366,18 @@
         {:else}
           <pre class="text">{chunk.text}</pre>
         {/if}
+        {#if figureAssetIds.length > 0}
+          <div class="figure-thumbs">
+            {#each figureAssetIds as assetId (assetId)}
+              <img
+                class="figure-thumb"
+                src={sourcesApi.assetImageUrl(notebookId, resolvedSourceId ?? '', assetId)}
+                alt="図"
+                loading="lazy"
+              />
+            {/each}
+          </div>
+        {/if}
       {/if}
     </div>
   {:else if selectedChunkId === null && resolvedSourceId}
@@ -553,6 +571,19 @@
     font-size: 13px;
     line-height: 1.6;
     margin: 0;
+  }
+  .figure-thumbs {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .figure-thumb {
+    max-width: 160px;
+    max-height: 120px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    object-fit: contain;
   }
   :global(.chunk table),
   :global(.doc-section table) {

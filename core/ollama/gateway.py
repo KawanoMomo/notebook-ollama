@@ -10,7 +10,7 @@ class _ClientLike(Protocol):
         self, *, model: str, text: str, options: dict[str, Any] | None = None
     ) -> list[float]: ...
     def chat_stream(
-        self, *, model: str, messages: list[dict[str, str]], options: dict[str, Any] | None = None
+        self, *, model: str, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
     ) -> AsyncIterator[str]: ...
 
 
@@ -41,7 +41,7 @@ class OllamaGateway:
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         options: dict[str, Any] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
@@ -98,3 +98,28 @@ async def probe_embedding_dim(gateway: _GatewayLike, model: str) -> int:
     dim = len(vector)
     _EMBEDDING_DIM_CACHE[model] = dim
     return dim
+
+
+class _ShowCapable(Protocol):
+    async def show(self, model: str) -> dict[str, Any]: ...
+
+
+_VISION_CAPABILITY_CACHE: dict[str, bool] = {}
+
+
+def reset_vision_capability_cache() -> None:
+    """テスト用: プロセス内キャッシュをクリアする。"""
+    _VISION_CAPABILITY_CACHE.clear()
+
+
+async def probe_vision_capability(client: _ShowCapable, model: str) -> bool:
+    """モデルの vision capability を判定し、プロセス内 dict にキャッシュする。"""
+    from core.ollama.models_info import has_vision_capability
+
+    cached = _VISION_CAPABILITY_CACHE.get(model)
+    if cached is not None:
+        return cached
+    show = await client.show(model)
+    result = has_vision_capability(show.get("capabilities", []) or [])
+    _VISION_CAPABILITY_CACHE[model] = result
+    return result

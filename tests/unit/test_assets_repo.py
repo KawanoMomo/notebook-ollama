@@ -5,24 +5,28 @@ from core.storage.assets_repo import (
     delete_assets_for_source,
     insert_assets,
     list_assets_for_chunk_ids,
+    list_assets_for_desc_chunk_ids,
     list_assets_for_source,
     set_chunk_link,
+    set_desc_chunk_link,
 )
-from core.storage.migrations import run_chunk_assets_migration
+from core.storage.migrations import run_chunk_assets_migration, run_desc_chunk_id_migration
 
 
 def _conn():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     run_chunk_assets_migration(conn)
+    run_desc_chunk_id_migration(conn)
     return conn
 
 
-def _asset(aid="a1", chunk_id=None, kind="table"):
+def _asset(aid="a1", chunk_id=None, kind="table", desc_chunk_id=None):
     return AssetRecord(
         id=aid, source_id="s1", chunk_id=chunk_id, kind=kind, page=1,
         bbox_json="[0,0,100,50]", html="<table><tr><td>x</td></tr></table>",
         md_snippet="| x |", image_path=None, created_at="2026-07-20T00:00:00",
+        desc_chunk_id=desc_chunk_id,
     )
 
 
@@ -40,6 +44,15 @@ def test_chunk_link_and_lookup_by_chunk_ids():
     by_chunk = list_assets_for_chunk_ids(conn, ["c9", "c-none"])
     assert [a.id for a in by_chunk["c9"]] == ["a1"]
     assert "c-none" not in by_chunk
+
+
+def test_desc_chunk_link_and_lookup_by_desc_chunk_ids():
+    conn = _conn()
+    insert_assets(conn, [_asset(kind="figure")])
+    set_desc_chunk_link(conn, "a1", "dc9")
+    by_desc_chunk = list_assets_for_desc_chunk_ids(conn, ["dc9", "dc-none"])
+    assert by_desc_chunk["dc9"].id == "a1"
+    assert "dc-none" not in by_desc_chunk
 
 
 def test_delete_for_source():

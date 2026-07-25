@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
   import { sourcesApi } from '$lib/api/sources';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog, Presentation, Link, Unlink, Table2 } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog, Presentation, Link, Unlink, Table2, Image as ImageIcon } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -38,13 +38,15 @@
     onRemoveParent?: () => void;
     // 表・図の再解析(reingest)。pdf かつ ready/error のときのみ表示(任意配線)。
     onReingest?: () => void;
+    // 図の再解析(VLM説明生成)。pdf かつ ready のときのみ表示(任意配線)。
+    onDescribeFigures?: () => void;
   }
   let {
     source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
     onRename, onStopConversion,
     guideExpanded = false, onGuideToggle, onSummarize, onSummaryCancel,
     onGenerateAdr, onStartPresentation,
-    depth = 0, onSetParent, onRemoveParent, onReingest,
+    depth = 0, onSetParent, onRemoveParent, onReingest, onDescribeFigures,
   }: Props = $props();
 
   // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
@@ -267,6 +269,11 @@
     {#if source.kind === 'pdf' && (source.status === 'ready' || source.status === 'error') && onReingest}
       <button class="icon" onclick={onReingest} aria-label="表・図を再解析" title="表・図を再解析">
         <Table2 size="14" />
+      </button>
+    {/if}
+    {#if source.kind === 'pdf' && source.status === 'ready' && onDescribeFigures}
+      <button class="icon" onclick={onDescribeFigures} aria-label="図を解析" title="図を解析(VLM説明生成)">
+        <ImageIcon size="14" />
       </button>
     {/if}
     {#if canPlay}

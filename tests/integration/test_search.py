@@ -129,3 +129,78 @@ async def test_retrieval_returns_joined_chunks(tmp_path):
     assert h.source_title == "Doc"
     assert h.page == 1
     assert h.heading_path == "Ch1"
+
+
+def _figure_desc_fixture(tmp_path):
+    """text チャンク1件 + figure_desc チャンク1件を索引済みの状態を作る。"""
+    conn = connect(tmp_path / "m.db")
+    migrate(conn)
+    nb = create_notebook(conn, name="N")
+    src = create_source(conn, notebook_id=nb.id, kind="pdf", title="Doc", content_hash="h")
+    insert_chunks(
+        conn,
+        [
+            ChunkRecord(
+                id="a" * 26, source_id=src.id, notebook_id=nb.id, ord=0,
+                page=1, heading_path=None, text="本文チャンク", token_count=3,
+            ),
+            ChunkRecord(
+                id="f" * 26, source_id=src.id, notebook_id=nb.id, ord=1,
+                page=1, heading_path=None, text="図の説明チャンク", token_count=4,
+                kind="figure_desc",
+            ),
+        ],
+    )
+    vs = VectorStore(path=tmp_path / "q", dim=4)
+    vs.ensure_collection()
+    vs.upsert(
+        [
+            ChunkVector(
+                id="a" * 26, vector=[1, 0, 0, 0], notebook_id=nb.id,
+                source_id=src.id, source_kind="pdf", page=1, heading_path=None, ord=0,
+            ),
+            ChunkVector(
+                id="f" * 26, vector=[1, 0, 0, 0], notebook_id=nb.id,
+                source_id=src.id, source_kind="pdf", page=1, heading_path=None, ord=1,
+            ),
+        ]
+    )
+    return conn, vs, nb
+
+
+@pytest.mark.qdrant
+@pytest.mark.asyncio
+async def test_figure_desc_excluded_from_search_when_beta_off(tmp_path):
+    """回帰テスト: spec「OFF時は検索から除外(kind='figure_desc'をフィルタ)」。
+    フィルタ未実装だとベータOFFでも図説明チャンクが検索・引用に乗ってしまう。"""
+    conn, vs, nb = _figure_desc_fixture(tmp_path)
+    svc = RetrievalService(
+        conn=conn, vector_store=vs, ollama=FakeGateway(), embedding_model="bge-m3",
+        figure_desc_enabled=lambda: False,
+    )
+    hits = await svc.search(notebook_id=nb.id, query="hi", limit=10)
+    assert [h.text for h in hits] == ["本文チャンク"]
+
+
+@pytest.mark.qdrant
+@pytest.mark.asyncio
+async def test_figure_desc_included_when_beta_on(tmp_path):
+    conn, vs, nb = _figure_desc_fixture(tmp_path)
+    svc = RetrievalService(
+        conn=conn, vector_store=vs, ollama=FakeGateway(), embedding_model="bge-m3",
+        figure_desc_enabled=lambda: True,
+    )
+    hits = await svc.search(notebook_id=nb.id, query="hi", limit=10)
+    assert {h.text for h in hits} == {"本文チャンク", "図の説明チャンク"}
+
+
+@pytest.mark.qdrant
+@pytest.mark.asyncio
+async def test_figure_desc_included_when_getter_not_wired(tmp_path):
+    """getter未配線(既存テスト・他の構築箇所)では従来どおり全件返す。"""
+    conn, vs, nb = _figure_desc_fixture(tmp_path)
+    svc = RetrievalService(
+        conn=conn, vector_store=vs, ollama=FakeGateway(), embedding_model="bge-m3",
+    )
+    hits = await svc.search(notebook_id=nb.id, query="hi", limit=10)
+    assert len(hits) == 2

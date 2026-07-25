@@ -65,3 +65,8 @@ def classify_kind(*, capabilities: list[str], name: str) -> str:
     if any(marker in name_lower for marker in _EMBED_NAME_MARKERS):
         return "embedding"
     return "chat"
+
+
+def has_vision_capability(capabilities: list[str]) -> bool:
+    """Ollama モデルが vision capability を持つかどうか判定する。"""
+    return "vision" in {c.lower() for c in (capabilities or [])}

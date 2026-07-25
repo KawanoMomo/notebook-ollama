@@ -212,6 +212,15 @@
     }
   }
 
+  async function onDescribeFigures(s: Source) {
+    try {
+      await sourcesApi.describeFigures(notebookId, s.id);
+      pushToast('図の解析を開始しました', 'info');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }
+
   // ガイド開閉状態。クリックで開閉、ソース選択時に自動展開(§4.1)。
   let guideOpen = $state<Set<string>>(new Set());
 
@@ -407,6 +416,7 @@
         onSetParent={() => openParentPicker(s)}
         onRemoveParent={childIdsWithParent.has(s.id) ? () => onRemoveParent(s) : undefined}
         onReingest={isTableFigureRagEnabled() ? () => onReingest(s) : undefined}
+        onDescribeFigures={isTableFigureRagEnabled() ? () => onDescribeFigures(s) : undefined}
       />
     {/each}
     {#if filteredSources.length === 0}
