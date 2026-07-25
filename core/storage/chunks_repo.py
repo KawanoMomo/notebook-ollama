@@ -79,6 +79,18 @@ def delete_chunks_for_source(conn: sqlite3.Connection, source_id: str) -> None:
     conn.execute("DELETE FROM chunks WHERE source_id = ?", (source_id,))
 
 
+def list_text_chunks_for_page(
+    conn: sqlite3.Connection, source_id: str, page: int, limit: int
+) -> list[ChunkRecord]:
+    """視覚ページヒット展開用: そのページの本文チャンク先頭N件(ord昇順)。"""
+    rows = conn.execute(
+        "SELECT * FROM chunks WHERE source_id = ? AND page = ? AND kind = 'text' "
+        "ORDER BY ord LIMIT ?",
+        (source_id, page, limit),
+    ).fetchall()
+    return [ChunkRecord.from_row(r) for r in rows]
+
+
 def rename_speaker_in_source(
     conn: sqlite3.Connection, source_id: str, from_label: str, to_label: str
 ) -> int:
