@@ -34,32 +34,27 @@ class VisualEncoder(Protocol):
 
 
 class _TransformersBackend:
-    """実モデルを抱える内部バックエンド。実験枠: モデルAPIの妥当性は
-    実機ゲートで検証する。CUDA不可ならCPUへフォールバック(spec §7)。"""
+    """実モデルを抱える内部バックエンド。CUDA不可ならCPUへフォールバック(spec §7)。
+
+    Qwen3-VL-Embedding の正規APIは sentence-transformers
+    (`library_name: sentence-transformers`、モデルカードの Usage 参照)。
+    素の AutoModel/AutoProcessor では VLM の forward が input_ids を要求して
+    画像単独の埋め込みが組めない(実機ゲートで確認)ため、ST 経由で呼ぶ。
+    """
 
     def __init__(self, model_name: str) -> None:
         import torch
-        from transformers import AutoModel, AutoProcessor
+        from sentence_transformers import SentenceTransformer
 
         self._torch = torch
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         dtype = torch.float16 if self._device == "cuda" else torch.float32
         log.info("visual_encoder_loading", model=model_name, device=self._device)
-        self._processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-        self._model = AutoModel.from_pretrained(
-            model_name, torch_dtype=dtype, trust_remote_code=True
-        ).to(self._device)
-        self._model.eval()
-
-    def _pool(self, outputs: Any) -> list[float]:
-        # 埋め込み専用モデルは pooled/text_embeds 相当を返すことが多い。
-        # 無ければ last_hidden_state の平均でフォールバックし、L2正規化する。
-        t = getattr(outputs, "pooler_output", None)
-        if t is None:
-            t = outputs.last_hidden_state.mean(dim=1)
-        t = t[0].float()
-        t = t / (t.norm() + 1e-12)
-        return t.tolist()
+        self._model = SentenceTransformer(
+            model_name,
+            device=self._device,
+            model_kwargs={"torch_dtype": dtype},
+        )
 
     def embed_image(self, png: bytes) -> list[float]:
         import io
@@ -67,20 +62,15 @@ class _TransformersBackend:
         from PIL import Image
 
         image = Image.open(io.BytesIO(png)).convert("RGB")
-        inputs = self._processor(images=image, return_tensors="pt").to(self._device)
-        with self._torch.no_grad():
-            outputs = self._model(**inputs)
-        return self._pool(outputs)
+        vec = self._model.encode([image], normalize_embeddings=True)[0]
+        return vec.tolist()
 
     def embed_text(self, text: str) -> list[float]:
-        inputs = self._processor(text=[text], return_tensors="pt", padding=True).to(self._device)
-        with self._torch.no_grad():
-            outputs = self._model(**inputs)
-        return self._pool(outputs)
+        vec = self._model.encode([text], normalize_embeddings=True)[0]
+        return vec.tolist()
 
     def close(self) -> None:
         self._model = None
-        self._processor = None
         if self._device == "cuda":
             self._torch.cuda.empty_cache()
 
