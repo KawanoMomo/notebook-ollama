@@ -48,7 +48,12 @@ class _TransformersBackend:
 
         self._torch = torch
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        dtype = torch.float16 if self._device == "cuda" else torch.float32
+        # CPU は bfloat16(チェックポイントのネイティブdtype)でロードする。
+        # float32 だと 2B で常駐約8GB+ロード時の型変換ピークが加わり、サーバー
+        # プロセスの既存使用分と合わさって OOM 即死する(evaluator実機で確認:
+        # 重みロード89%でプロセスごと消失、トレースバック無し)。bf16 なら
+        # 常駐約4GB・変換なしで、単独スモークと同条件になる。
+        dtype = torch.float16 if self._device == "cuda" else torch.bfloat16
         log.info("visual_encoder_loading", model=model_name, device=self._device)
         self._model = SentenceTransformer(
             model_name,
