@@ -241,5 +241,14 @@ class VectorStore:
             ),
         )
 
+    @property
+    def client(self) -> QdrantClient:
+        """pages_visual 等の別コレクションとクライアントを共有するための公開。
+
+        Qdrant ローカルモードは 1 パス 1 クライアント(ファイルロック)のため、
+        第2コレクションも必ずこのクライアント経由で操作する。
+        """
+        return self._client
+
     def close(self) -> None:
         self._client.close()
