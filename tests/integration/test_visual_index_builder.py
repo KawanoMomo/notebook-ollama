@@ -1,0 +1,131 @@
+import pytest
+
+pymupdf = pytest.importorskip("pymupdf")
+pytestmark = [pytest.mark.pdf, pytest.mark.qdrant]
+
+from core.storage.database import connect, migrate  # noqa: E402
+from core.storage.notebooks_repo import create_notebook  # noqa: E402
+from core.storage.sources_repo import (  # noqa: E402
+    SourceStatus,
+    create_source,
+    update_source_status,
+)
+from core.storage.vector_store import VectorStore  # noqa: E402
+from core.storage.visual_index_repo import get_meta, list_indexed_source_ids  # noqa: E402
+from core.storage.visual_store import VisualPageStore  # noqa: E402
+from core.visual.index_builder import BuilderDeps, VisualIndexBuilder  # noqa: E402
+
+
+class FakeEncoder:
+    def __init__(self, fail_on_call: int | None = None):
+        self.calls = 0
+        self._fail_on = fail_on_call
+
+    async def embed_image(self, *, png: bytes) -> list[float]:
+        self.calls += 1
+        if self._fail_on is not None and self.calls == self._fail_on:
+            raise RuntimeError("embed boom")
+        return [float(self.calls), 1.0, 0.0, 0.0]
+
+    async def embed_text(self, *, text: str) -> list[float]:
+        return [1.0, 0.0, 0.0, 0.0]
+
+    def unload(self) -> None:
+        pass
+
+
+def _two_page_pdf() -> bytes:
+    doc = pymupdf.open()
+    for i in range(2):
+        page = doc.new_page(width=595, height=842)
+        page.insert_text((72, 72), f"page {i + 1}", fontsize=12)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def _setup(tmp_path):
+    conn = connect(tmp_path / "m.db")
+    migrate(conn)
+    nb = create_notebook(conn, name="N")
+    vs = VectorStore(path=tmp_path / "q", dim=4)
+    vs.ensure_collection()
+    ps = VisualPageStore(client=vs.client)
+    sources_dir = tmp_path / "sources"
+    sources_dir.mkdir()
+    assets_dir = tmp_path / "assets"
+    return conn, nb, ps, sources_dir, assets_dir
+
+
+def _add_pdf_source(conn, nb, sources_dir, *, sid_hint="h1") -> str:
+    src = create_source(conn, notebook_id=nb.id, kind="pdf", origin="t.pdf", content_hash=sid_hint)
+    (sources_dir / f"{src.id}.pdf").write_bytes(_two_page_pdf())
+    update_source_status(conn, src.id, status=SourceStatus.READY)
+    return src.id
+
+
+async def test_build_indexes_pages_and_saves_pngs(tmp_path):
+    conn, nb, ps, sources_dir, assets_dir = _setup(tmp_path)
+    sid = _add_pdf_source(conn, nb, sources_dir)
+    progress_log = []
+
+    async def progress(done, total):
+        progress_log.append((done, total))
+
+    builder = VisualIndexBuilder(deps=BuilderDeps(
+        conn=conn, visual_store=ps, encoder=FakeEncoder(),
+        sources_dir=sources_dir, assets_dir=assets_dir,
+        embedding_model_name="test-model", progress=progress,
+    ))
+    result = await builder.build(nb.id)
+
+    assert result.indexed_pages == 2 and result.indexed_sources == 1
+    assert get_meta(conn, nb.id).embedding_model == "test-model"
+    assert list_indexed_source_ids(conn, nb.id) == {sid}
+    assert (assets_dir / sid / "pages" / "1.png").exists()
+    assert (assets_dir / sid / "pages" / "2.png").exists()
+    hits = ps.search(query=[1.0, 1.0, 0.0, 0.0], notebook_id=nb.id, limit=5)
+    assert len(hits) == 2
+    assert progress_log[-1] == (2, 2)
+
+
+async def test_incremental_build_skips_indexed_sources(tmp_path):
+    conn, nb, ps, sources_dir, assets_dir = _setup(tmp_path)
+    _add_pdf_source(conn, nb, sources_dir, sid_hint="h1")
+    enc = FakeEncoder()
+    deps = BuilderDeps(
+        conn=conn, visual_store=ps, encoder=enc, sources_dir=sources_dir,
+        assets_dir=assets_dir, embedding_model_name="test-model",
+    )
+    await VisualIndexBuilder(deps=deps).build(nb.id)
+    assert enc.calls == 2
+    # 2本目のソースを追加して再実行 → 差分の2ページ分のみembedされる
+    _add_pdf_source(conn, nb, sources_dir, sid_hint="h2")
+    await VisualIndexBuilder(deps=deps).build(nb.id)
+    assert enc.calls == 4
+
+
+async def test_page_failure_skips_and_continues(tmp_path):
+    conn, nb, ps, sources_dir, assets_dir = _setup(tmp_path)
+    _add_pdf_source(conn, nb, sources_dir)
+    builder = VisualIndexBuilder(deps=BuilderDeps(
+        conn=conn, visual_store=ps, encoder=FakeEncoder(fail_on_call=1),
+        sources_dir=sources_dir, assets_dir=assets_dir,
+        embedding_model_name="test-model",
+    ))
+    result = await builder.build(nb.id)
+    assert result.indexed_pages == 1 and result.skipped_pages == 1  # 部分成功で継続
+
+
+async def test_non_pdf_and_non_ready_sources_ignored(tmp_path):
+    conn, nb, ps, sources_dir, assets_dir = _setup(tmp_path)
+    create_source(conn, notebook_id=nb.id, kind="md", origin="a.md", content_hash="hm")
+    pending = create_source(conn, notebook_id=nb.id, kind="pdf", origin="p.pdf", content_hash="hp")
+    (sources_dir / f"{pending.id}.pdf").write_bytes(_two_page_pdf())  # READY にしない
+    builder = VisualIndexBuilder(deps=BuilderDeps(
+        conn=conn, visual_store=ps, encoder=FakeEncoder(),
+        sources_dir=sources_dir, assets_dir=assets_dir,
+        embedding_model_name="test-model",
+    ))
+    result = await builder.build(nb.id)
+    assert result.indexed_pages == 0 and result.indexed_sources == 0
