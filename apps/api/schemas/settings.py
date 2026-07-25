@@ -137,6 +137,19 @@ class VoiceInputSettingsSchema(BaseModel):
     ptt_key: str = Field(default="Space", min_length=1, max_length=64)
 
 
+class VisualSettingsSchema(BaseModel):
+    """``core.config.VisualSettings`` の HTTP 表現(Stage 3 視覚埋め込み)。"""
+
+    embedding_model: str
+    search_enabled: bool
+
+
+class VisualSettingsUpdate(BaseModel):
+    """PUT /settings/visual の入力。トグルできるのは search_enabled のみ。"""
+
+    search_enabled: bool
+
+
 class AppSettingsSchema(BaseModel):
     ollama: OllamaSettingsSchema
     generation: GenerationSettingsSchema
@@ -145,6 +158,7 @@ class AppSettingsSchema(BaseModel):
     crash_report: CrashReportSettingsSchema | None = None
     voice_input: VoiceInputSettingsSchema | None = None
     dev: DevSettingsSchema | None = None
+    visual: VisualSettingsSchema
 
 
 class EmbeddingSwitchRequest(BaseModel):

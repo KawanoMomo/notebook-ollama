@@ -33,6 +33,7 @@ export interface SettingsStore {
   load(): Promise<void>;
   putOllama(default_model: string): Promise<void>;
   putVisionModel(model: string): Promise<void>;
+  putVisualSearch(enabled: boolean): Promise<void>;
   /**
    * クラッシュレポート設定の更新。現行値に `patch` をマージして送信し、
    * 成功時のレスポンスを store に反映する。失敗時は例外を呼び出し元へ伝播。
@@ -91,6 +92,17 @@ export function createSettingsStore(api = settingsApi): SettingsStore {
       const result = await api.putVisionModel(model);
       if (settings) {
         settings = { ...settings, ollama: { ...settings.ollama, vision_model: result.vision_model } };
+      } else {
+        await this.load();
+      }
+    },
+    async putVisualSearch(enabled: boolean) {
+      const result = await api.putVisualSearch(enabled);
+      if (settings) {
+        settings = {
+          ...settings,
+          visual: { ...settings.visual, search_enabled: result.search_enabled },
+        };
       } else {
         await this.load();
       }

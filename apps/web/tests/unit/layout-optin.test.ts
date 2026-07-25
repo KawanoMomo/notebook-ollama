@@ -167,6 +167,7 @@ const FULL_SETTINGS_UNDECIDED: AppSettings = {
     auto_prompt: true,
     opted_in_at: null,
   },
+  visual: { embedding_model: '', search_enabled: true },
 };
 
 const STATS_PLACEHOLDER: Stats = {

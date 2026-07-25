@@ -75,6 +75,7 @@ function makeAppSettings(crash_report: CrashReportSettings | undefined): AppSett
     retrieval: { top_k: 8, top_k_max: 30, min_history_turns: 2 },
     audio: BASE_AUDIO,
     crash_report,
+    visual: { embedding_model: '', search_enabled: true },
   };
 }
 

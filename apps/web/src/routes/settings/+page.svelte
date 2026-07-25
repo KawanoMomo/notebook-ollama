@@ -129,6 +129,18 @@
     }
   }
 
+  async function onVisualSearchToggle(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const next = input.checked;
+    try {
+      await settingsStore.putVisualSearch(next);
+      pushToast(next ? '視覚検索を有効にしました' : '視覚検索を無効にしました', 'success');
+    } catch (err) {
+      input.checked = !next;
+      pushToast(`視覚検索設定の変更に失敗しました: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+  }
+
   onDestroy(() => {
     closeReindex?.();
   });
@@ -473,6 +485,17 @@
                     <option value={name}>{name}</option>
                   {/each}
                 </select>
+              </dd>
+              <dt>視覚検索(ベータ)</dt>
+              <dd>
+                <label class="toggle">
+                  <input
+                    type="checkbox"
+                    checked={settingsStore.settings.visual.search_enabled}
+                    onchange={onVisualSearchToggle}
+                  />
+                  構築済みノートブックで視覚ページ検索を併用する
+                </label>
               </dd>
             {/if}
           </dl>

@@ -110,6 +110,16 @@ def apply_overrides(config) -> None:
         except Exception:
             log.warning("settings_override_invalid", section="voice_input")
 
+    visual = ov.get("visual")
+    if isinstance(visual, dict) and visual:
+        # 視覚検索トグル(Stage 3)を復元する。audio / ollama と同じ規約:
+        # 丸ごとマージし、不正値でも起動を止めない。
+        merged = {**config.visual.model_dump(), **visual}
+        try:
+            config.visual = config.visual.__class__(**merged)
+        except Exception:
+            log.warning("settings_override_invalid", section="visual")
+
 
 def load_crash_report(data_dir: Path) -> CrashReportSettings:
     """settings.json から crash_report セクションだけを取り出して

@@ -28,6 +28,8 @@ from apps.api.schemas.settings import (
     OllamaTimeoutsUpdate,
     RetrievalSettingsSchema,
     VisionModelUpdate,
+    VisualSettingsSchema,
+    VisualSettingsUpdate,
     VoiceInputSettingsSchema,
 )
 from core.accel.plan import is_phase1_implementable
@@ -101,6 +103,10 @@ async def get_settings(request: Request) -> AppSettingsSchema:
         dev=DevSettingsSchema(
             enabled=cfg.dev.enabled,
             log_capacity_bytes=cfg.dev.log_capacity_bytes,
+        ),
+        visual=VisualSettingsSchema(
+            embedding_model=cfg.visual.embedding_model,
+            search_enabled=cfg.visual.search_enabled,
         ),
     )
 
@@ -305,6 +311,25 @@ async def put_vision_model(request: Request, body: VisionModelUpdate) -> dict:
         {**existing, "vision_model": cfg.ollama.vision_model},
     )
     return {"vision_model": cfg.ollama.vision_model}
+
+
+@router.put(
+    "/settings/visual",
+    dependencies=[Depends(require_feature("table-figure-rag"))],
+)
+async def put_visual_settings(request: Request, body: VisualSettingsUpdate) -> dict:
+    """視覚検索トグル(Stage 3)。既存の visual 永続セクションへマージ保存する。"""
+    cfg = request.app.state.ctx.config
+    cfg.visual = cfg.visual.model_copy(update={"search_enabled": body.search_enabled})
+
+    from core.settings_store import load_overrides, save_section
+
+    existing = load_overrides(cfg.data_dir).get("visual")
+    existing = existing if isinstance(existing, dict) else {}
+    save_section(
+        cfg.data_dir, "visual", {**existing, "search_enabled": cfg.visual.search_enabled}
+    )
+    return {"search_enabled": cfg.visual.search_enabled}
 
 
 @router.put("/settings/ollama/timeouts")

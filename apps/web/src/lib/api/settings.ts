@@ -27,6 +27,11 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify({ model }),
     }),
+  putVisualSearch: (search_enabled: boolean) =>
+    request<{ search_enabled: boolean }>('/api/settings/visual', {
+      method: 'PUT',
+      body: JSON.stringify({ search_enabled }),
+    }),
   switchEmbedding: (model: string) =>
     request<unknown>('/api/settings/embedding/switch', {
       method: 'POST',
