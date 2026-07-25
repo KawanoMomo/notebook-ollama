@@ -129,3 +129,29 @@ async def test_non_pdf_and_non_ready_sources_ignored(tmp_path):
     ))
     result = await builder.build(nb.id)
     assert result.indexed_pages == 0 and result.indexed_sources == 0
+
+
+async def test_page_cooldown_sleeps_between_pages(tmp_path, monkeypatch):
+    """回帰テスト: CPU全開バーストの連続実行がマシンの電源/熱マージンを削り
+    BSODを誘発した(実機観測)。ページ間クールダウンで負荷デューティ比を下げる。"""
+    import core.visual.index_builder as builder_mod
+
+    sleeps: list[float] = []
+    real_sleep = builder_mod.asyncio.sleep
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(builder_mod.asyncio, "sleep", fake_sleep)
+    conn, nb, ps, sources_dir, assets_dir = _setup(tmp_path)
+    _add_pdf_source(conn, nb, sources_dir)  # 2ページ
+    builder = VisualIndexBuilder(deps=BuilderDeps(
+        conn=conn, visual_store=ps, encoder=FakeEncoder(),
+        sources_dir=sources_dir, assets_dir=assets_dir,
+        embedding_model_name="test-model", page_cooldown_seconds=1.5,
+    ))
+    result = await builder.build(nb.id)
+    assert result.indexed_pages == 2
+    # 2ページ→最終ページの後は休まない=1回だけ
+    assert sleeps == [1.5]

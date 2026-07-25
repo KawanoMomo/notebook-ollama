@@ -75,6 +75,7 @@ async def _run_build(ctx, notebook_id: str) -> None:
             embedding_model_name=ctx.config.visual.embedding_model,
             render_dpi=ctx.config.visual.render_dpi,
             progress=progress,
+            page_cooldown_seconds=ctx.config.visual.build_cooldown_seconds,
         ))
         result = await builder.build(notebook_id)
         await ctx.sse.publish(

@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -49,6 +50,9 @@ class BuilderDeps:
     embedding_model_name: str
     render_dpi: int = 100
     progress: Callable[[int, int], Awaitable[None]] | None = None
+    # ページ埋め込みバースト間の休止秒(CPU全開の連続実行によるマシン負荷を
+    # 緩和する。実機で長時間構築中のBSODを観測したための安全弁)。0で無効。
+    page_cooldown_seconds: float = 0.0
 
 
 @dataclass
@@ -128,6 +132,8 @@ class VisualIndexBuilder:
                     )
                 if d.progress is not None:
                     await d.progress(done, total)
+                if d.page_cooldown_seconds > 0 and done < total:
+                    await asyncio.sleep(d.page_cooldown_seconds)
             if source_indexed > 0:
                 mark_source_indexed(
                     d.conn, notebook_id=notebook_id, source_id=s.id,

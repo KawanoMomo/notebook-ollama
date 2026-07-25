@@ -77,6 +77,14 @@ class VisualSettings(BaseModel):
     idle_unload_seconds: float = 300.0
     # ページレンダリングDPI(spec §11: 埋め込みは高DPI不要)
     render_dpi: int = 100
+    # 構築時のページ間クールダウン秒。CPU埋め込みは全コアAVX全開が1ページ
+    # 数十秒続く実質ストレステストで、連続実行はマシンの電源/熱マージンを
+    # 削る(実機で長時間構築中にBSOD 0x7F_8を観測)。バースト間に休止を挟み
+    # デューティ比を下げる。0で無効。
+    build_cooldown_seconds: float = 2.0
+    # CPU推論の torch スレッド数上限。0 = torch既定(全論理コア)。
+    # 消費電力・発熱を抑えたい場合に物理コア数以下へ制限する。
+    cpu_threads: int = 0
 
 
 class ServerSettings(BaseModel):

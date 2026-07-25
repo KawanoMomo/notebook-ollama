@@ -423,6 +423,7 @@ def build_context(config: AppConfig) -> AppContext:
         TransformersVisualEncoder(
             model_name=config.visual.embedding_model,
             idle_unload_seconds=config.visual.idle_unload_seconds,
+            cpu_threads=config.visual.cpu_threads,
         )
         if visual_extra_available()
         else None

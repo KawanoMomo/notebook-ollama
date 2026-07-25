@@ -42,12 +42,18 @@ class _TransformersBackend:
     画像単独の埋め込みが組めない(実機ゲートで確認)ため、ST 経由で呼ぶ。
     """
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, *, cpu_threads: int = 0) -> None:
         import torch
         from sentence_transformers import SentenceTransformer
 
         self._torch = torch
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        if self._device == "cpu" and cpu_threads > 0:
+            # CPU埋め込みは全論理コアAVX全開の実質ストレステストになり、
+            # マシンの電源/熱マージンを削る(実機で長時間構築中にBSODを観測)。
+            # スレッド数を制限して消費電力を抑える安全弁(0=torch既定)。
+            torch.set_num_threads(cpu_threads)
+            log.info("visual_encoder_cpu_threads", threads=cpu_threads)
         # CPU は bfloat16(チェックポイントのネイティブdtype)でロードする。
         # float32 だと 2B で常駐約8GB+ロード時の型変換ピークが加わり、サーバー
         # プロセスの既存使用分と合わさって OOM 即死する(evaluator実機で確認:
@@ -93,10 +99,12 @@ class TransformersVisualEncoder:
         *,
         model_name: str,
         idle_unload_seconds: float = 300.0,
+        cpu_threads: int = 0,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._model_name = model_name
         self._idle = idle_unload_seconds
+        self._cpu_threads = cpu_threads
         self._monotonic = monotonic
         self._backend: Any | None = None
         self._last_used: float = 0.0
@@ -107,7 +115,7 @@ class TransformersVisualEncoder:
         return self._backend is not None
 
     def _load_backend(self) -> Any:
-        return _TransformersBackend(self._model_name)
+        return _TransformersBackend(self._model_name, cpu_threads=self._cpu_threads)
 
     async def _ensure_loaded(self) -> Any:
         async with self._lock:
