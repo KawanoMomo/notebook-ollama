@@ -31,7 +31,7 @@ describe('VisualIndexModal', () => {
     expect(screen.getByText(/uv sync --extra visual/)).toBeTruthy();
   });
 
-  it('構築済み時は状態と削除ボタンを表示、クリックでonDelete発火', async () => {
+  it('構築済み時は状態と削除ボタンを表示、2段階確認で削除実行', async () => {
     const onDelete = vi.fn();
     render(VisualIndexModal, {
       notebookId: 'nb1',
@@ -40,8 +40,43 @@ describe('VisualIndexModal', () => {
     });
     expect(screen.getByText(/vm/)).toBeTruthy();
     expect(screen.getByText(/未索引 1 件/)).toBeTruthy();
-    await fireEvent.click(screen.getByRole('button', { name: '視覚インデックスを削除' }));
+
+    // 第1段階: 削除ボタンをクリック (arm状態に遷移)
+    const deleteButton = screen.getByRole('button', { name: '視覚インデックスを削除' });
+    await fireEvent.click(deleteButton);
+    expect(onDelete).not.toHaveBeenCalled();
+
+    // 削除ボタンが「本当に削除」に変わることを確認
+    expect(screen.getByRole('button', { name: '本当に削除' })).toBeTruthy();
+
+    // 第2段階: 「本当に削除」をクリック (削除実行)
+    const confirmButton = screen.getByRole('button', { name: '本当に削除' });
+    await fireEvent.click(confirmButton);
     expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('削除確認中に「やめる」をクリックするとキャンセルされる', async () => {
+    const onDelete = vi.fn();
+    render(VisualIndexModal, {
+      notebookId: 'nb1',
+      status: makeStatus({ built: true, embedding_model: 'vm', built_at: '2026-07-25T00:00:00Z', indexed_sources: 3, pending_sources: 1 }),
+      onBuild: vi.fn(), onDelete, onClose: vi.fn(),
+    });
+
+    // 削除ボタンをクリックして arm状態に
+    await fireEvent.click(screen.getByRole('button', { name: '視覚インデックスを削除' }));
+    expect(screen.getByRole('button', { name: '本当に削除' })).toBeTruthy();
+
+    // 「やめる」をクリック
+    const cancelButton = screen.getByRole('button', { name: 'やめる' });
+    await fireEvent.click(cancelButton);
+
+    // 削除ボタンが元の状態に戻ることを確認
+    expect(screen.getByRole('button', { name: '視覚インデックスを削除' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'やめる' })).toBeNull();
+
+    // onDelete が呼ばれていないことを確認
+    expect(onDelete).not.toHaveBeenCalled();
   });
 
   it('building中は構築ボタン無効+進捗表示', () => {

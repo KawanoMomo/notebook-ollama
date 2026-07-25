@@ -21,6 +21,7 @@
   let { status, progress = null, onBuild, onDelete, onClose }: Props = $props();
 
   let buildDisabled = $derived(status.building || !status.extra_available);
+  let deleteArmed = $state(false);
 
   /** ISO-8601 をユーザのローカル時刻で整形する。パース失敗時は元の文字列を返す
    * (BugReportTab.svelte の formatDate と同じ方針)。 */
@@ -60,9 +61,25 @@
         視覚インデックスを構築
       </button>
       {#if status.built}
-        <button type="button" class="danger" onclick={onDelete}>
-          視覚インデックスを削除
+        <button
+          type="button"
+          class={deleteArmed ? 'danger armed' : 'danger'}
+          onclick={() => {
+            if (deleteArmed) {
+              onDelete();
+              deleteArmed = false;
+            } else {
+              deleteArmed = true;
+            }
+          }}
+        >
+          {deleteArmed ? '本当に削除' : '視覚インデックスを削除'}
         </button>
+        {#if deleteArmed}
+          <button type="button" class="cancel" onclick={() => (deleteArmed = false)}>
+            やめる
+          </button>
+        {/if}
       {/if}
     </div>
   </div>
@@ -117,5 +134,15 @@
     background: var(--color-bg);
     color: var(--color-error);
     border-color: var(--color-error);
+  }
+  .actions button.danger.armed {
+    background: var(--color-error);
+    color: #fff;
+    border-color: var(--color-error);
+  }
+  .actions button.cancel {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    border-color: var(--color-border);
   }
 </style>
