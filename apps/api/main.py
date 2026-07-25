@@ -152,6 +152,9 @@ async def lifespan(app: FastAPI):
     # never ran (avoiding spurious log noise + AttributeError chains).
     locked = False
     registered = False
+    # 視覚エンコーダのアイドルアンロード監視タスク(spec §7)。部分的な起動失敗
+    # でも finally が安全に cancel できるよう try の外で初期化する。
+    visual_watchdog = None
 
     try:
         if crash_enabled:
@@ -252,8 +255,18 @@ async def lifespan(app: FastAPI):
         )
         from apps.api import _mcp_state
         _mcp_state.ctx = app.state.ctx
+        # 視覚エンコーダのアイドルアンロード監視(spec §7: 既定5分で解放)。
+        # クエリ経路でロードされたエンコーダも、この定期チェックで解放される。
+        _visual_enc = getattr(app.state.ctx, "visual_encoder", None)
+        if _visual_enc is not None:
+            import asyncio
+
+            from core.visual.encoder import run_idle_unload_watchdog
+            visual_watchdog = asyncio.create_task(run_idle_unload_watchdog(_visual_enc))
         yield
     finally:
+        if visual_watchdog is not None:
+            visual_watchdog.cancel()
         # Each shutdown step is independently guarded so one failure
         # cannot prevent the others from running.
         if registered:

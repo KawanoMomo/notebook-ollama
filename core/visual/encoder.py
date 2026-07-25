@@ -145,3 +145,21 @@ class TransformersVisualEncoder:
             self._backend.close()
         finally:
             self._backend = None
+
+
+async def run_idle_unload_watchdog(encoder: Any, *, interval_seconds: float = 60.0) -> None:
+    """maybe_unload_if_idle を定期実行する常駐ループ(app lifespan から起動)。
+
+    spec §7「オンデマンドロード+アイドルアンロード(既定5分)」の発火側。
+    構築ジョブの finally だけでは、チャットのクエリでロードされたエンコーダが
+    解放されず常駐し続ける(evaluator実機で確認: RSS 4GB台が居座る)。
+    キャンセルされるまで無限ループし、1回の失敗でループを止めない。
+    """
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            unload = getattr(encoder, "maybe_unload_if_idle", None)
+            if callable(unload):
+                unload()
+        except Exception:
+            log.warning("visual_unload_watchdog_failed", exc_info=True)
