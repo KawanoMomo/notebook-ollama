@@ -30,6 +30,7 @@ from core.storage.chunks_repo import (
     list_chunks_for_source,
     rename_speaker_in_source,
 )
+from core.storage.visual_index_repo import delete_indexed_source
 
 router = APIRouter(prefix="/api/notebooks", tags=["sources"])
 
@@ -255,6 +256,8 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
     delete_chunks_for_source(ctx.conn, source_id)
     ctx.vector_store.delete_by_source(source_id)
+    ctx.visual_store.delete_by_source(source_id)
+    delete_indexed_source(ctx.conn, source_id)
     ctx.conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
     ext = _EXT_BY_KIND.get(src.kind, ".bin")
     source_path = ctx.config.sources_dir / f"{src.id}{ext}"
@@ -571,6 +574,8 @@ def _clear_source_derived_data(ctx, source_id: str) -> None:
     ctx.vector_store.delete_by_source(source_id)
     delete_assets_for_source(ctx.conn, source_id)
     shutil.rmtree(ctx.config.assets_dir / source_id, ignore_errors=True)
+    ctx.visual_store.delete_by_source(source_id)
+    delete_indexed_source(ctx.conn, source_id)
 
 
 @router.post("/{notebook_id}/sources/{source_id}/retry", response_model=Source)

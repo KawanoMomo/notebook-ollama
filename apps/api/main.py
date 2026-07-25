@@ -34,6 +34,7 @@ from apps.api.routers import (  # noqa: E402
     slides,
     sources,
     stt,
+    visual_index,
 )
 from apps.api.routers import (  # noqa: E402
     models as models_router,
@@ -296,6 +297,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             "mcp.unauthorized": 401,
             "feature.disabled": 403,
             "validation.failed": 400,
+            "ingestion.dependency_missing": 503,
         }
         return JSONResponse(
             status_code=status_map.get(exc.code.value, 500),
@@ -321,6 +323,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(feedback_hub.router)
     app.include_router(crash.router)
     app.include_router(features.router)
+    app.include_router(visual_index.router)
     app.mount("/mcp", _McpAsgiProxy())
 
     from pathlib import Path

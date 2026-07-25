@@ -150,6 +150,8 @@ class AppContext:
         backend_factory: BackendFactory,
         ollama_gateway: OllamaGateway,
         text_embedder: _TextEmbedderLike,
+        visual_store: Any = None,
+        visual_encoder: Any = None,
     ) -> None:
         self.config = config
         self.conn = conn
@@ -174,6 +176,8 @@ class AppContext:
         self.backend_plan = backend_plan
         self.backend_factory = backend_factory
         self.text_embedder = text_embedder
+        self.visual_store = visual_store
+        self.visual_encoder = visual_encoder
         # Lazy backend instances (built on first access via @property).
         self._transcriber: Any = None
         self._diarizer_resolved: bool = False
@@ -411,6 +415,22 @@ def build_context(config: AppConfig) -> AppContext:
             ),
         )
     )
+    from core.storage.visual_store import VisualPageStore
+    from core.visual.encoder import TransformersVisualEncoder, visual_extra_available
+
+    visual_store = VisualPageStore(client=vs.client)
+    visual_encoder = (
+        TransformersVisualEncoder(
+            model_name=config.visual.embedding_model,
+            idle_unload_seconds=config.visual.idle_unload_seconds,
+        )
+        if visual_extra_available()
+        else None
+    )
+
+    from core.retrieval.search import VisualSearchDeps
+    from core.storage.visual_index_repo import get_meta as _visual_get_meta
+
     retrieval = RetrievalService(
         conn=conn,
         vector_store=vs,
@@ -418,6 +438,17 @@ def build_context(config: AppConfig) -> AppContext:
         embedding_model=config.ollama.embedding_model,
         embedding_model_getter=lambda: config.ollama.embedding_model,
         figure_desc_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
+        visual=VisualSearchDeps(
+            store=visual_store,
+            encoder=visual_encoder,
+            enabled=lambda: (
+                config.visual.search_enabled
+                and visual_encoder is not None
+                and _pipeline_features.is_enabled("table-figure-rag")
+            ),
+            meta_lookup=lambda nb_id: _visual_get_meta(conn, nb_id),
+            model_name_getter=lambda: config.visual.embedding_model,
+        ),
     )
 
     async def _probe_vision() -> bool:
@@ -452,6 +483,11 @@ def build_context(config: AppConfig) -> AppContext:
             ),
             vision_check=_probe_vision,
             figure_images_lookup=_lookup_figure_images,
+            page_images_lookup=lambda keys: {
+                (sid, page): (config.assets_dir / sid / "pages" / f"{page}.png").read_bytes()
+                for (sid, page) in keys
+                if (config.assets_dir / sid / "pages" / f"{page}.png").exists()
+            },
         )
     )
     recordings = RecordingRegistry()
@@ -499,4 +535,6 @@ def build_context(config: AppConfig) -> AppContext:
         backend_factory=backend_factory,
         ollama_gateway=gateway,
         text_embedder=text_embedder,
+        visual_store=visual_store,
+        visual_encoder=visual_encoder,
     )
