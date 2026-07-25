@@ -79,6 +79,31 @@ describe('VisualIndexModal', () => {
     expect(onDelete).not.toHaveBeenCalled();
   });
 
+  it('etaSeconds があれば残り時間目安を表示、無ければ出さない', () => {
+    render(VisualIndexModal, {
+      notebookId: 'nb1', status: makeStatus({ building: true }),
+      progress: { done: 3, total: 10, etaSeconds: 370 },
+      onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
+    });
+    expect(screen.getByText(/残り目安 約7分/)).toBeTruthy();
+    cleanup();
+    render(VisualIndexModal, {
+      notebookId: 'nb1', status: makeStatus({ building: true }),
+      progress: { done: 1, total: 10, etaSeconds: null },
+      onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
+    });
+    expect(screen.queryByText(/残り目安/)).toBeNull();
+  });
+
+  it('etaSeconds が60未満なら「1分未満」表示', () => {
+    render(VisualIndexModal, {
+      notebookId: 'nb1', status: makeStatus({ building: true }),
+      progress: { done: 9, total: 10, etaSeconds: 45 },
+      onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
+    });
+    expect(screen.getByText(/残り目安 1分未満/)).toBeTruthy();
+  });
+
   it('building中は構築ボタン無効+進捗表示', () => {
     render(VisualIndexModal, {
       notebookId: 'nb1', status: makeStatus({ building: true }),

@@ -6,6 +6,7 @@
   interface Progress {
     done: number;
     total: number;
+    etaSeconds?: number | null;
   }
 
   interface Props {
@@ -30,6 +31,13 @@
     if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleString('ja-JP');
   }
+
+  /** 残り時間目安の表示文言。CPU推論では1ページ数十秒かかるため、目安表示は
+   * ADRドラフト(visual-embedding-ondemand-transformers)が求める要件。 */
+  function formatEta(seconds: number): string {
+    if (seconds < 60) return '残り目安 1分未満';
+    return `残り目安 約${Math.ceil(seconds / 60)}分`;
+  }
 </script>
 
 <Modal title="視覚インデックス" {onClose}>
@@ -53,6 +61,9 @@
       <p class="progress">
         <Spinner size={14} />
         構築中… {#if progress}{progress.done} / {progress.total}{:else}0 / 0{/if}
+        {#if progress?.etaSeconds != null}
+          <span class="eta">（{formatEta(progress.etaSeconds)}）</span>
+        {/if}
       </p>
     {/if}
 
@@ -102,6 +113,9 @@
     font-size: 12px;
     color: var(--color-warning, #b45309);
     font-family: var(--font-mono);
+  }
+  .eta {
+    color: var(--color-fg-muted);
   }
   .progress {
     margin: 0;

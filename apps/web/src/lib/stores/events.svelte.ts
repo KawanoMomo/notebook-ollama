@@ -12,6 +12,10 @@ export interface ConvStep {
 export interface VisualIndexProgress {
   done: number;
   total: number;
+  // 観測ペースからの残り時間目安(秒)。ページ間の進み(done差分)を2点以上
+  // 観測できるまでは null(CPU推論では1ページ数十秒かかるため、目安表示は
+  // ADRドラフト visual-embedding-ondemand-transformers の要件)。
+  etaSeconds: number | null;
 }
 
 export interface VisualIndexOutcome {
@@ -39,6 +43,9 @@ export function createEventsStore(): EventsStore {
   // 単一の "source_status" SSE イベント名で運ぶため、type で分岐する)。
   let visualIndexProgress = $state<VisualIndexProgress | null>(null);
   let visualIndexOutcome = $state<VisualIndexOutcome | null>(null);
+  // ETA計算用: 最初に観測した進捗イベントの (時刻, done)。途中からモーダルを
+  // 開いた場合でも「観測開始以降のペース」で目安を出す。
+  let progressBaseline: { at: number; done: number } | null = null;
 
   return {
     convStepFor(sourceId) {
@@ -56,23 +63,35 @@ export function createEventsStore(): EventsStore {
       convSteps = {};
       visualIndexProgress = null;
       visualIndexOutcome = null;
+      progressBaseline = null;
       close = openNotebookEvents(notebookId, (ev: SourceStatusEvent) => {
         // 視覚インデックスジョブのイベントには source_id が無いため、
         // 通常のソース状態パッチに入る前に分岐して処理する。
         if (ev.type === "visual_index_progress") {
-          visualIndexProgress = {
-            done: typeof ev.done === "number" ? ev.done : 0,
-            total: typeof ev.total === "number" ? ev.total : 0,
-          };
+          const done = typeof ev.done === "number" ? ev.done : 0;
+          const total = typeof ev.total === "number" ? ev.total : 0;
+          const now = Date.now();
+          if (progressBaseline === null) {
+            progressBaseline = { at: now, done };
+          }
+          const advanced = done - progressBaseline.done;
+          const elapsedMs = now - progressBaseline.at;
+          const etaSeconds =
+            advanced > 0 && elapsedMs > 0
+              ? Math.round(((total - done) * (elapsedMs / advanced)) / 1000)
+              : null;
+          visualIndexProgress = { done, total, etaSeconds };
           return;
         }
         if (ev.type === "visual_index_complete") {
           visualIndexProgress = null;
+          progressBaseline = null;
           visualIndexOutcome = { ok: true, at: Date.now() };
           return;
         }
         if (ev.type === "visual_index_error") {
           visualIndexProgress = null;
+          progressBaseline = null;
           visualIndexOutcome = { ok: false, at: Date.now() };
           return;
         }
@@ -155,6 +174,7 @@ export function createEventsStore(): EventsStore {
       convSteps = {};
       visualIndexProgress = null;
       visualIndexOutcome = null;
+      progressBaseline = null;
       close = null;
     },
   };
