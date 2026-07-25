@@ -109,6 +109,12 @@ class TransformersVisualEncoder:
         self._backend: Any | None = None
         self._last_used: float = 0.0
         self._lock = asyncio.Lock()
+        # 実行中の embed 数。CPU では 1 回の埋め込みが idle_unload_seconds を
+        # 超えうるため、開始時刻基準の idle 判定だけだと watchdog が計算中の
+        # バックエンドを解放してしまう(実機でページ毎のロード/アンロード
+        # スラッシングを観測)。in-flight 中は解放を禁止する。
+        # 増減はイベントループ上でのみ行うためロック不要。
+        self._active = 0
 
     @property
     def loaded(self) -> bool:
@@ -127,18 +133,24 @@ class TransformersVisualEncoder:
 
     async def embed_image(self, *, png: bytes) -> list[float]:
         backend = await self._ensure_loaded()
-        vec = await asyncio.to_thread(backend.embed_image, png)
-        self._last_used = self._monotonic()
-        return vec
+        self._active += 1
+        try:
+            return await asyncio.to_thread(backend.embed_image, png)
+        finally:
+            self._active -= 1
+            self._last_used = self._monotonic()
 
     async def embed_text(self, *, text: str) -> list[float]:
         backend = await self._ensure_loaded()
-        vec = await asyncio.to_thread(backend.embed_text, text)
-        self._last_used = self._monotonic()
-        return vec
+        self._active += 1
+        try:
+            return await asyncio.to_thread(backend.embed_text, text)
+        finally:
+            self._active -= 1
+            self._last_used = self._monotonic()
 
     def maybe_unload_if_idle(self) -> bool:
-        if self._backend is None:
+        if self._backend is None or self._active > 0:
             return False
         if self._monotonic() - self._last_used < self._idle:
             return False

@@ -70,3 +70,37 @@ async def test_reload_after_unload(monkeypatch):
 
 def test_visual_extra_available_is_bool():
     assert isinstance(visual_extra_available(), bool)
+
+
+async def test_no_unload_while_embed_in_flight(monkeypatch):
+    """回帰テスト: _last_used が埋め込み開始時刻だったため、埋め込み所要時間が
+    idle_unload_seconds を超えると watchdog が計算中のバックエンドを解放し、
+    ページ毎にロード/アンロードをスラッシングしていた(AC6実機で 20分に8回
+    ロードを観測)。実行中は maybe_unload_if_idle が False を返すこと。"""
+    import asyncio
+    import time as _time
+
+    class SlowBackend(FakeBackend):
+        def embed_image(self, png: bytes) -> list[float]:
+            _time.sleep(0.15)  # to_thread 内で走る「長い」埋め込み
+            return super().embed_image(png)
+
+    t = {"now": 0.0}
+    backend = SlowBackend()
+    enc = TransformersVisualEncoder(
+        model_name="fake-model", idle_unload_seconds=0.01,  # 埋め込みより短いidle
+        monotonic=lambda: t["now"],
+    )
+    monkeypatch.setattr(enc, "_load_backend", lambda: backend)
+
+    task = asyncio.create_task(enc.embed_image(png=PNG))
+    await asyncio.sleep(0.05)  # 埋め込みが in-flight の最中
+    t["now"] = 100.0  # 開始時刻基準では idle 閾値を大きく超過
+    assert enc.maybe_unload_if_idle() is False  # 実行中は解放しない
+    assert enc.loaded is True
+    assert backend.closed is False
+    vec = await task
+    assert vec == [1.0, 0.0]
+    # 完走後は通常どおり解放できる(完了時刻からのidle判定)
+    t["now"] = 300.0
+    assert enc.maybe_unload_if_idle() is True
