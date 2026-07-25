@@ -62,6 +62,9 @@ class GenerationDeps:
     assets_lookup: Callable[[list[str]], dict[str, list[AssetRecord]]] | None = None
     vision_check: Callable[[], Any] | None = None  # -> Awaitable[bool]
     figure_images_lookup: Callable[[list[str]], dict[str, bytes]] | None = None
+    page_images_lookup: (
+        Callable[[list[tuple[str, int]]], dict[tuple[str, int], bytes]] | None
+    ) = None
 
 
 @dataclass
@@ -99,6 +102,17 @@ class GenerationService:
         assets_by_chunk: dict[str, list[AssetRecord]] = {}
         if self._deps.assets_lookup is not None and hits:
             assets_by_chunk = self._deps.assets_lookup([h.chunk_id for h in hits])
+        def _hit_location(h: RetrievedChunk) -> str:
+            location = format_location(
+                page=h.page,
+                heading_path=h.heading_path,
+                start_ms=h.start_ms,
+                speaker=h.speaker,
+            )
+            if getattr(h, "via_visual", False):
+                location = f"{location}(視覚検索)" if location else "(視覚検索)"
+            return location
+
         yield GenerationEvent(
             kind="retrieval",
             data={
@@ -106,12 +120,7 @@ class GenerationService:
                     {
                         "chunk_id": h.chunk_id,
                         "source_title": h.source_title,
-                        "location": format_location(
-                            page=h.page,
-                            heading_path=h.heading_path,
-                            start_ms=h.start_ms,
-                            speaker=h.speaker,
-                        ),
+                        "location": _hit_location(h),
                         "score": h.score,
                     }
                     for h in hits
@@ -122,12 +131,7 @@ class GenerationService:
         prompt_chunks: list[PromptChunk] = []
         spec_by_n: dict[int, CitationSpec] = {}
         for idx, hit in enumerate(hits, start=1):
-            location = format_location(
-                page=hit.page,
-                heading_path=hit.heading_path,
-                start_ms=hit.start_ms,
-                speaker=hit.speaker,
-            )
+            location = _hit_location(hit)
             prompt_text = hit.text
             chunk_assets = assets_by_chunk.get(hit.chunk_id)
             if chunk_assets:
@@ -169,16 +173,37 @@ class GenerationService:
             messages.append({"role": "assistant", "content": turn.assistant})
 
         images_b64: list[str] = []
-        if self._deps.vision_check is not None and self._deps.figure_images_lookup is not None:
+        has_figure_lookup = self._deps.figure_images_lookup is not None
+        has_page_lookup = self._deps.page_images_lookup is not None
+        if self._deps.vision_check is not None and (has_figure_lookup or has_page_lookup):
             is_vision = await self._deps.vision_check()
             if is_vision:
-                figure_chunk_ids = [h.chunk_id for h in hits[: budget.included_chunks]]
-                images_by_chunk = self._deps.figure_images_lookup(figure_chunk_ids)
-                # hits は検索スコア降順(RetrievalService.search が保証)なので、
-                # 上位から最大2枚まで採用する。
-                for cid in figure_chunk_ids:
-                    if cid in images_by_chunk and len(images_b64) < 2:
-                        images_b64.append(base64.b64encode(images_by_chunk[cid]).decode("ascii"))
+                included = hits[: budget.included_chunks]
+                figure_images = (
+                    self._deps.figure_images_lookup([h.chunk_id for h in included])
+                    if has_figure_lookup else {}
+                )
+                page_keys = [
+                    (h.source_id, h.page) for h in included
+                    if getattr(h, "via_visual", False) and h.page is not None
+                ]
+                page_images = (
+                    self._deps.page_images_lookup(page_keys) if has_page_lookup else {}
+                )
+                # ヒット順位優先で、図クロップ+ページ画像の合算最大2枚
+                for h in included:
+                    if len(images_b64) >= 2:
+                        break
+                    if h.chunk_id in figure_images:
+                        images_b64.append(
+                            base64.b64encode(figure_images[h.chunk_id]).decode("ascii"))
+                    elif (
+                        getattr(h, "via_visual", False)
+                        and h.page is not None
+                        and (h.source_id, h.page) in page_images
+                    ):
+                        images_b64.append(
+                            base64.b64encode(page_images[(h.source_id, h.page)]).decode("ascii"))
 
         if images_b64:
             messages.append(
