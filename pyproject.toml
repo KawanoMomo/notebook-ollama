@@ -70,6 +70,13 @@ recording = [
     "nvidia-cublas-cu12>=12.4",
     "nvidia-cudnn-cu12>=9.0",
 ]
+# 視覚埋め込み (Stage 3)。Ollama非対応のためtransformersスタックで実行する
+# (ADRドラフト: visual-embedding-ondemand-transformers)。CUDA無し環境でもCPUで動く。
+visual = [
+    "torch>=2.4",
+    "transformers>=4.49",
+    "pillow>=10.0",
+]
 
 [dependency-groups]
 dev = [

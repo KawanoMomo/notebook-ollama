@@ -66,6 +66,19 @@ class RetrievalSettings(BaseModel):
     min_history_turns: int = 1
 
 
+class VisualSettings(BaseModel):
+    """視覚埋め込み第2インデックス (Stage 3, 実験枠)。"""
+
+    # HuggingFace モデルID。実在IDは実機ゲートで検証し、必要なら設定で差し替える
+    embedding_model: str = "Qwen/Qwen3-VL-Embedding-2B"
+    # 「視覚検索を使う」トグル(既定ON。実行にはベータON+構築済み+extra導入も必要)
+    search_enabled: bool = True
+    # アイドルアンロード秒数(spec §7: 11GB VRAMでチャットLLMと共存するため)
+    idle_unload_seconds: float = 300.0
+    # ページレンダリングDPI(spec §11: 埋め込みは高DPI不要)
+    render_dpi: int = 100
+
+
 class ServerSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8765
@@ -136,6 +149,7 @@ class AppConfig(BaseSettings):
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     generation: GenerationSettings = Field(default_factory=GenerationSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    visual: VisualSettings = Field(default_factory=VisualSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
