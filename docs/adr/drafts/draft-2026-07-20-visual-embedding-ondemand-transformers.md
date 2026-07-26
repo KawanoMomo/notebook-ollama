@@ -51,8 +51,33 @@ A を採用する。例外は視覚埋め込みに限定し、`OcrEngine` 同様
 
 ## 結果
 
-(実装後に記載)
+(2026-07-26 実装・実機検証済み、PR: feature/visual-embedding)
+
+- 実行基盤は決定どおり transformers スタックだが、素の AutoModel/AutoProcessor では
+  Qwen3-VL の forward が input_ids を要求し画像単独埋め込みが組めなかった。モデルの
+  正規API(`library_name: sentence-transformers`)である **SentenceTransformer.encode
+  ベース**に変更。実モデル依存は `_TransformersBackend` 1クラスに隔離済み
+- **PyPI の Windows 版 torch は CPU-only wheel**(torch 2.13.0+cpu)のため、fp16/CUDA
+  前提だった spec §7 は CPUフォールバック運用が現実の既定になった
+- CPUロードは **bfloat16**(チェックポイントのネイティブdtype)を採用。fp32 は常駐
+  8-9GB+型変換ピークでサーバープロセスがOOM即死した(実機2回)
+- オンデマンドロード+アイドルアンロードは lifespan 常駐の watchdog(60秒間隔)で
+  発火。**in-flight ガード必須**: 1回の埋め込みが idle 閾値を超えるCPU環境では、
+  開始時刻基準のidle判定だと計算中のバックエンドを解放してしまい、ページ毎の
+  ロード/アンロードスラッシングが起きた(実機で20分にロード8回を観測→修正)
+- 実測(RTX 2080 Ti機・CPU bf16・安全プロファイル=8スレッド+休止10秒):
+  約95秒/ページ、50ページ完走、RSS 4.5GB一定。全力プロファイル(24スレッド)は
+  53秒/ページだが **マシンごとBSOD(0x7F_8)** を2回誘発 → 既定値は安全側に設定
+- CUDA検証(隔離venv・torch cu126): sm_75対応・fp16ロード4.26GB(spec予測どおり)
+  だが、Ollamaチャットモデル常駐下ではWDDM共有メモリスピルで画像8.7〜20.4秒/枚と
+  CPU fp32より遅い。**11GBでの同時常駐は不成立(spec §7の警告を実測確認)**。
+  CUDA index 導入は見送り
 
 ## 教訓
 
-(実装後に記載)
+- 埋め込みモデルは HuggingFace の `library_name` が示す正規APIから書くこと。素の
+  AutoModel から始めて実機ゲートで直すのは二度手間だった
+- 「アイドルアンロード」は必ず in-flight 実行数を追跡すること。idle判定の基準時刻
+  だけでは長時間実行と区別できない
+- 全コアAVX連続実行はPrime95級のストレス負荷であり、K付きCPU+XMP環境ではマシン
+  安定性マージンを超えうる。負荷ノブ(スレッド上限・バースト間休止)は機能要件
