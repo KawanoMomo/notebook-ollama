@@ -20,6 +20,10 @@ _PROMPT = (
     "(3) 読み取れる数値・ラベルがあれば列挙。"
 )
 _MIN_LENGTH = 5
+# 生成長の上限。無制限(Ollama既定の num_predict=-1)だと thinking 系モデルが
+# 延々と推敲を続け、1図の説明が2万字に達して埋め込み上限を超えた(実機FB
+# 2026-07-27)。図の説明は数文で足りるので短く抑える。
+_NUM_PREDICT = 512
 
 
 class FigureDescriber(Protocol):
@@ -36,13 +40,24 @@ class OllamaFigureDescriber:
         self._model = model
 
     async def _one_attempt(self, image_png: bytes) -> str | None:
+        from core.ollama.client import ThinkingChunk
         from core.ollama.messages import build_image_message
 
         b64 = base64.b64encode(image_png).decode("ascii")
         messages = [build_image_message(role="user", content=_PROMPT, images_b64=[b64])]
         try:
             chunks: list[str] = []
-            async for tok in self._client.chat_stream(model=self._model, messages=messages):
+            async for tok in self._client.chat_stream(
+                model=self._model,
+                messages=messages,
+                options={"num_predict": _NUM_PREDICT},
+            ):
+                # thinking 系モデル(実機: aratan/Agents-A1-4B)の思考トークンは
+                # 説明本文ではない。除外しないとモデルの独り言がそのまま
+                # RAG 索引に入る(実機FB 2026-07-27)。チャット生成側
+                # (core/generation/stream.py)と同じ扱いに揃える。
+                if isinstance(tok, ThinkingChunk):
+                    continue
                 chunks.append(str(tok))
             text = "".join(chunks).strip()
         except Exception:

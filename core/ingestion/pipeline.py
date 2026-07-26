@@ -10,15 +10,81 @@ from typing import Any, Protocol
 
 from core.exceptions import AppError, ErrorCode
 from core.ids import new_id
-from core.ingestion.chunker import chunk_document
+from core.ingestion.chunker import ChunkOutput, chunk_document
 from core.ingestion.parsers import get_parser
+from core.ingestion.types import ParsedDocument, ParsedSection
 from core.logging import get_logger
 from core.storage.assets_repo import AssetRecord, insert_assets
 from core.storage.chunks_repo import ChunkRecord, insert_chunks, list_chunks_for_source
 from core.storage.sources_repo import SourceStatus, get_source, update_source_status
 from core.storage.vector_store import ChunkVector, VectorStore
+from core.tokens import count_tokens
 
 log = get_logger("ingestion.pipeline")
+
+
+# 図説明1チャンクの上限トークン数。chunk_document の target_max と揃える。
+_FIGURE_DESC_MAX_TOKENS = 800
+
+
+def _hard_split(text: str, *, max_tokens: int) -> list[str]:
+    """チャンカーが分割できなかったテキストを文字数で強制分割する。
+
+    chunk_document は空白・句読点+空白を手掛かりに分割するため、空白を含まない
+    日本語がひと続きで来ると1片のまま返る。そのまま埋め込みへ渡すと上限超過で
+    Ollama が 500 を返し、取込全体が落ちる(実機FB 2026-07-27 と同じ失敗)。
+    ここは最後の防波堤なので、意味的な切れ目は諦めて確実に上限内へ収める。
+    """
+    pieces: list[str] = []
+    rest = text
+    while rest:
+        window = len(rest)
+        # 上限に収まる最大の文字数を、半分ずつ縮めながら探す。
+        while window > 1 and count_tokens(rest[:window]) > max_tokens:
+            window = max(1, window // 2)
+        pieces.append(rest[:window])
+        rest = rest[window:]
+    return pieces
+
+
+def _chunk_figure_description(text: str, *, page: int | None) -> list[ChunkOutput]:
+    """図説明テキストを通常テキストと同じ規則でチャンク分割する。
+
+    分割結果が空になることはない想定だが、チャンカーが空を返した場合は
+    元テキスト1件にフォールバックする(説明を失わない)。
+    """
+    doc = ParsedDocument(
+        title="",
+        sections=[ParsedSection(text=text, page=page, heading_path=[], ord=0)],
+    )
+    pieces = chunk_document(doc)
+    if not pieces:
+        pieces = [
+            ChunkOutput(
+                text=text,
+                page=page,
+                heading_path=[],
+                ord=0,
+                token_count=count_tokens(text),
+            )
+        ]
+
+    out: list[ChunkOutput] = []
+    for piece in pieces:
+        if piece.token_count <= _FIGURE_DESC_MAX_TOKENS:
+            out.append(piece)
+            continue
+        for part in _hard_split(piece.text, max_tokens=_FIGURE_DESC_MAX_TOKENS):
+            out.append(
+                ChunkOutput(
+                    text=part,
+                    page=page,
+                    heading_path=[],
+                    ord=len(out),
+                    token_count=count_tokens(part),
+                )
+            )
+    return out
 
 
 class _GatewayLike(Protocol):
@@ -161,21 +227,33 @@ class IngestionPipeline:
                         text = None
                     if not text:
                         continue
-                    chunk_id = new_id()
-                    new_records.append(
-                        ChunkRecord(
-                            id=chunk_id,
-                            source_id=source_id,
-                            notebook_id=notebook_id,
-                            ord=len(chunk_records) + len(new_records),
-                            page=asset.page,
-                            heading_path=None,
-                            text=text,
-                            token_count=len(text),
-                            kind="figure_desc",
+                    # 図説明も通常テキストと同じくチャンカーを通す。1図=1チャンクの
+                    # ままだと説明が長いときに埋め込みモデルのコンテキスト上限を
+                    # 超え、Ollama が 500 を返して取込全体が落ちる(実機FB
+                    # 2026-07-27: 2万字の説明で再現)。
+                    pieces = _chunk_figure_description(text, page=asset.page)
+                    first_chunk_id: str | None = None
+                    for piece in pieces:
+                        chunk_id = new_id()
+                        if first_chunk_id is None:
+                            first_chunk_id = chunk_id
+                        new_records.append(
+                            ChunkRecord(
+                                id=chunk_id,
+                                source_id=source_id,
+                                notebook_id=notebook_id,
+                                ord=len(chunk_records) + len(new_records),
+                                page=asset.page,
+                                heading_path=None,
+                                text=piece.text,
+                                token_count=piece.token_count,
+                                kind="figure_desc",
+                            )
                         )
-                    )
-                    set_desc_chunk_link(conn, asset.id, chunk_id)
+                    if first_chunk_id is None:
+                        continue
+                    # アセットには先頭チャンクを代表として紐付ける(引用元表示用)。
+                    set_desc_chunk_link(conn, asset.id, first_chunk_id)
                 finally:
                     # スキップ(画像欠損)・説明失敗も「処理済み」として数える。
                     # finally なので continue しても必ず進捗が出る。

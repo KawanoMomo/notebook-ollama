@@ -9,7 +9,7 @@ class FakeGateway:
         self.calls: list[dict] = []
 
     async def chat_stream(self, *, model, messages, options=None, meta=None):
-        self.calls.append({"model": model, "messages": messages})
+        self.calls.append({"model": model, "messages": messages, "options": options})
         for ch in self._text:
             yield ch
         if meta is not None:
@@ -24,12 +24,45 @@ class FakeSequenceGateway:
         self.calls: list[dict] = []
 
     async def chat_stream(self, *, model, messages, options=None, meta=None):
-        self.calls.append({"model": model, "messages": messages})
+        self.calls.append({"model": model, "messages": messages, "options": options})
         text = self.responses.pop(0)
         for ch in text:
             yield ch
         if meta is not None:
             meta["done_reason"] = "stop"
+
+
+@pytest.mark.asyncio
+async def test_ocr_page_excludes_thinking_tokens():
+    """実機FB 2026-07-27: 視覚モデルを thinking 系にすると、
+    「Thinking Process: ...」「Wait, looking closely at ...」が
+    ページ本文として索引に入っていた。ThinkingChunk は除外すること。"""
+    from core.ollama.client import ThinkingChunk
+
+    class ThinkingGateway:
+        def __init__(self):
+            self.calls = []
+
+        async def chat_stream(self, *, model, messages, options=None, meta=None):
+            self.calls.append({"model": model, "options": options})
+            yield ThinkingChunk("Thinking Process: 1. Analyze the Request. ")
+            yield "本日の給食献立表です。カレーライスと牛乳。"
+
+    engine = OllamaOcrEngine(client=ThinkingGateway(), model="aratan/Agents-A1-4B")
+    result = await engine.ocr_page(image_png=b"\x89PNG\r\n\x1a\n")
+    assert result == "本日の給食献立表です。カレーライスと牛乳。"
+    assert "Thinking Process" not in (result or "")
+
+
+@pytest.mark.asyncio
+async def test_ocr_page_caps_generation_length():
+    """無制限だと thinking 系モデルの出力が埋め込み上限を超える
+    (実機FB 2026-07-27)。num_predict を必ず指定する。"""
+    gw = FakeGateway("これはOCRされたページ本文です。")
+    engine = OllamaOcrEngine(client=gw, model="qwen3-vl")
+    await engine.ocr_page(image_png=b"\x89PNG\r\n\x1a\n")
+    options = gw.calls[0]["options"] or {}
+    assert options.get("num_predict", 0) > 0
 
 
 @pytest.mark.asyncio

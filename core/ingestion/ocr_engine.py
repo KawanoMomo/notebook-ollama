@@ -18,6 +18,10 @@ _OCR_PROMPT = (
     "書き起こしてください。レイアウトの説明や要約は不要です、本文のみを出力してください。"
 )
 _MIN_LENGTH = 10
+# 生成長の上限。図説明より長い(ページ全文の書き起こし)ぶん多めに取るが、
+# 無制限にはしない。無制限だと thinking 系モデルが推敲を続けて出力が
+# 埋め込み上限を超える(実機FB 2026-07-27)。
+_NUM_PREDICT = 2048
 # 小型VLM(実機: llava:7b)は書き起こしを拒否したり要約に逃げたりすることがある。
 # 拒否文はそのまま採用すると非空なので「成功」扱いになり、RAG索引を汚染する
 # (evaluator実機確認: 拒否文/ハルシネーションがそのまま ready 化していた)。
@@ -64,13 +68,23 @@ class OllamaOcrEngine:
         self._model = model
 
     async def _one_attempt(self, image_png: bytes) -> str | None:
+        from core.ollama.client import ThinkingChunk
         from core.ollama.messages import build_image_message
 
         b64 = base64.b64encode(image_png).decode("ascii")
         messages = [build_image_message(role="user", content=_OCR_PROMPT, images_b64=[b64])]
         try:
             chunks: list[str] = []
-            async for tok in self._client.chat_stream(model=self._model, messages=messages):
+            async for tok in self._client.chat_stream(
+                model=self._model,
+                messages=messages,
+                options={"num_predict": _NUM_PREDICT},
+            ):
+                # thinking 系モデルの思考トークンは書き起こし本文ではない。
+                # 除外しないと "Thinking Process: ..." "Wait, looking closely..."
+                # がページ本文として索引に入る(実機FB 2026-07-27)。
+                if isinstance(tok, ThinkingChunk):
+                    continue
                 chunks.append(str(tok))
             text = "".join(chunks).strip()
         except Exception:

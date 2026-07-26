@@ -93,6 +93,52 @@ async def test_figure_gets_described_and_creates_independent_chunk(tmp_path):
 
 @pytest.mark.qdrant
 @pytest.mark.asyncio
+async def test_long_figure_description_is_split_into_chunks(tmp_path):
+    """実機FB 2026-07-27: 1図=1チャンク固定だったため、thinking系モデルが
+    出力した2万字の説明がそのまま埋め込みへ渡り、bge-m3のコンテキスト上限を
+    超えて Ollama が 500 を返し取込全体が落ちた。通常テキストと同じく
+    チャンカーを通し、1チャンクが上限内に収まること。"""
+    conn, src, vs = _setup(tmp_path)
+    # 空白を一切含まない日本語の長文。chunk_document は空白・句読点+空白を
+    # 手掛かりにするためこれを分割できず、強制分割の防波堤が効く必要がある。
+    long_text = "これは図の説明です。" * 1200
+    pipeline = _pipeline(
+        conn, vs, assets_dir=tmp_path / "assets", describer=FakeDescriber(long_text),
+        describe_enabled=lambda: True,
+    )
+
+    await pipeline.run(source_id=src.id, kind="pdf", data=build_pdf_with_image())
+
+    desc = [c for c in list_chunks_for_source(conn, src.id) if c.kind == "figure_desc"]
+    assert len(desc) > 1, "長い説明が分割されていない"
+    # chunk_document の target_max は 800 トークン。素通しなら 1 件で巨大なまま。
+    assert max(c.token_count for c in desc) <= 800
+    # 説明そのものは失われない
+    assert "".join(c.text for c in desc).replace(" ", "").startswith("これは図の説明です。")
+
+
+@pytest.mark.qdrant
+@pytest.mark.asyncio
+async def test_split_figure_description_links_first_chunk_to_asset(tmp_path):
+    """分割しても引用元表示のためアセットは先頭チャンクに紐付ける。"""
+    conn, src, vs = _setup(tmp_path)
+    pipeline = _pipeline(
+        conn, vs, assets_dir=tmp_path / "assets",
+        describer=FakeDescriber("これは図の説明です。" * 1200),
+        describe_enabled=lambda: True,
+    )
+    await pipeline.run(source_id=src.id, kind="pdf", data=build_pdf_with_image())
+
+    desc = sorted(
+        [c for c in list_chunks_for_source(conn, src.id) if c.kind == "figure_desc"],
+        key=lambda c: c.ord,
+    )
+    fig = next(a for a in list_assets_for_source(conn, src.id) if a.kind == "figure")
+    assert fig.desc_chunk_id == desc[0].id
+
+
+@pytest.mark.qdrant
+@pytest.mark.asyncio
 async def test_figure_describe_publishes_progress(tmp_path):
     """実機FB 2026-07-26: 図が多いPDFでは図解析フェーズだけで数時間かかるが、
     status も chunk_count も動かないため「ハングした」ようにしか見えなかった。

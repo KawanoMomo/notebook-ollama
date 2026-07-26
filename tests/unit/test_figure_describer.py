@@ -15,7 +15,7 @@ class FakeThinkingGatewayLike:
         self.calls: list[dict] = []
 
     async def chat_stream(self, *, model, messages, options=None, meta=None):
-        self.calls.append({"model": model, "messages": messages})
+        self.calls.append({"model": model, "messages": messages, "options": options})
         text = self.responses.pop(0)
         for ch in text:
             yield ch
@@ -33,6 +33,41 @@ async def test_describe_returns_text_on_success():
     sent = gw.calls[0]["messages"][-1]
     assert "images" in sent
     assert sent["images"][0] == base64.b64encode(PNG_BYTES).decode("ascii")
+
+
+@pytest.mark.asyncio
+async def test_describe_excludes_thinking_tokens():
+    """実機FB 2026-07-27: thinking 系モデル(aratan/Agents-A1-4B)を視覚モデルに
+    設定すると、思考トークンがそのまま説明文として RAG 索引に入っていた。
+    チャット生成側と同じく ThinkingChunk は除外すること。"""
+    from core.ollama.client import ThinkingChunk
+
+    class ThinkingGateway:
+        def __init__(self):
+            self.calls = []
+
+        async def chat_stream(self, *, model, messages, options=None, meta=None):
+            self.calls.append({"model": model, "options": options})
+            yield ThinkingChunk("Thinking Process: 1. Analyze the request. ")
+            yield ThinkingChunk("Wait, looking closely at the image: ")
+            yield "これは部品配置図です。"
+
+    gw = ThinkingGateway()
+    describer = OllamaFigureDescriber(client=gw, model="aratan/Agents-A1-4B")
+    result = await describer.describe(image_png=PNG_BYTES)
+    assert result == "これは部品配置図です。"
+    assert "Thinking Process" not in (result or "")
+
+
+@pytest.mark.asyncio
+async def test_describe_caps_generation_length():
+    """無制限だと thinking 系モデルが延々と出力し、説明が2万字に達して
+    埋め込み上限を超えた(実機FB 2026-07-27)。num_predict を必ず指定する。"""
+    gw = FakeThinkingGatewayLike(["これは図です。"])
+    describer = OllamaFigureDescriber(client=gw, model="qwen3-vl")
+    await describer.describe(image_png=PNG_BYTES)
+    options = gw.calls[0]["options"] or {}
+    assert options.get("num_predict", 0) > 0
 
 
 @pytest.mark.asyncio
