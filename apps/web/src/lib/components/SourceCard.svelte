@@ -51,6 +51,14 @@
 
   // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
   // ソースでは確実に失敗するため、無効化してまず変換(再試行)を促す。
+  // 図解析フェーズ(ベータ)は status が chunking のまま進むため、SSE 由来の
+  // figures_done/figures_total が唯一の進捗表示源になる。完了後は畳む。
+  const figureProgress = $derived.by(() => {
+    const total = source.figures_total ?? 0;
+    const done = source.figures_done ?? 0;
+    return total > 0 && done < total ? { done, total } : null;
+  });
+
   const summaryDisabled = $derived(
     (source.chunk_count ?? 0) === 0 ||
       source.status !== 'ready' ||
@@ -243,6 +251,8 @@
             <AlertCircle size="12" color="var(--color-error)" /> {source.error_msg ?? 'error'}
           {:else if source.status === 'embedding' && source.chunk_count}
             <Spinner size={12} /> embedding ({source.embedded ?? 0}/{source.chunk_count})
+          {:else if figureProgress}
+            <Spinner size={12} /> 図を解析 ({figureProgress.done}/{figureProgress.total})
           {:else}
             <Spinner size={12} /> {source.status}
           {/if}

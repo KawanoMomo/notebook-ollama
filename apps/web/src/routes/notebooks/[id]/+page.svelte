@@ -41,6 +41,8 @@
     currentNotebookStore.activeJobs.map((j) => ({
       ...j,
       step: j.kind === 'ingest' ? eventsStore.convStepFor(j.sourceId) : undefined,
+      // 図解析フェーズの残り時間目安(数時間規模になりうる)
+      etaSeconds: j.kind === 'ingest' ? eventsStore.figureEtaFor(j.sourceId) : null,
     })),
   );
 

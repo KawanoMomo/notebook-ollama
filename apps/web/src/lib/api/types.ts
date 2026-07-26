@@ -69,6 +69,12 @@ export interface Source {
   has_slides?: boolean;
   /** Transient field populated from SSE during the embedding phase. */
   embedded?: number | null;
+  /**
+   * 図解析フェーズ(ベータ: table-figure-rag)の進捗。SSE 由来の transient field。
+   * このフェーズは status も chunk_count も動かないため、これが唯一の進捗表示源。
+   */
+  figures_done?: number | null;
+  figures_total?: number | null;
   duration_ms?: number | null;
   summary?: string | null;
   summary_status?: SummaryStatus | null;

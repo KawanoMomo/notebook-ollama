@@ -98,10 +98,23 @@ class IngestionPipeline:
             log.warning("asset_save_failed", source_id=source_id, exc_info=True)
 
     async def _describe_figures(
-        self, conn, *, source_id: str, chunk_records: list[ChunkRecord], notebook_id: str
+        self,
+        conn,
+        *,
+        source_id: str,
+        chunk_records: list[ChunkRecord],
+        notebook_id: str,
+        on_progress: Callable[[int, int], Any] | None = None,
     ) -> list[ChunkRecord]:
         """未説明の figure アセットを VLM で説明し、独立チャンクとして追加する。
-        失敗しても取込全体は継続する(グレースフルデグレード)。"""
+        失敗しても取込全体は継続する(グレースフルデグレード)。
+
+        on_progress(done, total) は figure 1 件ごとに await される。1件あたり
+        VLM 推論で数秒かかるため間引きはしない。図が多いPDFではこのフェーズだけで
+        数時間に達し、進捗を出さないと status/chunk_count が凍結して「ハングした」
+        ようにしか見えない(実機FB 2026-07-26: 1730ページ・図3427件のPDFで
+        4時間以上ステータス無変化)。
+        """
         from core.storage.assets_repo import list_assets_for_source, set_desc_chunk_link
 
         new_records: list[ChunkRecord] = []
@@ -109,41 +122,64 @@ class IngestionPipeline:
             assets = list_assets_for_source(conn, source_id)
             figures = [a for a in assets if a.kind == "figure" and a.desc_chunk_id is None]
             assets_dir = self._deps.assets_dir
-            for asset in figures:
-                if not asset.image_path:
-                    continue
-                image_path = assets_dir / asset.image_path
-                if not image_path.exists():
-                    continue
+            total = len(figures)
+
+            async def _report(done: int) -> None:
+                """進捗配信。失敗しても図解析そのものは止めない(表示のための
+                副作用が本処理を巻き添えにしないこと)。"""
+                if on_progress is None:
+                    return
                 try:
-                    text = await self._deps.figure_describer.describe(
-                        image_png=image_path.read_bytes()
-                    )
+                    await on_progress(done, total)
                 except Exception:
                     log.warning(
-                        "figure_describe_call_failed",
-                        source_id=source_id,
-                        asset_id=asset.id,
-                        exc_info=True,
+                        "figure_progress_publish_failed", source_id=source_id, exc_info=True
                     )
-                    text = None
-                if not text:
-                    continue
-                chunk_id = new_id()
-                new_records.append(
-                    ChunkRecord(
-                        id=chunk_id,
-                        source_id=source_id,
-                        notebook_id=notebook_id,
-                        ord=len(chunk_records) + len(new_records),
-                        page=asset.page,
-                        heading_path=None,
-                        text=text,
-                        token_count=len(text),
-                        kind="figure_desc",
+
+            if total:
+                # 開始時点で総数を知らせる(0/N)。これが無いと、1件目の説明が
+                # 終わるまで UI は総数すら分からない。
+                await _report(0)
+            for done, asset in enumerate(figures, start=1):
+                try:
+                    if not asset.image_path:
+                        continue
+                    image_path = assets_dir / asset.image_path
+                    if not image_path.exists():
+                        continue
+                    try:
+                        text = await self._deps.figure_describer.describe(
+                            image_png=image_path.read_bytes()
+                        )
+                    except Exception:
+                        log.warning(
+                            "figure_describe_call_failed",
+                            source_id=source_id,
+                            asset_id=asset.id,
+                            exc_info=True,
+                        )
+                        text = None
+                    if not text:
+                        continue
+                    chunk_id = new_id()
+                    new_records.append(
+                        ChunkRecord(
+                            id=chunk_id,
+                            source_id=source_id,
+                            notebook_id=notebook_id,
+                            ord=len(chunk_records) + len(new_records),
+                            page=asset.page,
+                            heading_path=None,
+                            text=text,
+                            token_count=len(text),
+                            kind="figure_desc",
+                        )
                     )
-                )
-                set_desc_chunk_link(conn, asset.id, chunk_id)
+                    set_desc_chunk_link(conn, asset.id, chunk_id)
+                finally:
+                    # スキップ(画像欠損)・説明失敗も「処理済み」として数える。
+                    # finally なので continue しても必ず進捗が出る。
+                    await _report(done)
         except Exception:
             log.warning("describe_figures_failed", source_id=source_id, exc_info=True)
         return new_records
@@ -163,8 +199,26 @@ class IngestionPipeline:
             )
             return
         chunk_records = list_chunks_for_source(conn, source_id)
+
+        async def _figure_progress(done: int, total: int) -> None:
+            # 手動「図を解析」も取込と同じ進捗契約で配信する。ソースは既に
+            # READY なので status は現在値のまま流し、figures_* だけを載せる。
+            if self._deps.broker is None:
+                return
+            await self._deps.broker.publish(
+                f"notebook:{src.notebook_id}",
+                {
+                    "source_id": source_id,
+                    # StrEnum でも素の str でも同じ値になる(repo 実装に依存しない)
+                    "status": str(src.status),
+                    "figures_done": done,
+                    "figures_total": total,
+                },
+            )
+
         new_records = await self._describe_figures(
             conn, source_id=source_id, chunk_records=chunk_records, notebook_id=src.notebook_id,
+            on_progress=_figure_progress,
         )
         if not new_records:
             return
@@ -262,9 +316,15 @@ class IngestionPipeline:
                 and self._deps.figure_describe_enabled()
             )
             if describe:
+
+                async def _figure_progress(done: int, total: int) -> None:
+                    await _publish(
+                        SourceStatus.CHUNKING, figures_done=done, figures_total=total
+                    )
+
                 desc_records = await self._describe_figures(
                     conn, source_id=source_id, chunk_records=chunk_records,
-                    notebook_id=src.notebook_id,
+                    notebook_id=src.notebook_id, on_progress=_figure_progress,
                 )
                 if desc_records:
                     insert_chunks(conn, desc_records)

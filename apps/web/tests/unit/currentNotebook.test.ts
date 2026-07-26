@@ -143,6 +143,30 @@ describe('currentNotebookStore.activeJobs', () => {
     ]);
   });
 
+  it('図解析フェーズは件数と割合を出す (status は chunking のまま動かないため)', () => {
+    const store = createCurrentNotebookStore();
+    store.upsertSource(
+      makeJobSource({ status: 'chunking', figures_done: 953, figures_total: 3427 }),
+    );
+    expect(store.activeJobs[0].label).toBe('設計書.pdf: 図を解析中 953/3427（27%）');
+  });
+
+  it('図解析が完了したら通常の「取り込み中」に戻る', () => {
+    const store = createCurrentNotebookStore();
+    store.upsertSource(
+      makeJobSource({ status: 'chunking', figures_done: 10, figures_total: 10 }),
+    );
+    expect(store.activeJobs[0].label).toBe('設計書.pdf: 取り込み中');
+  });
+
+  it('図が0件のPDFでは図解析ラベルを出さない', () => {
+    const store = createCurrentNotebookStore();
+    store.upsertSource(
+      makeJobSource({ status: 'chunking', figures_done: 0, figures_total: 0 }),
+    );
+    expect(store.activeJobs[0].label).toBe('設計書.pdf: 取り込み中');
+  });
+
   it('summary_status/adr_status が generating なら各ジョブになる(同一ソースで複数可)', () => {
     const store = createCurrentNotebookStore();
     store.upsertSource(

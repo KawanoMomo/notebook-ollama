@@ -117,7 +117,16 @@ export function createCurrentNotebookStore(
     for (const s of sources) {
       const name = s.title ?? s.origin ?? 'ソース';
       if (INGEST_ACTIVE.has(s.status)) {
-        jobs.push({ sourceId: s.id, kind: 'ingest', label: `${name}: 取り込み中` });
+        // 図解析フェーズ中は status も chunk_count も動かないため、専用の
+        // ラベルにしないと「取り込み中」のまま数時間フリーズして見える
+        // (実機FB 2026-07-26: 図3427件のPDFで4時間以上無変化)。
+        const total = s.figures_total ?? 0;
+        const done = s.figures_done ?? 0;
+        const label =
+          total > 0 && done < total
+            ? `${name}: 図を解析中 ${done}/${total}（${Math.floor((done / total) * 100)}%）`
+            : `${name}: 取り込み中`;
+        jobs.push({ sourceId: s.id, kind: 'ingest', label });
       }
       if (s.summary_status === 'generating') {
         jobs.push({ sourceId: s.id, kind: 'summary', label: `${name}: 要約生成中` });

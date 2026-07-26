@@ -40,6 +40,29 @@ describe('JobStatusBar', () => {
     expect(screen.getByText(/40%/)).toBeDefined();
   });
 
+  // 実機FB 2026-07-26: 図解析は数千件×数秒で数時間規模になるため、
+  // 「あと何時間か」が出ないと止まっているのか判断できない。
+  it('etaSeconds があれば残り時間目安を時間単位まで丸めて表示する', () => {
+    render(JobStatusBar, {
+      jobs: [
+        {
+          sourceId: 's1',
+          kind: 'ingest',
+          label: '本.pdf: 図を解析中 953/3427（27%）',
+          etaSeconds: 11_100, // 3時間5分
+        },
+      ],
+    });
+    expect(screen.getByText('残り約3時間5分')).toBeDefined();
+  });
+
+  it('etaSeconds が無いジョブには残り時間を出さない', () => {
+    render(JobStatusBar, {
+      jobs: [{ sourceId: 's1', kind: 'ingest', label: '本.pdf: 取り込み中' }],
+    });
+    expect(screen.queryByText(/残り約/)).toBeNull();
+  });
+
   it('スクリーンリーダー向けに role=status を持つ', () => {
     render(JobStatusBar, {
       jobs: [{ sourceId: 's1', kind: 'summary', label: 'x: 要約生成中' }],

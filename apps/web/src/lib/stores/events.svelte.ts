@@ -29,6 +29,13 @@ export interface EventsStore {
   start(notebookId: string): void;
   stop(): void;
   convStepFor(sourceId: string): ConvStep | undefined;
+  /**
+   * 図解析フェーズの残り時間目安(秒)。観測開始以降のペースから算出し、
+   * 2点目の進捗を受け取るまでは null。図1件あたり数秒かかるうえ数千件に
+   * 及ぶことがあり、n/N だけでは「あと何時間か」が判断できないため
+   * (実機FB 2026-07-26)。
+   */
+  figureEtaFor(sourceId: string): number | null;
   readonly visualIndexProgress: VisualIndexProgress | null;
   readonly visualIndexOutcome: VisualIndexOutcome | null;
 }
@@ -46,10 +53,17 @@ export function createEventsStore(): EventsStore {
   // ETA計算用: 最初に観測した進捗イベントの (時刻, done)。途中からモーダルを
   // 開いた場合でも「観測開始以降のペース」で目安を出す。
   let progressBaseline: { at: number; done: number } | null = null;
+  // 図解析の ETA 基準点(ソース単位)。視覚インデックスと同じ考え方だが、
+  // こちらは複数ソースが同時に走りうるので source_id ごとに持つ。
+  const figureBaselines = new Map<string, { at: number; done: number }>();
+  let figureEtas = $state<Record<string, number>>({});
 
   return {
     convStepFor(sourceId) {
       return convSteps[sourceId];
+    },
+    figureEtaFor(sourceId) {
+      return figureEtas[sourceId] ?? null;
     },
     get visualIndexProgress() {
       return visualIndexProgress;
@@ -64,6 +78,8 @@ export function createEventsStore(): EventsStore {
       visualIndexProgress = null;
       visualIndexOutcome = null;
       progressBaseline = null;
+      figureBaselines.clear();
+      figureEtas = {};
       close = openNotebookEvents(notebookId, (ev: SourceStatusEvent) => {
         // 視覚インデックスジョブのイベントには source_id が無いため、
         // 通常のソース状態パッチに入る前に分岐して処理する。
@@ -117,11 +133,43 @@ export function createEventsStore(): EventsStore {
           typeof ev.chunk_count === "number" ? ev.chunk_count : existing.chunk_count;
         const embedded =
           typeof ev.embedded === "number" ? ev.embedded : undefined;
+        // 図解析の進捗。ペイロードに含まれるイベントでのみ更新し、含まれない
+        // 通常イベント(embedding 等)では既存値を維持する。
+        const figuresDone =
+          typeof ev.figures_done === "number" ? ev.figures_done : undefined;
+        const figuresTotal =
+          typeof ev.figures_total === "number" ? ev.figures_total : undefined;
+        if (figuresDone !== undefined && figuresTotal !== undefined) {
+          const now = Date.now();
+          const base = figureBaselines.get(ev.source_id);
+          if (base === undefined) {
+            figureBaselines.set(ev.source_id, { at: now, done: figuresDone });
+          } else {
+            const advanced = figuresDone - base.done;
+            const elapsedMs = now - base.at;
+            if (advanced > 0 && elapsedMs > 0) {
+              figureEtas = {
+                ...figureEtas,
+                [ev.source_id]: Math.round(
+                  ((figuresTotal - figuresDone) * (elapsedMs / advanced)) / 1000,
+                ),
+              };
+            }
+          }
+          if (figuresDone >= figuresTotal) {
+            // フェーズ完了。次フェーズ(埋め込み)の表示を汚さないよう畳む。
+            figureBaselines.delete(ev.source_id);
+            const { [ev.source_id]: _drop, ...rest } = figureEtas;
+            figureEtas = rest;
+          }
+        }
         currentNotebookStore.upsertSource({
           ...existing,
           status: ev.status as typeof existing.status,
           chunk_count: chunkCount,
           embedded,
+          ...(figuresDone !== undefined ? { figures_done: figuresDone } : {}),
+          ...(figuresTotal !== undefined ? { figures_total: figuresTotal } : {}),
           // 要約/ADRジョブの進行状態。ペイロードに含まれる場合のみ上書きし、
           // 含まれない従来イベント(取り込みパイプライン等)では既存値を維持する。
           // 明示 null は「中断→未生成へ復帰」の配信(cancel エンドポイント)。
@@ -175,6 +223,8 @@ export function createEventsStore(): EventsStore {
       visualIndexProgress = null;
       visualIndexOutcome = null;
       progressBaseline = null;
+      figureBaselines.clear();
+      figureEtas = {};
       close = null;
     },
   };

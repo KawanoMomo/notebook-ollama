@@ -137,6 +137,96 @@ describe('events store — summary_status / adr_status patch', () => {
 
 // PM-12 fix: 録音のソース化完了直後にタイトル/親子リンクが古いままになる不具合。
 // SSE payload には title 等の実データが無く、upsertSource による patch だけでは
+// 実機FB 2026-07-26: 図解析フェーズは status/chunk_count が動かないまま数時間
+// 走るため、figures_done/figures_total だけが進捗の手がかりになる。
+describe('events store — 図解析の進捗と残り時間目安', () => {
+  it('figures_done/figures_total を source へ反映する', () => {
+    currentNotebookStore.upsertSource(makeSource({ status: 'chunking' }));
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: 'src1',
+      status: 'chunking',
+      figures_done: 953,
+      figures_total: 3427,
+    });
+    const s = currentNotebookStore.sources.find((x) => x.id === 'src1')!;
+    expect(s.figures_done).toBe(953);
+    expect(s.figures_total).toBe(3427);
+  });
+
+  it('進捗が1点だけでは ETA を出さない(ペースが未知のため)', () => {
+    currentNotebookStore.upsertSource(makeSource({ status: 'chunking' }));
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: 'src1',
+      status: 'chunking',
+      figures_done: 0,
+      figures_total: 100,
+    });
+    expect(eventsStore.figureEtaFor('src1')).toBeNull();
+  });
+
+  it('2点目の進捗から観測ペースで ETA を算出する', () => {
+    vi.useFakeTimers();
+    try {
+      currentNotebookStore.upsertSource(makeSource({ status: 'chunking' }));
+      eventsStore.start('nb1');
+      capturedOnEvent!({
+        source_id: 'src1',
+        status: 'chunking',
+        figures_done: 0,
+        figures_total: 100,
+      });
+      // 10 件を 40 秒で処理 → 1件4秒。残り90件 = 360秒
+      vi.advanceTimersByTime(40_000);
+      capturedOnEvent!({
+        source_id: 'src1',
+        status: 'chunking',
+        figures_done: 10,
+        figures_total: 100,
+      });
+      expect(eventsStore.figureEtaFor('src1')).toBe(360);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('フェーズ完了で ETA を畳む(後続フェーズの表示を汚さない)', () => {
+    vi.useFakeTimers();
+    try {
+      currentNotebookStore.upsertSource(makeSource({ status: 'chunking' }));
+      eventsStore.start('nb1');
+      capturedOnEvent!({
+        source_id: 'src1', status: 'chunking', figures_done: 0, figures_total: 2,
+      });
+      vi.advanceTimersByTime(10_000);
+      capturedOnEvent!({
+        source_id: 'src1', status: 'chunking', figures_done: 1, figures_total: 2,
+      });
+      expect(eventsStore.figureEtaFor('src1')).not.toBeNull();
+      vi.advanceTimersByTime(10_000);
+      capturedOnEvent!({
+        source_id: 'src1', status: 'chunking', figures_done: 2, figures_total: 2,
+      });
+      expect(eventsStore.figureEtaFor('src1')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('figures_* を持たない通常イベントでは既存の進捗を消さない', () => {
+    currentNotebookStore.upsertSource(makeSource({ status: 'chunking' }));
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: 'src1', status: 'chunking', figures_done: 5, figures_total: 10,
+    });
+    capturedOnEvent!({ source_id: 'src1', status: 'embedding', chunk_count: 12, embedded: 3 });
+    const s = currentNotebookStore.sources.find((x) => x.id === 'src1')!;
+    expect(s.figures_done).toBe(5);
+    expect(s.figures_total).toBe(10);
+  });
+});
+
 // 反映できないため、終端 status で sources/links を再取得する配線を検証する。
 describe('events store — 終端 status で currentNotebookStore.refreshSources を呼ぶ', () => {
   afterEach(() => {
