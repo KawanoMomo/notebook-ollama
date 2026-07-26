@@ -42,7 +42,24 @@ async def _resolve_num_ctx(ctx, model: str) -> int:
         endpoint=ctx.config.ollama.endpoint,
         timeout=ctx.config.ollama.request_timeout_seconds,
     )
-    show = await raw.show(model)
+    try:
+        show = await raw.show(model)
+    except AppError as exc:
+        if exc.code is not ErrorCode.OLLAMA_MODEL_NOT_FOUND:
+            raise
+        # 選択済みモデルが Ollama から削除済み/未取得のケース(実機FB
+        # 2026-07-26)。低レベルの英語メッセージのまま返すとFEに生JSONが
+        # 出るだけで対処が分からないため、直す場所を明示して包み直す。
+        raise AppError(
+            ErrorCode.OLLAMA_MODEL_NOT_FOUND,
+            f"モデル {model} が Ollama に見つかりません"
+            "(削除済みか、まだ取得していない可能性があります)",
+            remediation=(
+                "ノートブック右上の「このノートのモデル」か、設定→モデル・Ollamaの"
+                f"既定モデルを存在するモデルに変更してください。このモデルを使う場合は "
+                f"`ollama pull {model}` で取得してください。"
+            ),
+        ) from exc
     num_ctx = parse_context_window(show.get("parameters", "")) or 8192
 
     response_budget = ctx.config.generation.response_budget_tokens

@@ -78,3 +78,23 @@ def test_midstream_apperror_becomes_sse_error_event(client):
     assert r.status_code == 200  # SSEは開始される
     assert "event: error" in r.text
     assert "context" in r.text or "コンテキスト" in r.text
+
+
+def test_missing_model_returns_404_with_remediation(client):
+    """実機FB 2026-07-26: 選択済みモデルがOllamaから削除済み/未取得だと
+    生の英語メッセージ(remediation無し)がFEに生JSONで出て対処が分からない。
+    SSE前に日本語メッセージ+直す場所(ノートのモデル/既定モデル/ollama pull)
+    を返すこと。"""
+    nb_id, conv_id = _conv(client)
+    with respx.mock() as router:
+        router.post("http://fake/api/show").mock(return_value=httpx.Response(404))
+        r = client.post(
+            f"/api/notebooks/{nb_id}/conversations/{conv_id}/messages",
+            json={"content": "質問", "source_ids": ["SRC_DUMMY"]},
+        )
+    assert r.status_code == 404
+    body = r.json()["error"]
+    assert "見つかりません" in body["message"]
+    assert "llava:7b" in body["message"]  # どのモデルかを明示
+    assert "ollama pull" in body["remediation"]
+    assert "このノートのモデル" in body["remediation"]

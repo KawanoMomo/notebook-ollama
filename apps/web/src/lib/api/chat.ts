@@ -19,6 +19,27 @@ export type ChatEvent =
   | { kind: 'ping' };
 
 /**
+ * SSE開始前の非2xx応答ボディを人間向けメッセージに整形する。
+ * AppError封筒(`{"error":{message,remediation,...}}`)ならメッセージ+対処を
+ * 取り出し、それ以外は生テキストへフォールバックする(実機FB 2026-07-26:
+ * モデル不在404が生JSONのまま表示されて対処が分からなかった)。
+ */
+export function formatChatStreamError(status: number, bodyText: string): string {
+  try {
+    const body = JSON.parse(bodyText) as {
+      error?: { message?: string; remediation?: string | null };
+    };
+    const err = body.error;
+    if (err?.message) {
+      return err.remediation ? `${err.message}\n${err.remediation}` : err.message;
+    }
+  } catch {
+    /* JSONでない応答(プロキシエラー等)はそのまま見せる */
+  }
+  return `チャットの開始に失敗しました (HTTP ${status}): ${bodyText}`;
+}
+
+/**
  * Open an SSE stream against `url`, POSTing `body`. Yields parsed ChatEvent
  * for each `event:`/`data:` pair. Shared by sendMessage and continueMessage.
  */
@@ -35,7 +56,7 @@ async function* streamSse(
   });
   if (!response.ok || !response.body) {
     const text = await response.text();
-    throw new Error(`chat stream failed: ${response.status} ${text}`);
+    throw new Error(formatChatStreamError(response.status, text));
   }
   const reader = response.body
     .pipeThrough(new TextDecoderStream())
