@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -28,8 +29,8 @@ async def list_models(request: Request) -> dict[str, Any]:
         timeout=ctx.config.ollama.request_timeout_seconds,
     )
     tags = await client.list_tags()
-    models: list[dict[str, Any]] = []
-    for tag in tags:
+
+    async def _describe(tag: dict[str, Any]) -> dict[str, Any] | None:
         name = tag["name"]
         details = tag.get("details", {}) or {}
         try:
@@ -40,7 +41,7 @@ async def list_models(request: Request) -> dict[str, Any]:
             # モデル一覧全体を巻き込んで 500 にしない — そのモデルだけ
             # 除外して残りを返す(設定画面のモデル選択が全滅するのを防ぐ)。
             log.warning("model_show_failed", model=name, exc_info=True)
-            continue
+            return None
         params_str = show.get("parameters", "")
         ctx_window = parse_context_window(params_str)
         capabilities = show.get("capabilities", []) or []
@@ -51,23 +52,29 @@ async def list_models(request: Request) -> dict[str, Any]:
                 embedding_dim = await probe_embedding_dim(ctx.ollama, name)
             except Exception:
                 embedding_dim = None
-        models.append(
-            {
-                "name": name,
-                "size_bytes": tag.get("size"),
-                "context_window": ctx_window,
-                "modified_at": tag.get("modified_at"),
-                "kind": kind,
-                "embedding_dim": embedding_dim,
-                "has_vision": has_vision_capability(capabilities),
-                "recommended_for": classify_recommendation(
-                    name=name,
-                    family=details.get("family", ""),
-                    parameter_size=details.get("parameter_size", ""),
-                    context_window=ctx_window,
-                ),
-            }
-        )
+        return {
+            "name": name,
+            "size_bytes": tag.get("size"),
+            "context_window": ctx_window,
+            "modified_at": tag.get("modified_at"),
+            "kind": kind,
+            "embedding_dim": embedding_dim,
+            "has_vision": has_vision_capability(capabilities),
+            "recommended_for": classify_recommendation(
+                name=name,
+                family=details.get("family", ""),
+                parameter_size=details.get("parameter_size", ""),
+                context_window=ctx_window,
+            ),
+        }
+
+    # モデル毎の /api/show を並列化する。直列だとモデル数x往復時間
+    # (20モデル超で初回20〜60秒)かかり、FE のモデル選択が長時間
+    # 「既定のみ」に見えて壊れていると誤認される(実機FB 2026-07-26)。
+    # 埋め込み次元プローブは gateway 側の embed ロックで直列化されるが、
+    # 対象は embedding モデルのみ+プロセス内キャッシュ済みで実害なし。
+    results = await asyncio.gather(*[_describe(t) for t in tags])
+    models = [m for m in results if m is not None]
     notebooks = notebooks_repo.list_notebooks(ctx.conn)
     defaults = [
         {"notebook_id": n.id, "name": n.name, "default_model": n.default_model} for n in notebooks

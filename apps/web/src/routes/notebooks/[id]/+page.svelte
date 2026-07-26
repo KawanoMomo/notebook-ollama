@@ -141,6 +141,11 @@
           <span class="model-pick-label">このノートのモデル</span>
           <select value={selectedModel} onchange={onModelChange}>
             <option value="">既定（{globalDefault || '全体既定'}）</option>
+            {#if modelsStore.loading && chatModels.length === 0}
+              <!-- /api/models はモデル数×showの往復で初回数十秒かかりうる。
+                   無表示だと「モデルが出ない不具合」に見える(実機FB 2026-07-26) -->
+              <option value="" disabled>モデル一覧を取得中…</option>
+            {/if}
             {#each chatModels as m (m.name)}
               <option value={m.name}>{m.name}</option>
             {/each}
