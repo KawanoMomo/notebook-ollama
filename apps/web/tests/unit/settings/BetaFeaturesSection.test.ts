@@ -118,3 +118,29 @@ describe('BetaFeaturesSection — toggle', () => {
     await waitFor(() => expect(api.setOptin).toHaveBeenCalledWith('a', false));
   });
 });
+
+describe('BetaFeaturesSection — 使い方ガイド(実機FB 2026-07-26)', () => {
+  it('table-figure-rag の行に展開式の使い方ガイドが付く', async () => {
+    const { features } = await setup();
+    render(BetaFeaturesSection, { features });
+    const summary = screen.getByText('使い方を見る（スクリーンショット付き）');
+    expect(summary).toBeDefined();
+    // 展開するとステップ見出しとスクリーンショット4枚が現れる
+    await fireEvent.click(summary);
+    expect(screen.getByText(/Step 1\./)).toBeDefined();
+    expect(screen.getByText(/Step 4\./)).toBeDefined();
+    const imgs = document.querySelectorAll('.guide-body img');
+    expect(imgs.length).toBe(4);
+    expect((imgs[0] as HTMLImageElement).getAttribute('src')).toContain('/help/table-figure-rag/');
+    // 全imgにaltがある(アクセシビリティ)
+    for (const img of imgs) expect((img.getAttribute('alt') ?? '').length).toBeGreaterThan(0);
+  });
+
+  it('他のフラグにはガイドが付かない', async () => {
+    const { features } = await setup([
+      makeFlag({ id: 'some-other-flag', name: '別機能' }),
+    ]);
+    render(BetaFeaturesSection, { features });
+    expect(screen.queryByText('使い方を見る（スクリーンショット付き）')).toBeNull();
+  });
+});

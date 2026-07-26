@@ -83,6 +83,62 @@
             onclick={() => toggle(flag.id, !flag.enabled)}
           ><i></i></button>
         </div>
+        {#if flag.id === 'table-figure-rag'}
+          <!-- 使い方ガイド(実機FB 2026-07-26: 有効化欄に具体的な使い方を記載)。
+               details で折りたたみ、既定は閉=縦に肥大化させない。
+               画像は static/help/ 配下の実機スクリーンショット。 -->
+          <details class="guide">
+            <summary>使い方を見る（スクリーンショット付き）</summary>
+            <div class="guide-body">
+              <p class="guide-intro">
+                PDFの<strong>表・図・ページの見た目</strong>を検索と回答に活かす機能群です。
+                表は崩れないHTMLで表示され、図はAIが説明文を作って検索に乗り、
+                ページ全体の視覚検索も併用できます。
+              </p>
+
+              <h4>Step 1. ベータを有効化し、視覚モデルを設定する</h4>
+              <p>
+                上のスイッチをONにすると、設定「モデル・Ollama」に
+                <strong>視覚モデル（図の解析・OCR用）</strong>と
+                <strong>視覚検索（ベータ）</strong>の項目が現れます。
+                図の説明生成・スキャンPDFのOCRに使うvision対応モデル（例: llava:7b）を選択してください。
+              </p>
+              <img src="/help/table-figure-rag/settings-models.png" alt="設定のモデル・Ollamaパネル。視覚モデルの選択欄と視覚検索トグル" loading="lazy" />
+
+              <h4>Step 2. PDFを取り込み、表・図を解析する</h4>
+              <p>
+                PDF取込時に表と図は自動抽出されます。既存ソースにはソースカードの
+                <strong>「表・図を再解析」</strong>（表アイコン）を、図の説明文生成には
+                <strong>「図を解析」</strong>（画像アイコン）を使います。
+                ソース一覧上部の<strong>視覚インデックス</strong>アイコン（スキャンマーク）から
+                ページ視覚検索の索引を構築できます。
+              </p>
+              <img src="/help/table-figure-rag/source-icons.png" alt="ソースカードのアイコン群とソース一覧上部の視覚インデックスアイコン" loading="lazy" />
+
+              <h4>Step 3. 視覚インデックスを構築する（任意・実験的）</h4>
+              <p>
+                視覚インデックスを構築すると、テキストにならない図版・レイアウトも
+                ページ画像として検索対象になります。構築はノートブック単位の手動実行で、
+                CPU実行では<strong>1ページあたり1〜2分</strong>かかります（進捗と残り時間目安を表示）。
+              </p>
+              <img src="/help/table-figure-rag/visual-index-modal.png" alt="視覚インデックスの構築・削除モーダル" loading="lazy" />
+
+              <h4>Step 4. チャットで質問する</h4>
+              <p>
+                あとは普通に質問するだけです。表はHTML表示、図は説明文つきで検索に乗り、
+                視覚検索でヒットしたページは引用に<strong>「(視覚検索)」</strong>と表示されます。
+                vision対応のチャットモデルを選んでいる場合は、図やページの画像そのものも
+                回答の材料として渡されます。
+              </p>
+              <img src="/help/table-figure-rag/citation-visual.png" alt="チャットの引用にp.5(視覚検索)と表示されている例" loading="lazy" />
+
+              <p class="guide-note">
+                注意: 図の解析・OCR・視覚インデックスはローカルのAIモデルで処理するため時間がかかります。
+                初回は視覚埋め込みモデルのダウンロード（約4GB）が発生します。
+              </p>
+            </div>
+          </details>
+        {/if}
       </div>
     {/each}
   </div>
@@ -181,5 +237,58 @@
   .switch.off i {
     right: auto;
     left: 2px;
+  }
+
+  .guide {
+    grid-column: 1 / -1;
+    margin-top: 2px;
+  }
+
+  .guide summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--color-accent);
+    user-select: none;
+  }
+
+  .guide-body {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border: 1px solid #f0f0f2;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--color-fg);
+  }
+
+  .guide-body h4 {
+    margin: 14px 0 4px;
+    font-size: 12.5px;
+  }
+
+  .guide-body h4:first-of-type {
+    margin-top: 8px;
+  }
+
+  .guide-body p {
+    margin: 0 0 6px;
+  }
+
+  .guide-intro {
+    color: var(--color-fg-muted);
+  }
+
+  .guide-body img {
+    display: block;
+    max-width: 100%;
+    border: 1px solid #e4e4e8;
+    border-radius: var(--radius-md);
+    margin: 6px 0 4px;
+  }
+
+  .guide-note {
+    color: var(--color-fg-muted);
+    font-size: 11px;
+    margin-top: 10px;
   }
 </style>
