@@ -81,10 +81,13 @@ class VisualSettings(BaseModel):
     # 数十秒続く実質ストレステストで、連続実行はマシンの電源/熱マージンを
     # 削る(実機で長時間構築中にBSOD 0x7F_8を観測)。バースト間に休止を挟み
     # デューティ比を下げる。0で無効。
-    build_cooldown_seconds: float = 2.0
+    # 既定10秒: 全力プロファイル(休止2秒+全スレッド)は実機50ページ構築で
+    # BSOD 2回、この安全プロファイルは50ページ完走(約95秒/ページ、RSS一定)。
+    build_cooldown_seconds: float = 10.0
     # CPU推論の torch スレッド数上限。0 = torch既定(全論理コア)。
-    # 消費電力・発熱を抑えたい場合に物理コア数以下へ制限する。
-    cpu_threads: int = 0
+    # 既定8: 全論理コア(24)ではCPU電力ピークがマシンの安定性マージンを超えた
+    # (上記BSOD)。速度優先なら設定で引き上げ可(自己責任)。
+    cpu_threads: int = 8
 
 
 class ServerSettings(BaseModel):

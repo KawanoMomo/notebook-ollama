@@ -258,6 +258,11 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
     ctx.vector_store.delete_by_source(source_id)
     ctx.visual_store.delete_by_source(source_id)
     delete_indexed_source(ctx.conn, source_id)
+    # chunk_assets 行とアセットディレクトリ(表HTML/図クロップ/ページPNG)も掃除する。
+    # Stage 1 以来ここだけ漏れており、ソース削除で孤児ファイルが残っていた
+    # (retry/reingest 用の _clear_source_derived_data には最初からあった処理)。
+    delete_assets_for_source(ctx.conn, source_id)
+    shutil.rmtree(ctx.config.assets_dir / source_id, ignore_errors=True)
     ctx.conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
     ext = _EXT_BY_KIND.get(src.kind, ".bin")
     source_path = ctx.config.sources_dir / f"{src.id}{ext}"

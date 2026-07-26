@@ -281,3 +281,28 @@ def test_delete_recording_source_removes_audio_dir(client):
     r = client.delete(f"/api/notebooks/{nb}/sources/{src.id}")
     assert r.status_code == 204
     assert not rec_dir.exists()
+
+
+def test_delete_source_cleans_assets_rows_and_dir(client):
+    """回帰テスト(Stage 1由来のギャップ): delete_source が chunk_assets 行と
+    assets/<sid>/ ディレクトリを掃除せず、孤児ファイルが残っていた
+    (retry/reingest 用の _clear_source_derived_data には最初からあった処理)。"""
+    from core.storage.assets_repo import AssetRecord, insert_assets, list_assets_for_source
+
+    nb = _create_nb(client)
+    files = {"file": ("a.md", io.BytesIO(b"# A"), "text/markdown")}
+    sid = client.post(f"/api/notebooks/{nb}/sources", files=files).json()["id"]
+    ctx = client.app.state.ctx
+    insert_assets(ctx.conn, [AssetRecord(
+        id="aX", source_id=sid, chunk_id=None, kind="figure", page=1,
+        bbox_json=None, html=None, md_snippet=None, image_path=f"{sid}/aX.png",
+        created_at="t",
+    )])
+    asset_dir = ctx.config.assets_dir / sid
+    (asset_dir / "pages").mkdir(parents=True)
+    (asset_dir / "pages" / "1.png").write_bytes(b"\x89PNG")
+
+    r = client.delete(f"/api/notebooks/{nb}/sources/{sid}")
+    assert r.status_code == 204
+    assert list_assets_for_source(ctx.conn, sid) == []
+    assert not asset_dir.exists()
