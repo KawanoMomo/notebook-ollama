@@ -352,6 +352,32 @@ def test_register_restores_signal_handlers_on_unregister(tmp_path: Path):
     assert signal.getsignal(signal.SIGINT) == original_sigint
 
 
+def test_sigint_does_not_record_a_crash(tmp_path: Path):
+    """実機FB 2026-07-26: サーバーを Ctrl+C で止めるたびに KeyboardInterrupt が
+    未送信レポートとして積まれ、不具合タブが正常終了の記録で埋まっていた
+    (未送信7件が全て Ctrl+C 由来)。SIGINT/SIGTERM はローカル運用の通常の
+    停止手段なので、クラッシュとして記録しないこと。SystemExit の送出は従来
+    どおり(停止時の挙動は変えない)。"""
+    if not hasattr(signal, "SIGINT"):
+        pytest.skip("SIGINT unavailable")
+    try:
+        register(
+            None,
+            settings=_settings(True),
+            pending_store_dir=tmp_path,
+            reported_store_path=tmp_path,
+        )
+    except (OSError, ValueError):
+        pytest.skip("cannot install signal handlers in this thread")
+
+    handler = signal.getsignal(signal.SIGINT)
+    assert callable(handler)
+    with pytest.raises(SystemExit) as excinfo:
+        handler(int(signal.SIGINT), None)
+    assert excinfo.value.code == 128 + int(signal.SIGINT)
+    assert pending_store.load_all(tmp_path) == []
+
+
 # ---------------------------------------------------------------------------
 # FastAPI integration via TestClient
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Source } from '$lib/api/types';
   import { sourcesApi } from '$lib/api/sources';
-  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog, Presentation, Link, Unlink, Table2, Image as ImageIcon } from '@lucide/svelte';
+  import { FileText, Globe, Mic, CheckCircle, AlertCircle, RefreshCw, Trash2, Pencil, Square, Play, ChevronRight, FileCog, Presentation, Link, Unlink, Table2, Image as ImageIcon, Megaphone } from '@lucide/svelte';
   import Spinner from './Spinner.svelte';
   import RecordingConvStatus from './RecordingConvStatus.svelte';
 
@@ -40,6 +40,8 @@
     onReingest?: () => void;
     // 図の再解析(VLM説明生成)。pdf かつ ready のときのみ表示(任意配線)。
     onDescribeFigures?: () => void;
+    // 失敗したソースの不具合報告(error のときのみ表示、任意配線)。
+    onReportError?: () => void;
   }
   let {
     source, selected, onToggle, onSelect, onRetry, onReembed, onDelete,
@@ -47,6 +49,7 @@
     guideExpanded = false, onGuideToggle, onSummarize, onSummaryCancel,
     onGenerateAdr, onStartPresentation,
     depth = 0, onSetParent, onRemoveParent, onReingest, onDescribeFigures,
+    onReportError,
   }: Props = $props();
 
   // 要約再生成ボタンの状態(ADR ボタンと同一パターン)。変換未完了の
@@ -248,7 +251,9 @@
           {#if source.status === 'ready'}
             <CheckCircle size="12" color="var(--color-success)" /> ready
           {:else if source.status === 'error'}
-            <AlertCircle size="12" color="var(--color-error)" /> {source.error_msg ?? 'error'}
+            <!-- 本文は meta 行の外に出す。flex 行の中に長文を入れると
+                 数文字ずつ折り返されて読めない(実機確認 2026-07-26) -->
+            <AlertCircle size="12" color="var(--color-error)" /> エラー
           {:else if source.status === 'embedding' && source.chunk_count}
             <Spinner size={12} /> embedding ({source.embedded ?? 0}/{source.chunk_count})
           {:else if figureProgress}
@@ -269,6 +274,16 @@
     {#if source.status === 'error'}
       <button class="icon" onclick={onRetry} aria-label="再試行">
         <RefreshCw size="14" />
+      </button>
+    {/if}
+    {#if source.status === 'error' && onReportError}
+      <button
+        class="icon"
+        onclick={onReportError}
+        aria-label="この不具合を報告"
+        title="この不具合を報告"
+      >
+        <Megaphone size="14" />
       </button>
     {/if}
     {#if canReembed}
@@ -332,6 +347,18 @@
       <Trash2 size="14" />
     </button>
   </div>
+  {#if source.status === 'error'}
+    <!-- カード全幅(グリッド3列ぶん)に置く。body-wrap の中だとアクション列に
+         幅を取られ、日本語が数文字ずつ折り返される(実機確認 2026-07-26) -->
+    <div class="error-detail">
+      <p class="error-msg">{source.error_msg ?? 'error'}</p>
+      {#if source.error_remediation}
+        <!-- 対処法。message だけでは「何をすれば直るか」が伝わらない
+             (実機FB 2026-07-26: 画像PDFの失敗で打つ手が分からなかった) -->
+        <p class="remediation">{source.error_remediation}</p>
+      {/if}
+    </div>
+  {/if}
 </div>
 {#if showConvStatus}
   <RecordingConvStatus sourceId={source.id} />
@@ -547,6 +574,26 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
+  }
+  .error-detail {
+    /* card は grid-template-columns: auto 1fr auto。全列にまたがらせて
+       サイドバー幅いっぱいで折り返させる。 */
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+  .error-msg {
+    margin: var(--space-1) 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--color-error);
+    overflow-wrap: anywhere;
+  }
+  .remediation {
+    margin: 2px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--color-fg-muted);
+    overflow-wrap: anywhere;
   }
   .actions {
     display: flex;

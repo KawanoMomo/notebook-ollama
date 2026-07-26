@@ -28,8 +28,12 @@ Traps installed by ``register``:
   Always *chains* to the previously installed hook so pytest /
   the default Python REPL reporter still fire.
 - **``signal.signal``** for ``SIGTERM`` / ``SIGINT`` (and ``SIGBREAK`` on
-  Windows). Treats signal-driven exits as abnormal: saves a crash with
-  ``source="signal"`` then raises ``SystemExit(128 + signum)``.
+  Windows). Raises ``SystemExit(128 + signum)`` so shutdown proceeds, but
+  does **not** record a crash: these signals are the normal way to stop a
+  locally-run server, and recording them filled the bug tab with one
+  ``KeyboardInterrupt`` per Ctrl+C (実機FB 2026-07-26). Genuinely abnormal
+  exits skip this handler entirely and are caught by the ``running.lock``
+  unclean-shutdown detection instead.
 - **``atexit.register``** as the last-line-of-defense. Inspects
   ``sys.exc_info()`` at interpreter shutdown; saves a crash only if an
   unhandled exception is in flight (the "the excepthook never fired"
@@ -372,16 +376,16 @@ def _install_signal_handlers() -> None:
             continue
 
         def _handler(signum: int, _frame: Any, _name: str = name) -> None:
-            try:
-                # Signals are inherently lossy — we synthesise a
-                # KeyboardInterrupt-shaped exception to feed the
-                # collector pipeline. ``source="signal"`` distinguishes
-                # this from a user-thrown KeyboardInterrupt that takes
-                # the excepthook path.
-                exc = KeyboardInterrupt(f"signal={_name}")
-                _collect_and_save(exc, source="signal")
-            except Exception:
-                logger.exception("crash_collector: signal handler swallowed error")
+            # SIGINT/SIGTERM は「異常終了」ではなく、ローカル運用における
+            # 通常の停止手段(Ctrl+C / プロセス停止)である。これをクラッシュ
+            # として記録すると、サーバーを止めるたびに未送信レポートが1件
+            # 増え、不具合タブが KeyboardInterrupt で埋まる(実機FB
+            # 2026-07-26: 未送信7件が全て Ctrl+C 由来だった)。
+            #
+            # 本当の異常終了(ハンドラを通らずに死んだ場合)は running.lock
+            # の unclean shutdown 検知が拾うため、ここを落としても検知漏れ
+            # にはならない。SystemExit は従来どおり送出し、停止時の挙動は
+            # 変えない。
             raise SystemExit(128 + int(signum))
 
         try:

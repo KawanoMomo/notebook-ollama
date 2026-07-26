@@ -39,6 +39,69 @@ function baseProps(source: Source, extra: Record<string, unknown> = {}) {
   };
 }
 
+// 実機FB 2026-07-26: 画像PDFの取り込み失敗で英語メッセージだけが出て、
+// パーサが用意していた対処法は UI まで届いていなかった。
+describe('SourceCard error remediation / report', () => {
+  it('エラー本文はメタ行の外に出して全幅で折り返す (実機で数文字ずつ折返されていた)', () => {
+    const { container } = render(
+      SourceCard,
+      baseProps(
+        makeSource({
+          status: 'error',
+          error_msg: 'このPDFは全ページが画像で、OCRでも文字を読み取れませんでした',
+        }),
+      ),
+    );
+    const msg = container.querySelector('.error-msg');
+    expect(msg?.textContent).toContain('読み取れませんでした');
+    // メタ行(flex)の中に長文が残っていないこと
+    expect(container.querySelector('.meta')?.textContent).not.toContain('読み取れませんでした');
+  });
+
+  it('error_remediation があればエラー本文の下に対処法を出す', () => {
+    render(
+      SourceCard,
+      baseProps(
+        makeSource({
+          status: 'error',
+          error_msg: 'このPDFは全ページが画像で、OCRでも文字を読み取れませんでした',
+          error_remediation: '別のツールでOCRしてから取り込んでください。',
+        }),
+      ),
+    );
+    expect(screen.getByText('別のツールでOCRしてから取り込んでください。')).toBeDefined();
+  });
+
+  it('error_remediation が無い失敗では対処法の行を出さない', () => {
+    render(
+      SourceCard,
+      baseProps(makeSource({ status: 'error', error_msg: '変換を停止しました' })),
+    );
+    expect(screen.queryByText(/取り込んでください/)).toBeNull();
+  });
+
+  it('失敗したソースには報告ボタンを出し、クリックで onReportError を呼ぶ', async () => {
+    const onReportError = vi.fn();
+    render(
+      SourceCard,
+      baseProps(makeSource({ status: 'error', error_msg: 'x' }), { onReportError }),
+    );
+    const btn = screen.getByLabelText('この不具合を報告');
+    await fireEvent.click(btn);
+    expect(onReportError).toHaveBeenCalledTimes(1);
+  });
+
+  it('失敗していないソースには報告ボタンを出さない', () => {
+    render(
+      SourceCard,
+      baseProps(makeSource({ status: 'ready', chunk_count: 5 }), {
+        onReportError: vi.fn(),
+      }),
+    );
+    expect(screen.queryByLabelText('この不具合を報告')).toBeNull();
+  });
+});
+
 describe('SourceCard recording stop/play', () => {
   it('shows the stop button while a recording is converting and calls onStopConversion', async () => {
     const onStopConversion = vi.fn();

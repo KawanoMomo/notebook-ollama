@@ -11,6 +11,8 @@ class Source(BaseModel):
     origin: str | None
     status: str
     error_msg: str | None
+    # 失敗時の対処法(AppError.remediation)。UI がエラー本文の下に併記する。
+    error_remediation: str | None = None
     bytes: int | None
     page_count: int | None
     chunk_count: int | None

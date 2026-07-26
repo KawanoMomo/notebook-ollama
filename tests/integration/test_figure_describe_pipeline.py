@@ -148,6 +148,39 @@ async def test_describe_disabled_publishes_no_figure_progress(tmp_path):
 
 @pytest.mark.qdrant
 @pytest.mark.asyncio
+async def test_ingestion_failure_persists_and_publishes_remediation(tmp_path):
+    """実機FB 2026-07-26: パーサが用意している remediation が
+    update_source_status で捨てられ、UI には message しか出ていなかった。
+    DB と SSE の両方に対処法が乗ること。"""
+    conn, src, vs = _setup(tmp_path)
+    broker = RecordingBroker()
+    pipeline = _pipeline(
+        conn, vs, assets_dir=tmp_path / "assets", describer=FakeDescriber("x"),
+        describe_enabled=lambda: False, broker=broker,
+    )
+
+    # 画像のみ(テキスト0文字)のPDF。OCRエンジン未設定なので取込は失敗する。
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    pm = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 120, 90), False)
+    pm.set_rect(pm.irect, (10, 20, 30))
+    page.insert_image(pymupdf.Rect(72, 120, 192, 210), pixmap=pm)
+    data = doc.tobytes()
+    doc.close()
+
+    await pipeline.run(source_id=src.id, kind="pdf", data=data)
+
+    rec = get_source(conn, src.id)
+    assert rec.status == SourceStatus.ERROR
+    assert "テキストが含まれていません" in (rec.error_msg or "")
+    assert "OCR" in (rec.error_remediation or "")
+
+    err_events = [p for p in broker.published if p.get("status") == "error"]
+    assert err_events and "OCR" in (err_events[-1].get("error_remediation") or "")
+
+
+@pytest.mark.qdrant
+@pytest.mark.asyncio
 async def test_progress_publish_failure_does_not_abort_figure_description(tmp_path):
     """進捗配信は表示のための副作用にすぎない。broker が壊れても図解析と
     取込は完走すること(表示都合で本処理を落とさない)。"""

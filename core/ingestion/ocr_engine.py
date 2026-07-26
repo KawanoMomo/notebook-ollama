@@ -43,6 +43,16 @@ def _is_low_quality(text: str) -> bool:
 class OcrEngine(Protocol):
     async def ocr_page(self, *, image_png: bytes) -> str | None: ...
 
+    def is_available(self) -> bool:
+        """OCR を実際に試行できるか(モデル設定済み かつ 機能有効)。
+
+        無効なエンジンに問い合わせても全ページ None が返るだけで、呼び出し側
+        からは「OCRしたが読めなかった」と区別できない。区別できないと
+        「OCRでも読み取れませんでした」という誤ったエラーを、OCRを一度も
+        試していない状況で出してしまう(実機FB 2026-07-26)。
+        """
+        ...
+
 
 class _ChatStreamLike(Protocol):
     def chat_stream(self, *, model, messages, options=None, meta=None): ...
@@ -69,6 +79,9 @@ class OllamaOcrEngine:
         if _is_low_quality(text):
             return None
         return text
+
+    def is_available(self) -> bool:
+        return bool(self._model)
 
     async def ocr_page(self, *, image_png: bytes) -> str | None:
         result = await self._one_attempt(image_png)
@@ -99,12 +112,15 @@ class LazyOcrEngine:
         self._model_getter = model_getter
         self._enabled_getter = enabled_getter
 
-    async def ocr_page(self, *, image_png: bytes) -> str | None:
+    def is_available(self) -> bool:
         if self._enabled_getter is not None and not self._enabled_getter():
+            return False
+        return bool(self._model_getter())
+
+    async def ocr_page(self, *, image_png: bytes) -> str | None:
+        if not self.is_available():
             return None
         model = self._model_getter()
-        if not model:
-            return None
         return await OllamaOcrEngine(client=self._client, model=model).ocr_page(
             image_png=image_png
         )

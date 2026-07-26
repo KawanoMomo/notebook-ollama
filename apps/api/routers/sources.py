@@ -118,6 +118,7 @@ def _to_schema(rec, sources_dir) -> Source:
         origin=rec.origin,
         status=rec.status.value,
         error_msg=rec.error_msg,
+        error_remediation=rec.error_remediation,
         bytes=rec.bytes,
         page_count=rec.page_count,
         chunk_count=rec.chunk_count,

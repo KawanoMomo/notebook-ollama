@@ -17,6 +17,8 @@
   import { pushToast } from './Toast.svelte';
   import { computeBulkState } from './SourcesPanel.bulk';
   import { descendantIdsOf, orderWithChildren } from '$lib/utils/sourceTree';
+  import { crashReportsStore } from '$lib/stores/crashReports.svelte';
+  import { buildSourceErrorCrash } from '$lib/utils/manualReport';
   import type { Source } from '$lib/api/types';
 
   interface Props {
@@ -276,6 +278,15 @@
     }
   }
 
+  /**
+   * 失敗したソースの内容を事前入力してレポートのプレビューを開く。
+   * 取り込み失敗は捕捉済みエラーなのでクラッシュレポートの自動収集対象外だが、
+   * ユーザーから見れば報告したい不具合そのもの(実機FB 2026-07-26)。
+   */
+  function onReportError(s: Source) {
+    crashReportsStore.showPreview(buildSourceErrorCrash(s));
+  }
+
   async function onDescribeFigures(s: Source) {
     try {
       await sourcesApi.describeFigures(notebookId, s.id);
@@ -496,6 +507,7 @@
         onRemoveParent={childIdsWithParent.has(s.id) ? () => onRemoveParent(s) : undefined}
         onReingest={isTableFigureRagEnabled() ? () => onReingest(s) : undefined}
         onDescribeFigures={isTableFigureRagEnabled() ? () => onDescribeFigures(s) : undefined}
+        onReportError={() => onReportError(s)}
       />
     {/each}
     {#if filteredSources.length === 0}

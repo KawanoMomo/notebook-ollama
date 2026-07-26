@@ -170,6 +170,11 @@ export function createEventsStore(): EventsStore {
           embedded,
           ...(figuresDone !== undefined ? { figures_done: figuresDone } : {}),
           ...(figuresTotal !== undefined ? { figures_total: figuresTotal } : {}),
+          // 失敗時の本文と対処法。error イベントでのみ届く。
+          ...(typeof ev.error_msg === 'string' ? { error_msg: ev.error_msg } : {}),
+          ...(typeof ev.error_remediation === 'string'
+            ? { error_remediation: ev.error_remediation }
+            : {}),
           // 要約/ADRジョブの進行状態。ペイロードに含まれる場合のみ上書きし、
           // 含まれない従来イベント(取り込みパイプライン等)では既存値を維持する。
           // 明示 null は「中断→未生成へ復帰」の配信(cancel エンドポイント)。

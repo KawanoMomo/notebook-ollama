@@ -25,6 +25,13 @@ _MESSAGE_TRUNCATED_COLUMNS = (
     ("truncated", "INTEGER NOT NULL DEFAULT 0"),
 )
 
+# AppError.remediation(対処法)の保存先。これが無いと、パーサ等が用意している
+# 対処文が update_source_status の時点で捨てられ、UI には英語混じりの message
+# だけが出る(実機FB 2026-07-26: 画像PDFの取り込み失敗で対処が分からなかった)。
+_SOURCE_ERROR_REMEDIATION_COLUMNS = (
+    ("error_remediation", "TEXT"),
+)
+
 
 def run_chunk_timecode_migration(conn: sqlite3.Connection) -> None:
     """Add start_ms/end_ms/speaker to chunks if missing. Idempotent."""
@@ -38,6 +45,14 @@ def run_summary_migration(conn: sqlite3.Connection) -> None:
     """Add summary/summary_status to sources if missing. Idempotent."""
     existing = {r["name"] for r in conn.execute("PRAGMA table_info(sources)")}
     for name, sqltype in _SOURCE_SUMMARY_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE sources ADD COLUMN {name} {sqltype}")
+
+
+def run_source_error_remediation_migration(conn: sqlite3.Connection) -> None:
+    """Add error_remediation to sources if missing. Idempotent."""
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(sources)")}
+    for name, sqltype in _SOURCE_ERROR_REMEDIATION_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE sources ADD COLUMN {name} {sqltype}")
 

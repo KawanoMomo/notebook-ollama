@@ -69,11 +69,21 @@ class PdfParser:
             source_hint or "document.pdf"
         )
         if not sections:
-            if ocr_engine is None:
+            # 無効な OCR エンジンは全ページ None を返すだけなので、「OCRを
+            # 試していない」状態と「試したが読めなかった」状態を区別する。
+            # 区別しないと、ベータOFF時に一度もOCRしていないのに
+            # 「OCRでも読み取れませんでした」と表示される(実機FB 2026-07-26)。
+            probe = getattr(ocr_engine, "is_available", None)
+            ocr_usable = ocr_engine is not None and (probe is None or bool(probe()))
+            if not ocr_usable:
                 doc.close()
                 raise AppError(
                     ErrorCode.INGESTION_PARSE_FAILED,
-                    "no extractable text in PDF (image-only?)",
+                    "このPDFにはテキストが含まれていません(全ページが画像のようです)",
+                    remediation=(
+                        "スキャンPDFを取り込むには、別のツール(Acrobat・Googleドライブ等)で"
+                        "OCRしてテキスト付きPDFに変換してから追加してください。"
+                    ),
                 )
             ocr_sections: list[ParsedSection] = []
             for page_index, page in enumerate(doc):
@@ -87,10 +97,19 @@ class PdfParser:
                     )
             doc.close()
             if not ocr_sections:
+                # 実機FB 2026-07-26: 「設定を確認してください」は行き止まりだった。
+                # 視覚モデルは設定済みで、問題は設定ではなく小型VLMのOCR能力。
+                # 11GB級の環境で実用になるOCRモデルが無いことを正直に伝え、
+                # 実際に前に進める手段(外部OCR)を案内する。
                 raise AppError(
                     ErrorCode.INGESTION_PARSE_FAILED,
-                    "OCR failed to extract text from any page",
-                    remediation="視覚モデル(VLM)の設定を確認してください。",
+                    "このPDFは全ページが画像で、OCRでも文字を読み取れませんでした",
+                    remediation=(
+                        "別のツール(Acrobat・Googleドライブ等)でOCRしてテキスト付き"
+                        "PDFに変換してから取り込んでください。"
+                        "ローカルの視覚モデルによるOCRは、小型モデルでは実用的な精度に"
+                        "届かないことがあります。"
+                    ),
                 )
             sections = ocr_sections
         else:

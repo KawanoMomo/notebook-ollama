@@ -52,6 +52,9 @@ class SourceRecord:
     content_hash: str | None
     status: SourceStatus
     error_msg: str | None
+    # AppError.remediation。message だけでは「何をすれば直るか」が伝わらない
+    # ため、UI へ届けるために保持する(実機FB 2026-07-26)。
+    error_remediation: str | None
     bytes: int | None
     page_count: int | None
     chunk_count: int | None
@@ -86,6 +89,10 @@ class SourceRecord:
             content_hash=row["content_hash"],
             status=SourceStatus(row["status"]),
             error_msg=row["error_msg"],
+            # マイグレーション前の DB / 部分SELECT でも読めるようにする
+            error_remediation=(
+                row["error_remediation"] if "error_remediation" in keys else None
+            ),
             bytes=row["bytes"],
             page_count=row["page_count"],
             chunk_count=row["chunk_count"],
@@ -153,17 +160,20 @@ def update_source_status(
     *,
     status: SourceStatus,
     error_msg: str | None = None,
+    error_remediation: str | None = None,
     page_count: int | None = None,
     chunk_count: int | None = None,
     title: str | None = None,
 ) -> SourceRecord:
     existing = get_source(conn, source_id)
     conn.execute(
-        "UPDATE sources SET status=?, error_msg=?, page_count=?, chunk_count=?, "
+        "UPDATE sources SET status=?, error_msg=?, error_remediation=?, "
+        "page_count=?, chunk_count=?, "
         "title=COALESCE(?, title), updated_at=? WHERE id=?",
         (
             status.value,
             error_msg,
+            error_remediation,
             page_count if page_count is not None else existing.page_count,
             chunk_count if chunk_count is not None else existing.chunk_count,
             title,

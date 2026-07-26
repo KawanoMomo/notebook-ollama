@@ -385,8 +385,20 @@ class IngestionPipeline:
                     log.warning("summary_runner_failed", source_id=source_id)
 
         except AppError as exc:
-            update_source_status(conn, source_id, status=SourceStatus.ERROR, error_msg=exc.message)
-            await _publish(SourceStatus.ERROR, error_msg=exc.message)
+            # remediation まで保存・配信する。message だけだと「何をすれば直るか」が
+            # UI に出ない(実機FB 2026-07-26: 画像PDFの失敗で対処が分からなかった)。
+            update_source_status(
+                conn,
+                source_id,
+                status=SourceStatus.ERROR,
+                error_msg=exc.message,
+                error_remediation=exc.remediation,
+            )
+            await _publish(
+                SourceStatus.ERROR,
+                error_msg=exc.message,
+                error_remediation=exc.remediation,
+            )
             log.error("ingestion_failed", source_id=source_id, code=exc.code, error=exc.message)
         except Exception as exc:  # last-resort safety
             update_source_status(conn, source_id, status=SourceStatus.ERROR, error_msg=str(exc))

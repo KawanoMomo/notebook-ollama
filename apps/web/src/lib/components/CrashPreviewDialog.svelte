@@ -46,6 +46,7 @@
   import Button from './Button.svelte';
   import { pushToast } from './Toast.svelte';
   import { crashApi } from '$lib/api/crash';
+  import { buildManualPrefill } from '$lib/utils/manualReport';
   import type { PendingCrash } from '$lib/api/types';
 
   interface Props {
@@ -90,8 +91,12 @@
 
   onMount(async () => {
     if (isManual) {
-      // 空のフォームをそのまま提示。title/body/labels は初期値 ('' / '' / [])
-      // のまま、baseEndpoint も module-level の既定値 (issues/new) を使う。
+      // backend に存在しないので prefill URL は取りに行かない。内容を持つ
+      // 手動レポート(取り込み失敗の報告など)は crash から事前入力し、
+      // 「+ 新規報告を作成」の空 crash では従来どおり白紙で開く。
+      const prefill = buildManualPrefill(crash);
+      title = prefill.title;
+      body = prefill.body;
       loading = false;
       return;
     }

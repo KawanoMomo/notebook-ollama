@@ -61,6 +61,8 @@ export interface Source {
   origin: string | null;
   status: SourceStatus;
   error_msg: string | null;
+  /** 失敗時の対処法(AppError.remediation)。エラー本文の下に併記する。 */
+  error_remediation?: string | null;
   bytes: number | null;
   page_count: number | null;
   chunk_count: number | null;
