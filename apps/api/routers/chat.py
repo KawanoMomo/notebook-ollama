@@ -31,12 +31,57 @@ log = get_logger("api.chat")
 _MIN_PROMPT_BUDGET_TOKENS = 512
 
 
-async def _resolve_num_ctx(ctx, model: str) -> int:
+# チャットに使うモデルがどの設定から来たか(not found 時に「どこを直せば
+# よいか」を特定できないと、別の場所を切り替えても同じエラーが続く理由が
+# ユーザーに見えない — 実機FB 2026-07-26 第2報)。
+_MODEL_SOURCE_LABELS = {
+    "notebook": "このノートブックに設定されたモデル",
+    "global": "全体既定モデル",
+    "message": "元の応答を生成したモデル",
+}
+_MODEL_SOURCE_REMEDIATIONS = {
+    "notebook": (
+        "ノートブック右上の「このノートのモデル」を実在するモデルに"
+        "変更するか「既定」に戻してください。"
+    ),
+    "global": "設定→モデル・Ollama の「既定モデル」を実在するモデルに変更してください。",
+    "message": "新しい質問として送信し直すと、現在設定されているモデルで回答します。",
+}
+
+
+def _model_base_name(name: str) -> str:
+    """タグ(:以降)・大文字小文字・hf.co/ プレフィックスを無視した比較キー。"""
+    return name.split(":", 1)[0].lower().removeprefix("hf.co/")
+
+
+async def _similar_model_names(raw: OllamaClient, model: str) -> list[str]:
+    """Ollama に実在する、タグ違い/大小文字違いの類似モデル名を探す。
+
+    「一覧には表示されているのに not found」という混乱(実機FB 2026-07-26
+    第2報)は、保存された名前と実際にpullされた名前がタグ部分だけ違う等で
+    起きうる。エラー本文で実在候補を提示できれば自己解決できる。
+    best-effort であり、この検索自体の失敗でエラー応答を壊してはならない。
+    """
+    try:
+        tags = await raw.list_tags()
+    except Exception:  # ヒント生成の失敗でエラー応答自体を壊さない
+        return []
+    target = _model_base_name(model)
+    return [
+        t["name"]
+        for t in tags
+        if _model_base_name(t["name"]) == target and t["name"] != model
+    ]
+
+
+async def _resolve_num_ctx(ctx, model: str, *, model_source: str) -> int:
     """モデルの num_ctx を解決し、応答予算と両立するか事前検査する。
 
     vision系(llava等)は Modelfile の num_ctx が小さく(2048/4096)、既定の
     応答予算 2048 と組むと質問内容に関わらず必ず失敗する。SSE開始前に
     弾いて日本語の対処メッセージを返す(send/continue 共通)。
+    model_source は "notebook" / "global" / "message" のいずれかで、
+    not found 時にどの設定を直せばよいかをメッセージに反映する。
     """
     raw = OllamaClient(
         endpoint=ctx.config.ollama.endpoint,
@@ -50,15 +95,19 @@ async def _resolve_num_ctx(ctx, model: str) -> int:
         # 選択済みモデルが Ollama から削除済み/未取得のケース(実機FB
         # 2026-07-26)。低レベルの英語メッセージのまま返すとFEに生JSONが
         # 出るだけで対処が分からないため、直す場所を明示して包み直す。
+        similar = await _similar_model_names(raw, model)
+        if similar:
+            hint = (
+                f"Ollama には {'、'.join(similar)} が存在します。"
+                "こちらを選択し直してください。"
+            )
+        else:
+            hint = f"このモデルを使う場合は `ollama pull {model}` で取得してください。"
         raise AppError(
             ErrorCode.OLLAMA_MODEL_NOT_FOUND,
-            f"モデル {model} が Ollama に見つかりません"
-            "(削除済みか、まだ取得していない可能性があります)",
-            remediation=(
-                "ノートブック右上の「このノートのモデル」か、設定→モデル・Ollamaの"
-                f"既定モデルを存在するモデルに変更してください。このモデルを使う場合は "
-                f"`ollama pull {model}` で取得してください。"
-            ),
+            f"{_MODEL_SOURCE_LABELS[model_source]} {model} が Ollama に"
+            "見つかりません(削除済みか、まだ取得していない可能性があります)",
+            remediation=f"{_MODEL_SOURCE_REMEDIATIONS[model_source]}{hint}",
         ) from exc
     num_ctx = parse_context_window(show.get("parameters", "")) or 8192
 
@@ -161,9 +210,10 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
 
     # determine model
     model = nb.default_model or ctx.config.ollama.default_model
+    model_source = "notebook" if nb.default_model else "global"
 
     # resolve num_ctx via Ollama show(応答予算との両立も事前検査)
-    num_ctx = await _resolve_num_ctx(ctx, model)
+    num_ctx = await _resolve_num_ctx(ctx, model, model_source=model_source)
 
     # gather history (exclude the just-stored user turn)
     prior = messages_repo.list_messages(ctx.conn, conversation_id=conv.id)
@@ -254,7 +304,13 @@ async def continue_message(
 
     # 元応答と同じモデルで文体を繋ぐ(欠落時のみ既定へフォールバック)
     model = last.model or nb.default_model or ctx.config.ollama.default_model
-    num_ctx = await _resolve_num_ctx(ctx, model)
+    if last.model:
+        model_source = "message"
+    elif nb.default_model:
+        model_source = "notebook"
+    else:
+        model_source = "global"
+    num_ctx = await _resolve_num_ctx(ctx, model, model_source=model_source)
 
     # 履歴は「最後の user 質問より前」のペアのみ(打ち切り応答自体は prefill で渡す)
     history: list[HistoryTurn] = []

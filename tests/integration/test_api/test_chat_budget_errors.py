@@ -96,5 +96,51 @@ def test_missing_model_returns_404_with_remediation(client):
     body = r.json()["error"]
     assert "見つかりません" in body["message"]
     assert "llava:7b" in body["message"]  # どのモデルかを明示
+    # ノートブック個別設定が原因だと分かること(実機FB第2報: 全体既定を
+    # 切り替えても直らない理由が見えなかった)
+    assert "このノートブックに設定されたモデル" in body["message"]
     assert "ollama pull" in body["remediation"]
     assert "このノートのモデル" in body["remediation"]
+
+
+def test_missing_global_default_model_points_to_settings(client):
+    """ノート個別モデル未設定時は全体既定が使われる。その全体既定が
+    Ollama に無い場合は、設定画面のどこを直すかを明示すること。"""
+    nb_id = client.post("/api/notebooks", json={"name": "N2"}).json()["id"]
+    conv_id = client.post(f"/api/notebooks/{nb_id}/conversations").json()["id"]
+    with respx.mock() as router:
+        router.post("http://fake/api/show").mock(return_value=httpx.Response(404))
+        router.get("http://fake/api/tags").mock(
+            return_value=httpx.Response(200, json={"models": []})
+        )
+        r = client.post(
+            f"/api/notebooks/{nb_id}/conversations/{conv_id}/messages",
+            json={"content": "質問", "source_ids": ["SRC_DUMMY"]},
+        )
+    assert r.status_code == 404
+    body = r.json()["error"]
+    assert "全体既定モデル" in body["message"]
+    assert "設定→モデル・Ollama" in body["remediation"]
+
+
+def test_missing_model_suggests_similar_existing_name(client):
+    """実機FB第2報:「一覧に表示されているのに not found」はタグ部分違い等の
+    名前ズレで起きうる。Ollama 実在の類似名(タグ違い・大小文字違い)を
+    「こちらを選択し直してください」と提示すること。"""
+    nb_id, conv_id = _conv(client)  # ノート個別モデル llava:7b
+    with respx.mock() as router:
+        router.post("http://fake/api/show").mock(return_value=httpx.Response(404))
+        router.get("http://fake/api/tags").mock(
+            return_value=httpx.Response(
+                200, json={"models": [{"name": "llava:latest"}, {"name": "qwen2.5:14b"}]}
+            )
+        )
+        r = client.post(
+            f"/api/notebooks/{nb_id}/conversations/{conv_id}/messages",
+            json={"content": "質問", "source_ids": ["SRC_DUMMY"]},
+        )
+    assert r.status_code == 404
+    body = r.json()["error"]
+    assert "llava:latest が存在します" in body["remediation"]
+    assert "qwen2.5:14b" not in body["remediation"]  # 無関係モデルは提示しない
+    assert "ollama pull" not in body["remediation"]  # 候補ありなら pull 案内は不要

@@ -149,6 +149,14 @@
             {#each chatModels as m (m.name)}
               <option value={m.name}>{m.name}</option>
             {/each}
+            {#if selectedModel !== '' && !chatModels.some((m) => m.name === selectedModel)}
+              <!-- 保存済みモデルが一覧に無い場合のエコー表示。これが無いと select は
+                   見た目だけ先頭の「既定」に化け、実際は未検出モデルでチャットが
+                   実行されて原因不明の not found になる(実機FB 2026-07-26)。 -->
+              <option value={selectedModel}>
+                {selectedModel}{modelsStore.loading ? '' : '（未検出）'}
+              </option>
+            {/if}
           </select>
         </label>
       {/if}
