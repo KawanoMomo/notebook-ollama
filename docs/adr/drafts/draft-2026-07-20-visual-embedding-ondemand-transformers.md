@@ -81,3 +81,8 @@ A を採用する。例外は視覚埋め込みに限定し、`OcrEngine` 同様
   だけでは長時間実行と区別できない
 - 全コアAVX連続実行はPrime95級のストレス負荷であり、K付きCPU+XMP環境ではマシン
   安定性マージンを超えうる。負荷ノブ(スレッド上限・バースト間休止)は機能要件
+- ハイブリッドCPU(P+E)ではバックグラウンドプロセスがEcoQoSでE-coreに寄せられ、
+  推論スレッドがE-coreクラスタを飽和させてブラウザ背景処理と競合する(実機FB)。
+  対策はEcoQoS解除(SetProcessInformation、**argtypes明示必須** — 既定のc_int
+  変換では64-bit HANDLEが壊れERROR_INVALID_HANDLEで常に失敗)+少数スレッド。
+  P/E均等混載はfork-joinの律速と帯域律速(bf16エミュはP/E同速)で意味がない

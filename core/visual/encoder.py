@@ -33,6 +33,66 @@ class VisualEncoder(Protocol):
     def unload(self) -> None: ...
 
 
+def _set_execution_speed_throttling(*, disable: bool) -> bool:
+    """Windows の EcoQoS(効率モード)実行速度スロットリングを切り替える。
+
+    バックグラウンドプロセスは EcoQoS で E-core に寄せられ、CPU推論の重い
+    スレッドが E-coreクラスタを100%飽和させてブラウザ等の背景処理と競合する
+    (実機観測 2026-07-26: torch 8スレッドが全てE-core 16〜23に張り付き)。
+    disable=True で「速度を絞るな」とOSへ伝えると、Thread Director が重い
+    スレッドをP-coreへ載せる。プロセス全体のアフィニティ固定と違い、他の
+    軽いスレッドを巻き込まないヒントで済む。戻り値は成否(Windows以外・
+    API失敗時は False、例外は出さない)。
+    """
+    import sys
+
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _PowerThrottlingState(ctypes.Structure):
+            _fields_ = [
+                ("Version", ctypes.c_ulong),
+                ("ControlMask", ctypes.c_ulong),
+                ("StateMask", ctypes.c_ulong),
+            ]
+
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 0x1
+        ProcessPowerThrottling = 4
+        state = _PowerThrottlingState(
+            1,  # PROCESS_POWER_THROTTLING_CURRENT_VERSION
+            PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+            # StateMask=0 → スロットリング無効(=P-core許可)。
+            # 再有効化(restore)は StateMask にも速度ビットを立てる。
+            0 if disable else PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+        )
+        # argtypes 明示は必須: 既定の c_int 変換では 64-bit HANDLE が壊れ、
+        # ERROR_INVALID_HANDLE(6) で常に失敗する(実機で確認)。
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.SetProcessInformation.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+        ]
+        kernel32.SetProcessInformation.restype = wintypes.BOOL
+        ok = kernel32.SetProcessInformation(
+            kernel32.GetCurrentProcess(),
+            ProcessPowerThrottling,
+            ctypes.byref(state),
+            ctypes.sizeof(state),
+        )
+        if not ok:
+            log.warning("visual_ecoqos_toggle_denied", last_error=ctypes.get_last_error())
+        return bool(ok)
+    except Exception:
+        log.warning("visual_ecoqos_toggle_failed", exc_info=True)
+        return False
+
+
 class _TransformersBackend:
     """実モデルを抱える内部バックエンド。CUDA不可ならCPUへフォールバック(spec §7)。
 
@@ -42,18 +102,30 @@ class _TransformersBackend:
     画像単独の埋め込みが組めない(実機ゲートで確認)ため、ST 経由で呼ぶ。
     """
 
-    def __init__(self, model_name: str, *, cpu_threads: int = 0) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        cpu_threads: int = 0,
+        prefer_performance_cores: bool = False,
+    ) -> None:
         import torch
         from sentence_transformers import SentenceTransformer
 
         self._torch = torch
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._qos_disabled = False
         if self._device == "cpu" and cpu_threads > 0:
             # CPU埋め込みは全論理コアAVX全開の実質ストレステストになり、
             # マシンの電源/熱マージンを削る(実機で長時間構築中にBSODを観測)。
             # スレッド数を制限して消費電力を抑える安全弁(0=torch既定)。
             torch.set_num_threads(cpu_threads)
             log.info("visual_encoder_cpu_threads", threads=cpu_threads)
+        if self._device == "cpu" and prefer_performance_cores:
+            # 少数スレッドxP-core の分業プロファイル。バックエンド常駐中のみ
+            # EcoQoS を解除し、close() で元に戻す。
+            self._qos_disabled = _set_execution_speed_throttling(disable=True)
+            log.info("visual_encoder_pcore_preference", applied=self._qos_disabled)
         # CPU は bfloat16(チェックポイントのネイティブdtype)でロードする。
         # float32 だと 2B で常駐約8GB+ロード時の型変換ピークが加わり、サーバー
         # プロセスの既存使用分と合わさって OOM 即死する(evaluator実機で確認:
@@ -84,6 +156,11 @@ class _TransformersBackend:
         self._model = None
         if self._device == "cuda":
             self._torch.cuda.empty_cache()
+        if self._qos_disabled:
+            # アンロード後はEcoQoSを元に戻す(常時P-core優先にしない —
+            # アイドル時のサーバーは省電力スケジューリングで良い)
+            _set_execution_speed_throttling(disable=False)
+            self._qos_disabled = False
 
 
 class TransformersVisualEncoder:
@@ -100,11 +177,13 @@ class TransformersVisualEncoder:
         model_name: str,
         idle_unload_seconds: float = 300.0,
         cpu_threads: int = 0,
+        prefer_performance_cores: bool = False,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._model_name = model_name
         self._idle = idle_unload_seconds
         self._cpu_threads = cpu_threads
+        self._prefer_performance_cores = prefer_performance_cores
         self._monotonic = monotonic
         self._backend: Any | None = None
         self._last_used: float = 0.0
@@ -121,7 +200,11 @@ class TransformersVisualEncoder:
         return self._backend is not None
 
     def _load_backend(self) -> Any:
-        return _TransformersBackend(self._model_name, cpu_threads=self._cpu_threads)
+        return _TransformersBackend(
+            self._model_name,
+            cpu_threads=self._cpu_threads,
+            prefer_performance_cores=self._prefer_performance_cores,
+        )
 
     async def _ensure_loaded(self) -> Any:
         async with self._lock:

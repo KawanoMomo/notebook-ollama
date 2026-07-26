@@ -104,3 +104,15 @@ async def test_no_unload_while_embed_in_flight(monkeypatch):
     # 完走後は通常どおり解放できる(完了時刻からのidle判定)
     t["now"] = 300.0
     assert enc.maybe_unload_if_idle() is True
+
+
+def test_execution_speed_throttling_toggle_is_safe():
+    """EcoQoS切替ヘルパー: Windowsでは成功(bool)、失敗時も例外を出さない。
+    P-core優先プロファイル(実機観測: E-core飽和でブラウザ競合)の基盤。"""
+    from core.visual.encoder import _set_execution_speed_throttling
+
+    result = _set_execution_speed_throttling(disable=True)
+    assert isinstance(result, bool)
+    # 元に戻す(テストプロセスのQoSを汚さない)
+    restored = _set_execution_speed_throttling(disable=False)
+    assert isinstance(restored, bool)

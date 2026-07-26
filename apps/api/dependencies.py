@@ -424,6 +424,7 @@ def build_context(config: AppConfig) -> AppContext:
             model_name=config.visual.embedding_model,
             idle_unload_seconds=config.visual.idle_unload_seconds,
             cpu_threads=config.visual.cpu_threads,
+            prefer_performance_cores=config.visual.cpu_prefer_performance_cores,
         )
         if visual_extra_available()
         else None

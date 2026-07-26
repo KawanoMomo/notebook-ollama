@@ -135,7 +135,8 @@ Stage 1/2 はテキスト化できるものを検索に乗せる改善だが、�
 | モデル実行API | sentence-transformers(素のAutoModel不採用) | モデルの正規API。素のforwardは画像単独入力不可(実機確認) |
 | CPU dtype | bfloat16(fp32不採用) | fp32は常駐8-9GBでサーバーOOM即死(実機2回)。bf16でRSS 4.5GB一定 |
 | §7のfp16/CUDA前提 | CPUフォールバックが実質既定 | PyPIのWindows torchはCPU-only。CUDA(cu126)はsm_75対応だがOllama常駐下でWDDMスピルによりCPUより遅く、11GB同時常駐は不成立(§7の警告を実測確認) |
-| 負荷ノブ(新設) | build_cooldown_seconds=10 / cpu_threads=8 を既定 | 全力プロファイルは実機50ページ構築でBSOD(0x7F_8)2回。安全プロファイルは完走(約95秒/ページ) |
+| 負荷ノブ(新設) | build_cooldown_seconds=10 / cpu_threads=4 / cpu_prefer_performance_cores=True を既定 | 全力プロファイル(全24スレッド)は実機50ページ構築でBSOD(0x7F_8)2回。8スレッドはEcoQoSでE-core 8基に載り100%飽和→ブラウザ背景処理がカクつく(実機FB)。既定はEcoQoS解除+4スレッドでP-coreへ分業(E-core完全解放、実測105秒/ページ) |
+| P/E分配の実測 | 均等混載は不採用 | fork-join並列は遅いE側が律速。またbf16エミュレーションはメモリ帯域律速でP-coreの1スレッド速度はEと同等(4P=105s/頁 vs 8E=53s/頁)。速度優先時は cpu_threads=8(P8基、電力増)へ設定変更 |
 | 所要時間目安表示 | Modal内に「残り目安 約N分」(観測ペースから算出) | CPU実測52秒超/ページで目安の実用価値が高い(evaluator指摘で追補) |
 
 ## 12. 起票予定のADRドラフト(spec承認後に作成)

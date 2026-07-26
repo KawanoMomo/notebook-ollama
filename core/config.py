@@ -85,9 +85,18 @@ class VisualSettings(BaseModel):
     # BSOD 2回、この安全プロファイルは50ページ完走(約95秒/ページ、RSS一定)。
     build_cooldown_seconds: float = 10.0
     # CPU推論の torch スレッド数上限。0 = torch既定(全論理コア)。
-    # 既定8: 全論理コア(24)ではCPU電力ピークがマシンの安定性マージンを超えた
-    # (上記BSOD)。速度優先なら設定で引き上げ可(自己責任)。
-    cpu_threads: int = 8
+    # 既定4: 全論理コア(24)ではCPU電力ピークがマシンの安定性マージンを超えた
+    # (上記BSOD)。P-core優先(下記)と併せた「少数P-core分業」プロファイル —
+    # E-coreクラスタを空けてブラウザ等の背景処理との競合を避ける。
+    # 速度優先なら設定で引き上げ可(自己責任)。
+    cpu_threads: int = 4
+    # Windows のハイブリッドCPU(P+E core)でP-coreに載せるか。バックグラウンド
+    # プロセスは EcoQoS で E-core に寄せられ、8スレッドがE-core 8基を100%飽和
+    # →ブラウザ背景処理と競合してカクつく(実機観測 2026-07-26)。True なら
+    # 推論バックエンド常駐中だけ EcoQoS を解除し、少数の重スレッドを
+    # P-core へ載せる(fork-join並列はP/E混載だと遅いE側が律速になるため、
+    # 均等分配ではなくクラスタ分業が正解)。Windows以外では無効。
+    cpu_prefer_performance_cores: bool = True
 
 
 class ServerSettings(BaseModel):
