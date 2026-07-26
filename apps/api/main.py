@@ -311,6 +311,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             "feature.disabled": 403,
             "validation.failed": 400,
             "ingestion.dependency_missing": 503,
+            "generation.context_overflow": 400,
         }
         return JSONResponse(
             status_code=status_map.get(exc.code.value, 500),
