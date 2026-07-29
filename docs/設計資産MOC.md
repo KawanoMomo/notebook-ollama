@@ -44,6 +44,7 @@ tags:
 > - [[2026-07-20-pdf-table-figure-sidecar-design|PDF表・図サイドカー抽出 (Stage 1)]] ✅
 > - [[2026-07-20-vlm-figure-ocr-design|VLM図説明・スキャンPDF OCR (Stage 2)]] ✅
 > - [[2026-07-20-visual-embedding-index-design|視覚埋め込み第2インデックス (Stage 3)]] ✅
+> - [[2026-07-29-pixelrag-tile-index-design|PixelRAG式タイル索引と検索戦略の選択 (Stage 4)]] 📝
 
 > [!abstract] 要約 (summary)
 > - [[2026-06-26-meeting-adr-templates|議事録テンプレ + ADR 抽出機能]] ✅
