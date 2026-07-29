@@ -100,6 +100,28 @@ dev = [
 [tool.uv]
 package = true
 
+# PyTorch CUDA ホイール用インデックス (Stage 4)。
+# PyPI の Windows 向け torch は CPU 専用ビルド (torch.__version__ == "2.13.0+cpu",
+# torch.version.cuda is None) で、RTX 2080 Ti があっても視覚埋め込みが CPU 実行に
+# なる(実測 約95秒/ページ)。download.pytorch.org の CUDA 版インデックスを
+# 明示指定してGPUを使う。
+# cu130 = CUDA 13.0。PyTorch の Windows ビルド設定 (.ci/pytorch/windows/
+# build_env_setup.py の TORCH_CUDA_ARCH_LIST_TABLE) が "7.5;8.0;8.6;9.0;10.0;12.0"
+# のため Turing (sm_75) の cubin を含む。CUDA 13.x が打ち切ったのは sm_75 未満。
+# explicit = true により、このインデックスは下の [tool.uv.sources] で名指しされた
+# パッケージ以外の解決には一切使われない。
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+# Windows 以外 (Linux/macOS) は PyPI の既定ホイールのままにする。
+# Linux の PyPI torch は元から CUDA 対応、macOS は CUDA ホイール自体が無い。
+# marker が無いと cu130 に macOS ホイールが存在せず universal lock が詰む。
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
