@@ -142,12 +142,21 @@ class VisualSettingsSchema(BaseModel):
 
     embedding_model: str
     search_enabled: bool
+    # Stage 4: 索引単位と検索戦略
+    index_unit: Literal["page", "tile"] = "page"
+    search_strategy: Literal["hybrid_rrf", "visual_only", "pixel_native"] = "hybrid_rrf"
 
 
 class VisualSettingsUpdate(BaseModel):
-    """PUT /settings/visual の入力。トグルできるのは search_enabled のみ。"""
+    """PUT /settings/visual の入力(部分更新)。
 
-    search_enabled: bool
+    None のフィールドは変更しない。既存FEは {"search_enabled": bool} だけを
+    送るため、全フィールドを任意にして後方互換を保つ。
+    """
+
+    search_enabled: bool | None = None
+    index_unit: Literal["page", "tile"] | None = None
+    search_strategy: Literal["hybrid_rrf", "visual_only", "pixel_native"] | None = None
 
 
 class AppSettingsSchema(BaseModel):
