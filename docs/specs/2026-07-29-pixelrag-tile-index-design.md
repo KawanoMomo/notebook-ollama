@@ -394,13 +394,20 @@ uv run --no-sync pytest tests/unit/test_visual_encoder.py tests/unit/test_visual
   tests/unit/test_visual_watchdog.py tests/integration/test_visual_store.py -q
 ```
 
-16 passed, 1 failed: `tests/unit/test_visual_watchdog.py::test_watchdog_survives_unload_exception`(`assert enc.calls >= 3` が `1 >= 3` で失敗、0.15秒のsleep内に0.02秒間隔のwatchdogが3回発火する前提のタイミング依存アサーション)。切り分けた結果:
+当初 16 passed, 1 failed: `tests/unit/test_visual_watchdog.py::test_watchdog_survives_unload_exception`(`assert enc.calls >= 3` が `1 >= 3` で失敗)。切り分けた結果:
 
 - `test_visual_watchdog.py` 単体では4/4回とも安定してpass
 - `test_visual_encoder.py` + `test_visual_watchdog.py` の組み合わせでは4/4回とも同じ箇所で再現してfail
 - `test_visual_index_repo.py` + `test_visual_watchdog.py` の組み合わせではpass
 
-`test_visual_encoder.py` は `visual_extra_available()` 経由で(遅延importとはいえ)torchを実import する。cu130のCUDAホイールはCPU専用ビルドよりimport時のネイティブライブラリ初期化コストが大きく、同一プロセス内で後続実行される厳密タイミングのasyncioテストの発火回数に影響したとみられる。**依存解決自体は壊れていない**(ImportError等は一切発生しない)が、「これらはtorchを実ロードしないので影響を受けないはず」という当初の前提は成立しなかった。テストコード自体の修正はこのタスクのスコープ外(コード変更不可)のため、タイミングアサーションの許容緩和は別タスクとして持ち越す。
+**真因はcu130のimportコストではない。** コントローラが `--tb=line` で独立検証した結果、真因は `tests/unit/test_visual_watchdog.py:40` の `assert 2 >= 3` — `asyncio.sleep(0.02)` を 0.15 秒観測する壁時計依存のテストが、**Windows の asyncio タイマー粒度(約15.6ms)**により実際の発火回数が2回に留まるという既存欠陥だった(表示されていた `RuntimeError: boom` はwatchdogが例外を正しく捕捉してログ出力した内容であり、失敗原因ではない)。コントローラの検証では、cu130導入前のCPU版ワークツリー(`.worktrees/feature-visual-embedding`, `torch 2.13.0+cpu`)でも3/3回同一失敗を再現しており、**このタスクの依存差し替えとは無関係な既存欠陥**であることを確認済み(`tests/unit`全体実行では両ワークツリーとも819 passedで非再現)。上記の「`test_visual_encoder.py` との組み合わせでのみ再現」という観測パターン自体は事実として残るが、原因はtorchのimportコストではなくテスト自体の壁時計依存にある。**別コミット `8f05f15` で決定化して解消済み**(`interval_seconds=0` + イベントループのターン数によるポーリングに変更)。以下のとおり修正後は 17 passed:
+
+```
+$ uv run --no-sync pytest tests/unit/test_visual_encoder.py tests/unit/test_visual_index_repo.py \
+    tests/unit/test_visual_watchdog.py tests/integration/test_visual_store.py -q
+.................                                                        [100%]
+17 passed in 3.01s
+```
 
 ### 実機検証時の事故と復旧(運用注記)
 
