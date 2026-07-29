@@ -157,6 +157,23 @@ uv sync --extra recording
 - `uv sync --extra recording` は一度実行すれば十分です。付属の起動スクリプト（`start.ps1` / `start.sh` / `dev.ps1` / `dev.sh`）は `uv run --no-sync` で起動するため、次回以降の起動でこの依存が勝手に外れることはありません。
 - **注意**: これらのスクリプトを経由せず、後日 **素の `uv sync`（`--extra` を付けない）** を再実行すると、以前入れた `recording` / `pdf` extra は静かにアンインストールされます（`git pull` 後の「依存を更新しよう」で踏みがちです）。全部まとめて維持したい場合は `uv sync --all-extras` を使ってください。
 
+### 視覚埋め込み (任意, Stage 3/4)
+
+PDF ページを画像のまま検索する視覚インデックス機能。
+
+```bash
+uv sync --extra visual
+```
+
+GPU (NVIDIA) を使う場合、`pyproject.toml` の `[[tool.uv.index]]` が
+`download.pytorch.org/whl/cu130` を指しているため CUDA 版 torch が入る。
+CUDA が使えない環境では自動的に CPU 実行へフォールバックする(1ページ
+あたり 1〜2 分かかる)。
+
+```bash
+uv run --no-sync python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_arch_list())"
+```
+
 ## Windows: PowerShell 実行ポリシーについて
 
 `scripts\*.ps1` を実行したとき、次のようなエラーが出ることがあります。

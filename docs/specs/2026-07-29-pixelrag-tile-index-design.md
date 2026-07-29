@@ -348,6 +348,64 @@ UI変更を含むため、evaluator による実機スクリーンショット�
 | 比較専用UI | 作らない | 設定切替+同じ質問の再送で足りる。YAGNI |
 | LoRA アダプタ | 適用しない | Wikipedia スクリーンショット特化でありドメインが異なる。素の効果を測ってから判断 |
 
+## 実測記録(Task 1)
+
+環境: RTX 2080 Ti (Turing, sm_75) / Driver 591.86 (CUDA 13.1) / torch 2.13.0+cu130 / torchvision 0.28.0+cu130。
+
+### 実機ゲート(§8.2)4段 — 実出力
+
+```
+$ uv run --no-sync python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+2.13.0+cu130 13.0 True
+
+$ uv run --no-sync python -c "import torch; print(torch.cuda.get_arch_list())"
+['sm_75', 'sm_80', 'sm_86', 'sm_90', 'sm_100', 'sm_120']
+
+$ uv run --no-sync python -c "import torch; print(torch.cuda.get_device_name(0), torch.cuda.get_device_capability(0))"
+NVIDIA GeForce RTX 2080 Ti (7, 5)
+
+$ uv run --no-sync python -c "import torch; a=torch.randn(2048,2048,device='cuda',dtype=torch.float16); print((a@a).sum().item())"
+inf   # fp16行列積の数値オーバーフローによる正常値(カーネル自体はクラッシュなく実行完了)
+
+$ uv run --no-sync python -c "import torchvision; print(torchvision.__version__)"
+0.28.0+cu130
+```
+
+cu130 のまま4段すべて通過。cu132 へのフォールバックは不要だった。
+
+### 速度・VRAM実測(§8.2-3, §8.3)
+
+`Qwen/Qwen3-VL-Embedding-2B` を A4相当(827×1170)画像でウォームアップ後5回encodeし平均。
+
+| 条件 | sec/page | VRAM allocated (torch) | 備考 |
+|---|---|---|---|
+| A: GPU, Ollama 非常駐 | 0.368 | 4423.7 MiB | `ollama ps` 空、nvidia-smiベースライン 8373 MiB |
+| B: GPU, Ollama に `qwen2.5:14b` 常駐(9.5GB, 100% GPU) | 0.358 | 4423.7 MiB | ロード直後 nvidia-smi 10480 MiB、bench後 5949 MiB(WDDM共有メモリの変動、詳細後述) |
+| C: CPU (`CUDA_VISIBLE_DEVICES=""`) | 52.485 | — | 1回のみ計測(遅いため) |
+
+条件Bは条件Aとほぼ同速(誤差内)で、CPU(条件C)に対して約**147倍**速い。**チャットモデル(qwen2.5:14b, 9.5GB)がVRAMに常駐した状態でも、視覚エンコーダの1枚あたり推論速度は劣化しなかった**。以前のセッション記録にあった「CUDA(cu126)はOllama常駐下でWDDMスピルによりCPUより遅く導入見送り」という判断は、少なくとも cu130 + 本構成(エンコーダ4.4GB + qwen2.5:14b 9.5GB、合計約13.9GB > VRAM 11.26GB)では**再現しなかった**。
+
+再現条件の違いとして考えられる点: 上記は「チャットモデルがVRAMに載っているがアイドル」の状態での計測であり、チャットモデルが**実際にトークン生成中**の状態とは異なる。実際、隔離環境のAPIサーバー(後述)経由でチャット応答生成とビジュアルインデックス構築を絡めた検証では、`qwen2.5:14b` の応答生成が240秒のタイムアウトまでに完了しなかった(SSEの `retrieval` イベント後は `ping` キープアライブのみで `delta`/`done` に到達せず)。これは「常駐(アイドル)」と「同時実行(アクティブ)」の違いによる可能性があり、**GPUを同時にアクティブ利用する場面(構築中の実クエリ応答など)では速度劣化が起きうる**ことを示唆する。今回の3条件比較では判定基準どおり条件Bが条件Cを大幅に上回ったため CUDA化は有効と判断するが、この「アクティブ同時実行」の一点は Stage 4 以降の運用注記(構築中は重いチャット応答を避ける、または`build_cooldown_seconds`相当の緩和策)として残す。
+
+### 既存テスト(§11, ブリーフStep 11)
+
+```
+uv run --no-sync pytest tests/unit/test_visual_encoder.py tests/unit/test_visual_index_repo.py \
+  tests/unit/test_visual_watchdog.py tests/integration/test_visual_store.py -q
+```
+
+16 passed, 1 failed: `tests/unit/test_visual_watchdog.py::test_watchdog_survives_unload_exception`(`assert enc.calls >= 3` が `1 >= 3` で失敗、0.15秒のsleep内に0.02秒間隔のwatchdogが3回発火する前提のタイミング依存アサーション)。切り分けた結果:
+
+- `test_visual_watchdog.py` 単体では4/4回とも安定してpass
+- `test_visual_encoder.py` + `test_visual_watchdog.py` の組み合わせでは4/4回とも同じ箇所で再現してfail
+- `test_visual_index_repo.py` + `test_visual_watchdog.py` の組み合わせではpass
+
+`test_visual_encoder.py` は `visual_extra_available()` 経由で(遅延importとはいえ)torchを実import する。cu130のCUDAホイールはCPU専用ビルドよりimport時のネイティブライブラリ初期化コストが大きく、同一プロセス内で後続実行される厳密タイミングのasyncioテストの発火回数に影響したとみられる。**依存解決自体は壊れていない**(ImportError等は一切発生しない)が、「これらはtorchを実ロードしないので影響を受けないはず」という当初の前提は成立しなかった。テストコード自体の修正はこのタスクのスコープ外(コード変更不可)のため、タイミングアサーションの許容緩和は別タスクとして持ち越す。
+
+### 実機検証時の事故と復旧(運用注記)
+
+Step 8(チャットとの同時常駐確認)の当初手順どおり `uv run --no-sync uvicorn apps.api.main:app --port 8765` を実行したところ、ポート8765は**ユーザーの本番サーバーが既に使用中**だった(`C:\Users\momo\.notebook-ollama\qdrant` のqdrantローカルストレージ排他ロックで起動時に失敗)。その直前に実行した確認用curlが本番サーバーに届き、確認用notebookを一時的に本番データへ作成してしまった(直後にDELETEで復旧、実データの棄損なし)。**Stage 4以降の実機検証は、`NOTEBOOK_OLLAMA_DATA_DIR` で隔離した一時ディレクトリと、8765以外のポートを明示して行うこと。** 本番サーバーの生死は起動前に確認する(例: `netstat` でLISTENING PIDを突き合わせる)。
+
 ## 14. 完了条件
 
 1. 設定を変更しない状態で、Stage 3 と同一の検索・生成結果が得られる(回帰なし)
