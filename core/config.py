@@ -97,6 +97,27 @@ class VisualSettings(BaseModel):
     # P-core へ載せる(fork-join並列はP/E混載だと遅いE側が律速になるため、
     # 均等分配ではなくクラスタ分業が正解)。Windows以外では無効。
     cpu_prefer_performance_cores: bool = True
+    # --- Stage 4: PixelRAG式タイル索引と検索戦略の選択 ---
+    # 検索に使う視覚索引の単位。"page" = 現行(1ページ1ベクトル)、
+    # "tile" = PixelRAG式(ページをタイル分割して各タイルを1ベクトル)。
+    # 両方の索引を同時保持できるため、切替に再構築は不要。
+    index_unit: Literal["page", "tile"] = "page"
+    # 検索戦略。
+    #   hybrid_rrf   = テキスト検索 + 視覚検索を RRF 融合(現行・既定)
+    #   visual_only  = 視覚検索のみで候補を決め、本文は従来どおりページ展開
+    #   pixel_native = 視覚検索のみ。本文は載せず画像だけを VLM に渡す
+    search_strategy: Literal["hybrid_rrf", "visual_only", "pixel_native"] = "hybrid_rrf"
+    # タイル分割の格子。既定は縦3分割・列分割なし(A4縦の技術文書は情報が
+    # 縦方向に積層するため行分割が効く。2段組資料は tile_cols で対応)。
+    tile_rows: int = 3
+    tile_cols: int = 1
+    # 隣接タイルの重なり率(基準辺長に対する比)。分割線が表や図を横切った
+    # ときに両側のタイルへ手掛かりを残すマージン。0 だと境界上の要素が
+    # どちらのタイルからも読み取れなくなる。
+    tile_overlap: float = 0.1
+    # pixel_native 戦略で VLM に渡す画像の最大枚数。他の戦略では現行どおり
+    # 2枚上限。タイルはページ全体より小さくトークン消費が少ないため多く積める。
+    max_images: int = 4
 
 
 class ServerSettings(BaseModel):

@@ -107,6 +107,8 @@ async def get_settings(request: Request) -> AppSettingsSchema:
         visual=VisualSettingsSchema(
             embedding_model=cfg.visual.embedding_model,
             search_enabled=cfg.visual.search_enabled,
+            index_unit=cfg.visual.index_unit,
+            search_strategy=cfg.visual.search_strategy,
         ),
     )
 
@@ -318,18 +320,35 @@ async def put_vision_model(request: Request, body: VisionModelUpdate) -> dict:
     dependencies=[Depends(require_feature("table-figure-rag"))],
 )
 async def put_visual_settings(request: Request, body: VisualSettingsUpdate) -> dict:
-    """視覚検索トグル(Stage 3)。既存の visual 永続セクションへマージ保存する。"""
+    """視覚検索の設定(Stage 3 トグル + Stage 4 索引単位/検索戦略)。
+
+    部分更新。None のフィールドは触らない。save_section はセクションを丸ごと
+    置換するため、load_overrides の既存 dict とマージしてから保存する。
+    """
     cfg = request.app.state.ctx.config
-    cfg.visual = cfg.visual.model_copy(update={"search_enabled": body.search_enabled})
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    if update:
+        cfg.visual = cfg.visual.model_copy(update=update)
 
     from core.settings_store import load_overrides, save_section
 
     existing = load_overrides(cfg.data_dir).get("visual")
     existing = existing if isinstance(existing, dict) else {}
     save_section(
-        cfg.data_dir, "visual", {**existing, "search_enabled": cfg.visual.search_enabled}
+        cfg.data_dir,
+        "visual",
+        {
+            **existing,
+            "search_enabled": cfg.visual.search_enabled,
+            "index_unit": cfg.visual.index_unit,
+            "search_strategy": cfg.visual.search_strategy,
+        },
     )
-    return {"search_enabled": cfg.visual.search_enabled}
+    return {
+        "search_enabled": cfg.visual.search_enabled,
+        "index_unit": cfg.visual.index_unit,
+        "search_strategy": cfg.visual.search_strategy,
+    }
 
 
 @router.put("/settings/ollama/timeouts")
