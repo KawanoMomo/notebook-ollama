@@ -18,6 +18,7 @@
   import BetaFeaturesSection from '$lib/components/settings/BetaFeaturesSection.svelte';
   import { pushToast } from '$lib/components/Toast.svelte';
   import type { ModelInfo } from '$lib/api/types';
+  import type { VisualIndexUnit, VisualSearchStrategy } from '$lib/api/visualIndex';
 
   let section = $state<
     | 'models'
@@ -133,11 +134,50 @@
     const input = e.currentTarget as HTMLInputElement;
     const next = input.checked;
     try {
-      await settingsStore.putVisualSearch(next);
+      await settingsStore.putVisual({ search_enabled: next });
       pushToast(next ? '視覚検索を有効にしました' : '視覚検索を無効にしました', 'success');
     } catch (err) {
       input.checked = !next;
       pushToast(`視覚検索設定の変更に失敗しました: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+  }
+
+  async function onIndexUnitChange(e: Event) {
+    const select = e.currentTarget as HTMLSelectElement;
+    const next = select.value as VisualIndexUnit;
+    const prev = settingsStore.settings?.visual.index_unit ?? 'page';
+    if (next === prev) return;
+    try {
+      await settingsStore.putVisual({ index_unit: next });
+      pushToast(
+        next === 'tile' ? '索引単位をタイル分割にしました' : '索引単位をページ全体にしました',
+        'success',
+      );
+    } catch (err) {
+      select.value = prev;
+      const msg = err instanceof Error ? err.message : String(err);
+      pushToast(`索引単位の変更に失敗しました: ${msg}`, 'error');
+    }
+  }
+
+  const STRATEGY_LABELS: Record<VisualSearchStrategy, string> = {
+    hybrid_rrf: 'RRF融合(テキスト+視覚)',
+    visual_only: '視覚のみ',
+    pixel_native: 'pixel-native(画像のみ)',
+  };
+
+  async function onSearchStrategyChange(e: Event) {
+    const select = e.currentTarget as HTMLSelectElement;
+    const next = select.value as VisualSearchStrategy;
+    const prev = settingsStore.settings?.visual.search_strategy ?? 'hybrid_rrf';
+    if (next === prev) return;
+    try {
+      await settingsStore.putVisual({ search_strategy: next });
+      pushToast(`検索戦略を「${STRATEGY_LABELS[next]}」にしました`, 'success');
+    } catch (err) {
+      select.value = prev;
+      const msg = err instanceof Error ? err.message : String(err);
+      pushToast(`検索戦略の変更に失敗しました: ${msg}`, 'error');
     }
   }
 
@@ -496,6 +536,31 @@
                   />
                   構築済みノートブックで視覚ページ検索を併用する
                 </label>
+              </dd>
+              <dt>視覚索引の単位(ベータ)</dt>
+              <dd>
+                <select
+                  class="model-select"
+                  aria-label="視覚索引の単位"
+                  value={settingsStore.settings.visual.index_unit}
+                  onchange={onIndexUnitChange}
+                >
+                  <option value="page">ページ全体</option>
+                  <option value="tile">タイル分割</option>
+                </select>
+              </dd>
+              <dt>検索戦略(ベータ)</dt>
+              <dd>
+                <select
+                  class="model-select"
+                  aria-label="検索戦略"
+                  value={settingsStore.settings.visual.search_strategy}
+                  onchange={onSearchStrategyChange}
+                >
+                  <option value="hybrid_rrf">RRF融合(テキスト+視覚)</option>
+                  <option value="visual_only">視覚のみ</option>
+                  <option value="pixel_native">pixel-native(画像のみ)</option>
+                </select>
               </dd>
             {/if}
           </dl>
