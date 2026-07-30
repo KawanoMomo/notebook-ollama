@@ -47,6 +47,10 @@ def test_put_visual_updates_index_unit_only(memory_data_dir):
         # 触っていないフィールドは変わらない
         assert body["search_enabled"] is True
         assert body["search_strategy"] == "hybrid_rrf"
+    # 再起動(新app・同data_dir)後も永続 — in-memory の cfg ではなく
+    # settings.json から復元されることを確かめる
+    with TestClient(create_app()) as client2:
+        assert client2.get("/api/settings").json()["visual"]["index_unit"] == "tile"
 
 
 def test_put_visual_updates_strategy_and_persists(memory_data_dir):
@@ -55,8 +59,11 @@ def test_put_visual_updates_strategy_and_persists(memory_data_dir):
         res = client.put("/api/settings/visual", json={"search_strategy": "pixel_native"})
         assert res.status_code == 200
         assert res.json()["search_strategy"] == "pixel_native"
-        # 永続化されている(GET で読み直せる)
         assert client.get("/api/settings").json()["visual"]["search_strategy"] == "pixel_native"
+    # 再起動(新app・同data_dir)後も永続 — in-memory の cfg ではなく
+    # settings.json から復元されることを確かめる
+    with TestClient(create_app()) as client2:
+        assert client2.get("/api/settings").json()["visual"]["search_strategy"] == "pixel_native"
 
 
 def test_put_visual_rejects_unknown_unit(memory_data_dir):
