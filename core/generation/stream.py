@@ -5,12 +5,18 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from core.exceptions import AppError, ErrorCode
 from core.generation.citations import (
     CitationSpec,
     build_citations,
 )
 from core.generation.locations import format_location
-from core.generation.prompts import SYSTEM_PROMPT, PromptChunk, build_user_prompt
+from core.generation.prompts import (
+    SYSTEM_PROMPT,
+    SYSTEM_PROMPT_PIXEL_NATIVE,
+    PromptChunk,
+    build_user_prompt,
+)
 from core.generation.table_assets import substitute_table_html
 from core.logging import get_logger
 from core.ollama.messages import build_image_message
@@ -69,6 +75,10 @@ class GenerationDeps:
         ]
         | None
     ) = None
+    # Stage 4: 検索戦略。pixel_native のときシステムプロンプトと画像上限を
+    # 切り替え、根拠画像が無ければ明示エラーにする。
+    visual_strategy: Callable[[], str] | None = None
+    max_images_getter: Callable[[], int] | None = None
 
 
 @dataclass
@@ -103,6 +113,11 @@ class GenerationService:
             limit=retrieval_top_k,
             source_ids=source_ids,
         )
+        strategy = (
+            self._deps.visual_strategy() if self._deps.visual_strategy is not None
+            else "hybrid_rrf"
+        )
+        is_pixel_native = strategy == "pixel_native"
         assets_by_chunk: dict[str, list[AssetRecord]] = {}
         if self._deps.assets_lookup is not None and hits:
             assets_by_chunk = self._deps.assets_lookup([h.chunk_id for h in hits])
@@ -156,12 +171,13 @@ class GenerationService:
                 audio_channel=hit.channel,
             )
 
+        system_prompt = SYSTEM_PROMPT_PIXEL_NATIVE if is_pixel_native else SYSTEM_PROMPT
         budget = allocate_budget(
             BudgetInput(
                 num_ctx=num_ctx,
                 context_budget_ratio=context_budget_ratio,
                 response_budget_tokens=response_budget_tokens,
-                system_prompt=SYSTEM_PROMPT,
+                system_prompt=system_prompt,
                 question=question,
                 chunks_text=[c.text for c in prompt_chunks],
                 history=history,
@@ -172,16 +188,39 @@ class GenerationService:
         spec_by_n = {n: s for n, s in spec_by_n.items() if n <= budget.included_chunks}
 
         user_prompt = build_user_prompt(chunks=prompt_chunks, question=question)
-        messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
         for turn in budget.included_history:
             messages.append({"role": "user", "content": turn.user})
             messages.append({"role": "assistant", "content": turn.assistant})
 
         images_b64: list[str] = []
+        image_cap = (
+            self._deps.max_images_getter()
+            if is_pixel_native and self._deps.max_images_getter is not None
+            else 2
+        )
         has_figure_lookup = self._deps.figure_images_lookup is not None
         has_page_lookup = self._deps.page_images_lookup is not None
         if self._deps.vision_check is not None and (has_figure_lookup or has_page_lookup):
-            is_vision = await self._deps.vision_check()
+            try:
+                is_vision = await self._deps.vision_check()
+            except Exception:
+                # pixel_native は画像が唯一の根拠なので握り潰さない。
+                # 他の戦略は画像なしで生成を続ける(Ollama 停止で生成全体を
+                # 落とさない — 従来は try の外で毎回落ちていた)。
+                if is_pixel_native:
+                    raise
+                log.warning("vision_check_failed", exc_info=True)
+                is_vision = False
+            if is_pixel_native and not is_vision:
+                raise AppError(
+                    ErrorCode.INPUT_INVALID,
+                    "pixel-native 検索には視覚対応のチャットモデルが必要です",
+                    remediation=(
+                        "設定画面でチャットモデルを vision 対応のもの(qwen3-vl 系など)に"
+                        "変更するか、検索戦略を「視覚のみ」または「RRF融合」に戻してください。"
+                    ),
+                )
             if is_vision:
                 included = hits[: budget.included_chunks]
                 figure_images = (
@@ -197,8 +236,7 @@ class GenerationService:
                     self._deps.page_images_lookup(page_keys) if has_page_lookup else {}
                 )
                 # ヒット順位優先で、図クロップ+ページ/タイル画像の合算最大 image_cap 枚。
-                # 戦略による上限切替は Task 11 の担当なので、ここでは固定値のまま。
-                image_cap = 2
+                # pixel_native は max_images_getter、他戦略は固定2枚(上で確定済み)。
                 for h in included:
                     if len(images_b64) >= image_cap:
                         break
@@ -215,6 +253,18 @@ class GenerationService:
                         images_b64.append(
                             base64.b64encode(page_images[key]).decode("ascii"))
 
+        if is_pixel_native and not images_b64:
+            raise AppError(
+                ErrorCode.INPUT_INVALID,
+                "pixel-native 検索の根拠画像が見つかりません",
+                detail=f"hits={len(hits)}",
+                remediation=(
+                    "視覚インデックスを構築してください(ソース一覧の「視覚インデックス」から"
+                    "構築できます)。設定の索引単位と、構築済みの単位が一致しているかも"
+                    "確認してください。"
+                ),
+            )
+
         if images_b64:
             messages.append(
                 build_image_message(role="user", content=user_prompt, images_b64=images_b64)
@@ -222,7 +272,6 @@ class GenerationService:
         else:
             messages.append({"role": "user", "content": user_prompt})
 
-        from core.exceptions import AppError
         from core.ollama.client import ThinkingChunk
 
         answer_parts: list[str] = [prefill_answer] if prefill_answer else []
