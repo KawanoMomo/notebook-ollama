@@ -151,6 +151,7 @@ class AppContext:
         ollama_gateway: OllamaGateway,
         text_embedder: _TextEmbedderLike,
         visual_store: Any = None,
+        visual_stores: Any = None,
         visual_encoder: Any = None,
     ) -> None:
         self.config = config
@@ -177,6 +178,7 @@ class AppContext:
         self.backend_factory = backend_factory
         self.text_embedder = text_embedder
         self.visual_store = visual_store
+        self.visual_stores = visual_stores or {}
         self.visual_encoder = visual_encoder
         # Lazy backend instances (built on first access via @property).
         self._transcriber: Any = None
@@ -415,10 +417,16 @@ def build_context(config: AppConfig) -> AppContext:
             ),
         )
     )
-    from core.storage.visual_store import VisualPageStore
+    from core.storage.visual_store import VisualUnitStore
     from core.visual.encoder import TransformersVisualEncoder, visual_extra_available
 
-    visual_store = VisualPageStore(client=vs.client)
+    # 単位ごとに別コレクション。QdrantClient は VectorStore と共有する
+    # (ローカルモードは1パス1クライアント制約)。
+    visual_stores = {
+        "page": VisualUnitStore(client=vs.client, unit="page"),
+        "tile": VisualUnitStore(client=vs.client, unit="tile"),
+    }
+    visual_store = visual_stores["page"]   # 既存呼び出し(sources.py)との互換
     visual_encoder = (
         TransformersVisualEncoder(
             model_name=config.visual.embedding_model,
@@ -538,5 +546,6 @@ def build_context(config: AppConfig) -> AppContext:
         ollama_gateway=gateway,
         text_embedder=text_embedder,
         visual_store=visual_store,
+        visual_stores=visual_stores,
         visual_encoder=visual_encoder,
     )
