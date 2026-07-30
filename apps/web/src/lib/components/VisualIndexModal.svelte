@@ -165,16 +165,16 @@
   .row {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    padding: 0.6rem 0;
+    gap: var(--space-1);
+    padding: var(--space-2) 0;
   }
   .row + .row {
-    border-top: 1px solid var(--border, #333);
+    border-top: 1px solid var(--color-border);
   }
   .row-head {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
   .row-head h3 {
     margin: 0;
@@ -182,15 +182,17 @@
   }
   .badge {
     font-size: 0.75rem;
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    background: var(--accent-bg, #2a3a55);
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-accent);
+    color: var(--color-accent);
   }
   /* .dialog は min-width:400px 固定。2行 x 最大3ボタンで溢れるため折り返す */
   .actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: var(--space-2);
   }
   .actions button {
     font: inherit;
