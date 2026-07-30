@@ -20,8 +20,12 @@ export interface VisualIndexProgress {
 }
 
 export interface VisualIndexOutcome {
-  ok: boolean;
-  // SSE イベントは同一 {ok} でも別の発生を区別できないため、発生時刻を
+  // "complete" = 1件以上索引できた / "error" = 対象はあったが1件も索引でき
+  // なかった / "noop" = 対象が0件だった(タイル格子等のパラメータを変えても
+  // 既に索引済みのソースは再構築対象にならず、無言で何もしないまま「完了」
+  // を装うのを防ぐための区分。最終レビュー I3)。
+  kind: "complete" | "error" | "noop";
+  // SSE イベントは同一 {kind} でも別の発生を区別できないため、発生時刻を
   // change-detection のキーとして使う(購読側 $effect が「新しい完了/失敗」を検知する)。
   at: number;
 }
@@ -108,14 +112,24 @@ export function createEventsStore(): EventsStore {
           visualIndexProgress = next;
           return;
         }
-        if (ev.type === "visual_index_complete" || ev.type === "visual_index_error") {
+        if (
+          ev.type === "visual_index_complete" ||
+          ev.type === "visual_index_error" ||
+          ev.type === "visual_index_noop"
+        ) {
           const unit = (ev.unit as VisualIndexUnit) ?? "page";
           const nextProgress = new Map(visualIndexProgress);
           nextProgress.delete(unit);
           visualIndexProgress = nextProgress;
           visualBaselines.delete(unit);
+          const kind: VisualIndexOutcome["kind"] =
+            ev.type === "visual_index_complete"
+              ? "complete"
+              : ev.type === "visual_index_noop"
+                ? "noop"
+                : "error";
           const nextOutcome = new Map(visualIndexOutcome);
-          nextOutcome.set(unit, { ok: ev.type === "visual_index_complete", at: Date.now() });
+          nextOutcome.set(unit, { kind, at: Date.now() });
           visualIndexOutcome = nextOutcome;
           return;
         }
