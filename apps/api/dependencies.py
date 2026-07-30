@@ -449,15 +449,19 @@ def build_context(config: AppConfig) -> AppContext:
         embedding_model_getter=lambda: config.ollama.embedding_model,
         figure_desc_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
         visual=VisualSearchDeps(
-            store=visual_store,
+            stores=visual_stores,
             encoder=visual_encoder,
             enabled=lambda: (
                 config.visual.search_enabled
                 and visual_encoder is not None
                 and _pipeline_features.is_enabled("table-figure-rag")
             ),
-            meta_lookup=lambda nb_id: _visual_get_meta(conn, nb_id),
+            meta_lookup=lambda nb_id, unit: _visual_get_meta(conn, nb_id, unit),
             model_name_getter=lambda: config.visual.embedding_model,
+            unit_getter=lambda: config.visual.index_unit,
+            strategy_getter=lambda: config.visual.search_strategy,
+            tile_grid_getter=lambda: (config.visual.tile_rows, config.visual.tile_cols),
+            max_images_getter=lambda: config.visual.max_images,
         ),
     )
 
