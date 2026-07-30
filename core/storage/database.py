@@ -32,6 +32,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         run_source_error_remediation_migration,
         run_summary_migration,
         run_visual_index_migration,
+        run_visual_index_unit_migration,
     )
     run_chunk_timecode_migration(conn)
     run_summary_migration(conn)
@@ -41,4 +42,5 @@ def migrate(conn: sqlite3.Connection) -> None:
     run_chunk_kind_migration(conn)
     run_desc_chunk_id_migration(conn)
     run_visual_index_migration(conn)
+    run_visual_index_unit_migration(conn)
     run_source_error_remediation_migration(conn)
