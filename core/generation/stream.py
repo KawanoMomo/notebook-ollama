@@ -63,7 +63,11 @@ class GenerationDeps:
     vision_check: Callable[[], Any] | None = None  # -> Awaitable[bool]
     figure_images_lookup: Callable[[list[str]], dict[str, bytes]] | None = None
     page_images_lookup: (
-        Callable[[list[tuple[str, int]]], dict[tuple[str, int], bytes]] | None
+        Callable[
+            [list[tuple[str, int, int | None]]],
+            dict[tuple[str, int, int | None], bytes],
+        ]
+        | None
     ) = None
 
 
@@ -108,6 +112,7 @@ class GenerationService:
                 heading_path=h.heading_path,
                 start_ms=h.start_ms,
                 speaker=h.speaker,
+                tile_index=getattr(h, "tile_index", None),
             )
             if getattr(h, "via_visual", False):
                 location = f"{location}(視覚検索)" if location else "(視覚検索)"
@@ -184,26 +189,31 @@ class GenerationService:
                     if has_figure_lookup else {}
                 )
                 page_keys = [
-                    (h.source_id, h.page) for h in included
+                    (h.source_id, h.page, getattr(h, "tile_index", None))
+                    for h in included
                     if getattr(h, "via_visual", False) and h.page is not None
                 ]
                 page_images = (
                     self._deps.page_images_lookup(page_keys) if has_page_lookup else {}
                 )
-                # ヒット順位優先で、図クロップ+ページ画像の合算最大2枚
+                # ヒット順位優先で、図クロップ+ページ/タイル画像の合算最大 image_cap 枚。
+                # 戦略による上限切替は Task 11 の担当なので、ここでは固定値のまま。
+                image_cap = 2
                 for h in included:
-                    if len(images_b64) >= 2:
+                    if len(images_b64) >= image_cap:
                         break
                     if h.chunk_id in figure_images:
                         images_b64.append(
                             base64.b64encode(figure_images[h.chunk_id]).decode("ascii"))
-                    elif (
+                        continue
+                    key = (h.source_id, h.page, getattr(h, "tile_index", None))
+                    if (
                         getattr(h, "via_visual", False)
                         and h.page is not None
-                        and (h.source_id, h.page) in page_images
+                        and key in page_images
                     ):
                         images_b64.append(
-                            base64.b64encode(page_images[(h.source_id, h.page)]).decode("ascii"))
+                            base64.b64encode(page_images[key]).decode("ascii"))
 
         if images_b64:
             messages.append(

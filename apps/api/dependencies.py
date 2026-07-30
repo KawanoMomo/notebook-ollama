@@ -486,6 +486,27 @@ def build_context(config: AppConfig) -> AppContext:
                 out[cid] = path.read_bytes()
         return out
 
+    def _visual_image_path(sid: str, page: int, tile_index: int | None):
+        """視覚ヒットの画像ファイル。単位ごとに保存先が違う(VisualIndexBuilder)。"""
+        if tile_index is None:
+            return config.assets_dir / sid / "pages" / f"{page}.png"
+        return config.assets_dir / sid / "tiles" / f"{page}-{tile_index}.png"
+
+    def _lookup_page_images(
+        keys: list[tuple[str, int, int | None]],
+    ) -> dict[tuple[str, int, int | None], bytes]:
+        out: dict[tuple[str, int, int | None], bytes] = {}
+        for key in keys:
+            sid, page, tile_index = key
+            path = _visual_image_path(sid, page, tile_index)
+            if path.exists():
+                out[key] = path.read_bytes()
+            else:
+                # 索引未構築 / 別単位で構築済み などで欠落しうる。無言で
+                # 落とすと「本文も画像も無いソース」の原因が追えないので残す。
+                _log.warning("visual_image_missing", source_id=sid, page=page, tile=tile_index)
+        return out
+
     generation = GenerationService(
         deps=GenerationDeps(
             retrieval=retrieval,
@@ -497,11 +518,7 @@ def build_context(config: AppConfig) -> AppContext:
             ),
             vision_check=_probe_vision,
             figure_images_lookup=_lookup_figure_images,
-            page_images_lookup=lambda keys: {
-                (sid, page): (config.assets_dir / sid / "pages" / f"{page}.png").read_bytes()
-                for (sid, page) in keys
-                if (config.assets_dir / sid / "pages" / f"{page}.png").exists()
-            },
+            page_images_lookup=_lookup_page_images,
         )
     )
     recordings = RecordingRegistry()
