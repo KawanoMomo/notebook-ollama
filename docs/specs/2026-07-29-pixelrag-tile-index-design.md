@@ -6,7 +6,7 @@ aliases:
   - タイル索引
   - pixelrag-tile-index
   - 実験的アプローチその2
-status: draft
+status: approved
 date: 2026-07-29
 project: NotebookOllama
 area: retrieval
@@ -412,6 +412,39 @@ $ uv run --no-sync pytest tests/unit/test_visual_encoder.py tests/unit/test_visu
 ### 実機検証時の事故と復旧(運用注記)
 
 Step 8(チャットとの同時常駐確認)の当初手順どおり `uv run --no-sync uvicorn apps.api.main:app --port 8765` を実行したところ、ポート8765は**ユーザーの本番サーバーが既に使用中**だった(`C:\Users\momo\.notebook-ollama\qdrant` のqdrantローカルストレージ排他ロックで起動時に失敗)。その直前に実行した確認用curlが本番サーバーに届き、確認用notebookを一時的に本番データへ作成してしまった(直後にDELETEで復旧、実データの棄損なし)。**Stage 4以降の実機検証は、`NOTEBOOK_OLLAMA_DATA_DIR` で隔離した一時ディレクトリと、8765以外のポートを明示して行うこと。** 本番サーバーの生死は起動前に確認する(例: `netstat` でLISTENING PIDを突き合わせる)。
+
+## 実測記録(Task 15b: 実機検証)
+
+隔離環境(一時 `NOTEBOOK_OLLAMA_DATA_DIR` + ポート8766)で11項目すべて実機確認した。結果は**11/11 PASS**(うち2項目は不具合発見を伴う条件付きPASS)。スクリーンショット4枚(`settings-models.png` / `visual-index-modal.png` / `visual-index-modal-armed.png` / `chat-tile-citation.png`)は `.eval/stage4/` に保存した(`.gitignore` 対象・git管理外)。詳細は `.superpowers/sdd/2026-07-29-pixelrag-tile-index/task-15b-report.md` を参照。
+
+### ⚠️ 重大な運用制約: `recording` extra と CUDA 版 `visual` extra は同一 venv で共存できない
+
+実機検証中、Qwen3-VL-Embedding-2B の埋め込みが GPU 上で `CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH` により全滅する事象が発生し、コントローラが原因を再現・確定した。
+
+- `core/accel/cuda_dll.py::_register_cuda_dll_dirs()` が **CUDA 12 系**の cudnn/cublas DLL ディレクトリをプロセス検索パスに登録する
+- これは `core/recording/transcriber.py` の**モジュールレベル**(`_CUDA_DLL_REGISTERED = _register_cuda_dll_dirs()`)で実行される
+- その後 torch(**cu130 = CUDA 13**)が cuDNN を呼ぶと `CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH` で落ちる
+- **最小再現**: 素のプロセスでは `torch.nn.functional.conv2d` が GPU で通る → `_register_cuda_dll_dirs()` を先に呼ぶと同じ conv2d が FAIL
+- インストール実体: `nvidia-cudnn-cu12 9.23.2.1` / `nvidia-cublas-cu12 12.9.2.10`(`recording` extra が pin)vs `torch 2.13.0+cu130`
+- **Task 1 の実測(0.358秒/ページ等)は `visual` + `pdf` のみの環境で取ったもので、その条件では正しい。** その後コントローラが `tests/unit` の収集エラー対処のため `recording` を足した環境で壊れた
+
+**運用**: GPU の STT(faster-whisper)と GPU の視覚埋め込みは**どちらか一方しか選べない**。視覚埋め込みを GPU で使うなら `recording` を入れない venv にする。
+
+### 実機検証で見つかった不具合3件
+
+| # | 内容 | 処置 |
+|---|---|---|
+| A | 視覚索引構築が全ページ失敗しても「構築が完了しました」という成功トーストが出る(`GET /visual-index` は `built:false, indexed_sources:0` で実際は未構築) | **修正済み**。`core/visual/index_builder.py` の `BuildResult` に `target_sources` を追加し、`apps/api/routers/visual_index.py` で `target_sources > 0 and indexed_pages == 0` を失敗と判定するよう変更(commits 48ebf73, 5713de3, e7005ae) |
+| B | `pixel_native` の vision 判定(`apps/api/dependencies.py::_probe_vision`)がグローバル `config.ollama.default_model` のみを見ており、ノートブック単位の `default_model` 上書きを無視する | **修正済み**。`vision_check(model)` を呼び出し元(`chat.py`)が解決済みモデル名を渡す形に変更 |
+| C | 既定モデルを変更すると「視覚モデル」セレクトの表示が「(未設定)」にリセットされる(表示のみ、`GET /api/settings` のBE値は保持されている) | **未修正・Stage 4 スコープ外として記録**。データ消失ではなくFEの表示同期バグ |
+
+### テスト(最終)
+
+```
+pytest -q                → 1551 passed
+npm run check            → 0 errors, 13 warnings
+npm run test:unit        → 716 passed
+```
 
 ## 14. 完了条件
 
