@@ -144,7 +144,131 @@ def run_visual_index_migration(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # NOTE: このインデックスは run_visual_index_unit_migration が
+    # (notebook_id, unit) で張り直す(同名なので CREATE INDEX IF NOT EXISTS は
+    # 以後スキップされる)。新規DBでも最終的な定義は複合列になる。
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_visual_index_sources_nb "
         "ON visual_index_sources(notebook_id)"
     )
+
+
+# --- Stage 4: visual_index を unit('page' | 'tile') 単位で管理する -----------
+#
+# ページ索引とタイル索引(PixelRAG式)を同一ノートブックで独立に構築するため、
+# PK を (notebook_id, unit) / (source_id, unit) に複合化する。SQLite には PK を
+# 変更する ALTER TABLE が無いので、公式手順(https://sqlite.org/lang_altertable.html
+# の "Making Other Kinds Of Table Schema Changes")どおりテーブルを作り直す。
+# このリポジトリ初のテーブル再作成マイグレーション。
+
+_VISUAL_INDEX_META_NEW_DDL = """
+CREATE TABLE visual_index_meta_new (
+  notebook_id     TEXT NOT NULL,
+  unit            TEXT NOT NULL DEFAULT 'page',  -- 'page' | 'tile'
+  embedding_model TEXT NOT NULL,
+  built_at        TEXT NOT NULL,
+  PRIMARY KEY (notebook_id, unit)
+)
+"""
+
+_VISUAL_INDEX_SOURCES_NEW_DDL = """
+CREATE TABLE visual_index_sources_new (
+  source_id   TEXT NOT NULL,
+  unit        TEXT NOT NULL DEFAULT 'page',      -- 'page' | 'tile'
+  notebook_id TEXT NOT NULL,
+  page_count  INTEGER NOT NULL,
+  built_at    TEXT NOT NULL,
+  PRIMARY KEY (source_id, unit)
+)
+"""
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone()
+    return row is not None
+
+
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    return any(r["name"] == column for r in conn.execute(f"PRAGMA table_info({table})"))
+
+
+def _ensure_visual_index_indexes(conn: sqlite3.Connection) -> None:
+    # 複合PK (source_id, unit) は notebook_id 検索を助けないので明示的に張る。
+    # DROP TABLE で旧インデックスも消えるため、作り直しは必須。
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visual_index_sources_nb "
+        "ON visual_index_sources(notebook_id, unit)"
+    )
+
+
+def run_visual_index_unit_migration(conn: sqlite3.Connection) -> None:
+    """visual_index_meta / visual_index_sources を unit 対応の複合PKに移行する。
+
+    - visual_index_meta:    PRIMARY KEY(notebook_id)  -> PRIMARY KEY(notebook_id, unit)
+    - visual_index_sources: PRIMARY KEY(source_id)    -> PRIMARY KEY(source_id, unit)
+    - 既存行はすべて unit='page' として移行する
+
+    Idempotent。unit 列が既にあれば何もしない(インデックスの補完のみ)。
+    run_visual_index_migration より後に呼ぶこと(テーブルが無ければ no-op)。
+
+    トランザクション: 呼び出し側の connect() は isolation_level=None(autocommit)
+    なので、既存マイグレーションと同様 commit は呼ばない。ただしテーブル再作成は
+    複数文にまたがり、途中で落ちるとテーブルが消えた状態で残るため、この関数
+    だけは明示 BEGIN/COMMIT で原子性を確保する(呼び出し側が既にトランザクション
+    中なら、その外側のトランザクションに委ねる)。
+
+    PRAGMA foreign_keys: visual_index_* は FK を持たず、他テーブルからも参照
+    されていない(schema.sql / migrations.py 全文で確認済み)。したがって
+    再作成時に foreign_keys を OFF にする必要は無い。
+    """
+    if not (
+        _table_exists(conn, "visual_index_meta")
+        and _table_exists(conn, "visual_index_sources")
+    ):
+        return
+
+    meta_needs = not _has_column(conn, "visual_index_meta", "unit")
+    sources_needs = not _has_column(conn, "visual_index_sources", "unit")
+    if not meta_needs and not sources_needs:
+        _ensure_visual_index_indexes(conn)
+        return
+
+    owns_tx = not conn.in_transaction
+    if owns_tx:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        if meta_needs:
+            conn.execute("DROP TABLE IF EXISTS visual_index_meta_new")
+            conn.execute(_VISUAL_INDEX_META_NEW_DDL)
+            conn.execute(
+                "INSERT INTO visual_index_meta_new"
+                "(notebook_id, unit, embedding_model, built_at) "
+                "SELECT notebook_id, 'page', embedding_model, built_at "
+                "FROM visual_index_meta"
+            )
+            conn.execute("DROP TABLE visual_index_meta")
+            conn.execute("ALTER TABLE visual_index_meta_new RENAME TO visual_index_meta")
+
+        if sources_needs:
+            conn.execute("DROP TABLE IF EXISTS visual_index_sources_new")
+            conn.execute(_VISUAL_INDEX_SOURCES_NEW_DDL)
+            conn.execute(
+                "INSERT INTO visual_index_sources_new"
+                "(source_id, unit, notebook_id, page_count, built_at) "
+                "SELECT source_id, 'page', notebook_id, page_count, built_at "
+                "FROM visual_index_sources"
+            )
+            conn.execute("DROP TABLE visual_index_sources")
+            conn.execute(
+                "ALTER TABLE visual_index_sources_new RENAME TO visual_index_sources"
+            )
+
+        _ensure_visual_index_indexes(conn)
+    except Exception:
+        if owns_tx:
+            conn.execute("ROLLBACK")
+        raise
+    if owns_tx:
+        conn.execute("COMMIT")
