@@ -1,3 +1,5 @@
+import type { VisualIndexUnit, VisualSearchStrategy } from './visualIndex';
+
 export interface ErrorBody {
   code: string;
   message: string;
@@ -233,10 +235,12 @@ export interface AppSettings {
   voice_input?: VoiceInputSettings | null;
   /** 開発者モード(spec 2026-07-02)。旧BEでは無いこともあるため optional。 */
   dev?: DevSettings;
-  /** 視覚埋め込み検索設定(Stage 3、ベータ)。 */
+  /** 視覚埋め込み検索設定(Stage 3/4、ベータ)。 */
   visual: {
     embedding_model: string;
     search_enabled: boolean;
+    index_unit: VisualIndexUnit;
+    search_strategy: VisualSearchStrategy;
   };
 }
 

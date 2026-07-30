@@ -8,6 +8,7 @@ import type {
   Stats,
   VoiceInputSettings,
 } from './types';
+import type { VisualIndexUnit, VisualSearchStrategy } from './visualIndex';
 
 export const settingsApi = {
   get: () => request<AppSettings>('/api/settings'),
@@ -27,10 +28,18 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify({ model }),
     }),
-  putVisualSearch: (search_enabled: boolean) =>
-    request<{ search_enabled: boolean }>('/api/settings/visual', {
+  putVisual: (patch: {
+    search_enabled?: boolean;
+    index_unit?: VisualIndexUnit;
+    search_strategy?: VisualSearchStrategy;
+  }) =>
+    request<{
+      search_enabled: boolean;
+      index_unit: VisualIndexUnit;
+      search_strategy: VisualSearchStrategy;
+    }>('/api/settings/visual', {
       method: 'PUT',
-      body: JSON.stringify({ search_enabled }),
+      body: JSON.stringify(patch),
     }),
   switchEmbedding: (model: string) =>
     request<unknown>('/api/settings/embedding/switch', {
