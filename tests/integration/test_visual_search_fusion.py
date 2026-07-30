@@ -250,6 +250,21 @@ async def test_pixel_native_caps_hits_at_max_images(tmp_path):
     assert len(hits) == 3
 
 
+async def test_pixel_native_can_exceed_limit_with_larger_max_images(tmp_path):
+    """max_images > limit の設定で、limit に丸められないこと。
+
+    spec §7.3「タイルはページ全体より小さくトークン消費が少ないため
+    pixel_native ではより多く積める」が成立する条件。
+    """
+    conn, nb, src, vs, ps = _setup(tmp_path)
+    for page in range(1, 8):
+        _add_visual_page(ps, nb, src, page=page, vec=[1.0, 0.0, 0.0, 0.0])
+    upsert_meta(conn, VisualIndexMeta(notebook_id=nb.id, embedding_model="vm", built_at="t"))
+    svc = _svc(conn, vs, ps, strategy="pixel_native", max_images=6)
+    hits = await svc.search(notebook_id=nb.id, query="q", limit=3)
+    assert len(hits) == 6
+
+
 async def test_tile_unit_collapses_to_one_hit_per_page(tmp_path):
     conn, nb, src, vs, ps_page = _setup(tmp_path)
     tile_store = _tile_store(vs)          # VisualUnitStore(client=vs.client, unit="tile")
@@ -298,4 +313,18 @@ async def test_pixel_native_returns_empty_when_visual_unavailable(tmp_path):
     _add_text_chunk(conn, vs, nb, src, cid="c1", page=1, ord_=0, vec=[1.0, 0.0, 0.0, 0.0])
     svc = _svc(conn, vs, ps, strategy="pixel_native", enabled=False)
     hits = await svc.search(notebook_id=nb.id, query="q", limit=5)
+    assert hits == []
+
+
+async def test_visual_only_does_not_fall_back_when_visual_is_healthy_but_empty(tmp_path):
+    """視覚索引が健全で今回のクエリに0件だった場合、テキストを混ぜない。
+
+    spec §7.1「テキスト検索と視覚検索のどちらが当てているかを混ぜずに比較する」。
+    """
+    conn, nb, src, vs, ps = _setup(tmp_path)
+    _add_text_chunk(conn, vs, nb, src, cid="c1", page=1, ord_=0, vec=[1.0, 0.0, 0.0, 0.0])
+    # 視覚索引は「構築済み」(meta あり)だが、ページベクタは1件も入っていない
+    upsert_meta(conn, VisualIndexMeta(notebook_id=nb.id, embedding_model="vm", built_at="t"))
+    svc = _svc(conn, vs, ps, strategy="visual_only")
+    hits = await svc.search(notebook_id=nb.id, query="q", limit=10)
     assert hits == []
