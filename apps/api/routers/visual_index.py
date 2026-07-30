@@ -105,11 +105,24 @@ async def _run_build(ctx, notebook_id: str, unit: str) -> None:
         # 設計(部分成功)なので、例外の有無や skipped_pages だけで判定すると
         # 「1件も索引できていないのに成功トースト」になる。レンダリングが
         # 全ソースで失敗した場合は skipped_pages すら増えない。
-        failed_entirely = result.target_sources > 0 and result.indexed_pages == 0
+        #
+        # target_sources == 0(= 未索引の READY な PDF が無かった)も「完了」
+        # とは別に扱う。build() は既に索引済みのソースを targets から除外する
+        # ため、tile_rows/tile_cols/tile_overlap だけを変えて再構築しても
+        # 1タイルも作り直されずに targets が空になる。これを visual_index_complete
+        # として通知すると、パラメータを変えたのに検索結果が変わらないという
+        # 誤った実験結論をユーザーに与えてしまう(spec §6.1 — 格子は実測で
+        # 調整する前提の値)。「何もしなかった」ことを別の type で可視化する。
+        if result.target_sources == 0:
+            outcome = "visual_index_noop"
+        elif result.indexed_pages == 0:
+            outcome = "visual_index_error"
+        else:
+            outcome = "visual_index_complete"
         await ctx.sse.publish(
             f"notebook:{notebook_id}",
             {
-                "type": "visual_index_error" if failed_entirely else "visual_index_complete",
+                "type": outcome,
                 "unit": unit,
                 "indexed_pages": result.indexed_pages,
                 "skipped_pages": result.skipped_pages,

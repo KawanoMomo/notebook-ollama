@@ -266,10 +266,20 @@
       if (!outcome || outcome.at <= lastSeenOutcomeAt[unit]) continue;
       lastSeenOutcomeAt = { ...lastSeenOutcomeAt, [unit]: outcome.at };
       const label = unit === 'tile' ? 'タイル索引' : 'ページ索引';
-      pushToast(
-        outcome.ok ? `${label}の構築が完了しました` : `${label}の構築に失敗しました`,
-        outcome.ok ? 'success' : 'error',
-      );
+      if (outcome.kind === 'complete') {
+        pushToast(`${label}の構築が完了しました`, 'success');
+      } else if (outcome.kind === 'noop') {
+        // target_sources == 0: 未索引の対象が無かった。タイル格子等の
+        // パラメータを変えても既に索引済みのソースは再構築対象にならない
+        // ため、無言で何もしないまま「完了」を装わせない(最終レビュー I3)。
+        pushToast(
+          `${label}の対象が0件でした。すべて索引済みです。` +
+            'パラメータを変えて作り直すには、先に索引を削除してください。',
+          'info',
+        );
+      } else {
+        pushToast(`${label}の構築に失敗しました`, 'error');
+      }
       if (visualIndexModalOpen) void refreshVisualIndexStatus();
     }
   });

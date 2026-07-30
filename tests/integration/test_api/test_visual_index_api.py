@@ -250,10 +250,14 @@ def test_render_failure_on_all_sources_publishes_error_not_complete(client, monk
     assert terminal[0]["skipped_pages"] == 0
 
 
-def test_no_target_pdf_sources_still_publishes_complete(client, monkeypatch):
-    """判定条件のもう半分(ユーザーが名指しした境界): 対象PDFソースが1本も無い
-    ノートブックでの build は、対象が無かっただけで失敗ではないため従来どおり
-    visual_index_complete のまま。"""
+def test_no_target_pdf_sources_publishes_noop(client, monkeypatch):
+    """最終レビュー I3: 対象PDFソースが1本も無い
+    ノートブックでの build は、「何もしなかった」のであって「完了」ではない。
+    以前は visual_index_complete
+    を publish していたが、これはタイル格子(tile_rows/cols/overlap)を変えて
+    再構築したユーザーが「1タイルも作り直されていない」ことに気付けず、成功
+    したと誤認する経路と同一の判定(target_sources==0)なので、この境界も
+    visual_index_noop に揃える。"""
     nb = _nb(client)
     _beta(client, True)
     _install_fake_encoder(client, monkeypatch)
@@ -271,10 +275,48 @@ def test_no_target_pdf_sources_still_publishes_complete(client, monkeypatch):
 
     terminal = [
         p for p in published
-        if p["type"] in ("visual_index_complete", "visual_index_error")
+        if p["type"] in ("visual_index_complete", "visual_index_error", "visual_index_noop")
     ]
     assert len(terminal) == 1, published
-    assert terminal[0]["type"] == "visual_index_complete"
+    assert terminal[0]["type"] == "visual_index_noop"
+    assert terminal[0]["indexed_pages"] == 0
+    assert terminal[0]["skipped_pages"] == 0
+
+
+def test_all_sources_already_indexed_publishes_noop(client, monkeypatch):
+    """最終レビュー I3 の本題: PDFソースは存在するが、全て既に索引済み(タイル
+    格子等のパラメータだけを変えて再構築を試みたケースを模す)だと targets が
+    空になり、1タイルも作り直されないまま無言で visual_index_complete が出て
+    いた。「対象が0件でした」と分かる別の type(visual_index_noop)を publish
+    することを検証する。"""
+    nb = _nb(client)
+    _beta(client, True)
+    _install_fake_encoder(client, monkeypatch)
+    ctx = client.app.state.ctx
+    src_id = _make_ready_pdf_source(ctx, nb)
+
+    from core.storage.visual_index_repo import mark_source_indexed
+
+    mark_source_indexed(
+        ctx.conn, notebook_id=nb, source_id=src_id, page_count=1, built_at="t", unit="page",
+    )
+
+    published: list[dict] = []
+
+    async def fake_publish(channel: str, payload: dict) -> None:
+        published.append(payload)
+
+    monkeypatch.setattr(ctx.sse, "publish", fake_publish)
+
+    res = client.post(f"/api/notebooks/{nb}/visual-index?unit=page")
+    assert res.status_code == 202
+
+    terminal = [
+        p for p in published
+        if p["type"] in ("visual_index_complete", "visual_index_error", "visual_index_noop")
+    ]
+    assert len(terminal) == 1, published
+    assert terminal[0]["type"] == "visual_index_noop"
     assert terminal[0]["indexed_pages"] == 0
     assert terminal[0]["skipped_pages"] == 0
 

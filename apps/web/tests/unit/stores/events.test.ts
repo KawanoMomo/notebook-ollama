@@ -273,3 +273,56 @@ describe('events store — 終端 status で currentNotebookStore.refreshSources
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+// 最終レビュー I3: タイル格子(tile_rows/tile_cols/tile_overlap)を変えて再構築
+// しても、既に索引済みのソースは対象にならず無言の no-op になっていた。
+// visual_index_complete と別の type(visual_index_noop)を区別して保持することを
+// 検証する(kind は 'complete' | 'error' | 'noop' の3値)。
+describe('events store — visualIndexOutcome の kind (complete/error/noop)', () => {
+  it('visual_index_complete で kind:"complete" を記録する', () => {
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: '',
+      status: '',
+      type: 'visual_index_complete',
+      unit: 'page',
+      indexed_pages: 3,
+      skipped_pages: 0,
+      indexed_tiles: 0,
+    });
+    expect(eventsStore.visualIndexOutcomeFor('page')?.kind).toBe('complete');
+  });
+
+  it('visual_index_error で kind:"error" を記録する', () => {
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: '',
+      status: '',
+      type: 'visual_index_error',
+      unit: 'page',
+    });
+    expect(eventsStore.visualIndexOutcomeFor('page')?.kind).toBe('error');
+  });
+
+  it('visual_index_noop で kind:"noop" を記録する(対象0件=既に索引済みで再構築されなかった)', () => {
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: '',
+      status: '',
+      type: 'visual_index_noop',
+      unit: 'tile',
+      indexed_pages: 0,
+      skipped_pages: 0,
+      indexed_tiles: 0,
+    });
+    expect(eventsStore.visualIndexOutcomeFor('tile')?.kind).toBe('noop');
+  });
+
+  it('ページ索引とタイル索引の outcome は独立して保持される', () => {
+    eventsStore.start('nb1');
+    capturedOnEvent!({ source_id: '', status: '', type: 'visual_index_noop', unit: 'tile' });
+    capturedOnEvent!({ source_id: '', status: '', type: 'visual_index_complete', unit: 'page' });
+    expect(eventsStore.visualIndexOutcomeFor('tile')?.kind).toBe('noop');
+    expect(eventsStore.visualIndexOutcomeFor('page')?.kind).toBe('complete');
+  });
+});
