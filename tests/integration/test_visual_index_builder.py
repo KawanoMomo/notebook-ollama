@@ -12,7 +12,7 @@ from core.storage.sources_repo import (  # noqa: E402
 )
 from core.storage.vector_store import VectorStore  # noqa: E402
 from core.storage.visual_index_repo import get_meta, list_indexed_source_ids  # noqa: E402
-from core.storage.visual_store import VisualPageStore, VisualUnitStore  # noqa: E402
+from core.storage.visual_store import VisualUnitStore  # noqa: E402
 from core.visual.index_builder import BuilderDeps, VisualIndexBuilder  # noqa: E402
 
 
@@ -50,7 +50,7 @@ def _setup(tmp_path):
     nb = create_notebook(conn, name="N")
     vs = VectorStore(path=tmp_path / "q", dim=4)
     vs.ensure_collection()
-    ps = VisualPageStore(client=vs.client)
+    ps = VisualUnitStore(client=vs.client, unit="page")
     sources_dir = tmp_path / "sources"
     sources_dir.mkdir()
     assets_dir = tmp_path / "assets"
