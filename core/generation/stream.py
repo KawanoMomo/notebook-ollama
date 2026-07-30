@@ -66,7 +66,10 @@ class GenerationDeps:
     retrieval: _RetrievalLike
     ollama: _GatewayLike
     assets_lookup: Callable[[list[str]], dict[str, list[AssetRecord]]] | None = None
-    vision_check: Callable[[], Any] | None = None  # -> Awaitable[bool]
+    # 実際に応答生成に使うモデル名を受け取る。ノートブック単位の
+    # default_model 上書き(notebooks.default_model)があるため、
+    # グローバル既定を見ると誤判定する(実機検証で確認)。
+    vision_check: Callable[[str], Any] | None = None  # (model) -> Awaitable[bool]
     figure_images_lookup: Callable[[list[str]], dict[str, bytes]] | None = None
     page_images_lookup: (
         Callable[
@@ -203,7 +206,7 @@ class GenerationService:
         has_page_lookup = self._deps.page_images_lookup is not None
         if self._deps.vision_check is not None and (has_figure_lookup or has_page_lookup):
             try:
-                is_vision = await self._deps.vision_check()
+                is_vision = await self._deps.vision_check(model)
             except Exception:
                 # pixel_native は画像が唯一の根拠なので握り潰さない。
                 # 他の戦略は画像なしで生成を続ける(Ollama 停止で生成全体を

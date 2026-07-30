@@ -59,7 +59,10 @@ def _deps(*, hits, gateway, vision=True, images=None, strategy="pixel_native", m
 
 
 def _const_async(value):
-    async def _f():
+    # vision_check は実際に応答生成へ使うモデル名を受け取る(不具合B)。
+    # この Fake は値を固定で返すだけなので受け取った model は無視するが、
+    # 呼び出し側の新シグネチャ vision_check(model) に合わせて引数を持つ。
+    async def _f(model):
         return value
     return _f
 
@@ -146,7 +149,7 @@ async def test_non_pixel_native_still_caps_at_two_images():
 async def test_vision_check_failure_degrades_for_non_pixel_native():
     """Ollama 停止時、hybrid_rrf は画像なしで生成を続ける。"""
     class BoomVision:
-        async def __call__(self):
+        async def __call__(self, model):
             raise AppError(ErrorCode.OLLAMA_UNREACHABLE, "down")
 
     gw = CapturingGateway()
@@ -165,7 +168,7 @@ async def test_vision_check_failure_degrades_for_non_pixel_native():
 async def test_vision_check_failure_propagates_for_pixel_native():
     """pixel_native は画像が唯一の根拠なので握り潰さない。"""
     class BoomVision:
-        async def __call__(self):
+        async def __call__(self, model):
             raise AppError(ErrorCode.OLLAMA_UNREACHABLE, "down")
 
     gw = CapturingGateway()
@@ -180,3 +183,37 @@ async def test_vision_check_failure_propagates_for_pixel_native():
     with pytest.raises(AppError) as ei:
         await _run(deps)
     assert ei.value.code == ErrorCode.OLLAMA_UNREACHABLE
+
+
+async def test_vision_check_receives_the_model_actually_used_for_generation():
+    """回帰テスト(実機検証15b・不具合B): ノートブック単位の default_model 上書き
+    (notebooks.default_model)を無視しないよう、run() に渡された実際の model
+    引数がそのまま vision_check に渡ることを検証する。グローバル既定
+    (config.ollama.default_model)ではなく、chat.py が解決済みの値を見るのが
+    正しい(実機で誤判定を確認済み)。"""
+    gw = CapturingGateway()
+    received_models: list[str] = []
+
+    async def vision_check(model):
+        received_models.append(model)
+        return True
+
+    deps = GenerationDeps(
+        retrieval=FakeRetrieval([_pixel_hit()]),
+        ollama=gw,
+        vision_check=vision_check,
+        page_images_lookup=lambda keys: {("s1", 3, None): b"PNG"},
+        visual_strategy=lambda: "pixel_native",
+        max_images_getter=lambda: 4,
+    )
+    svc = GenerationService(deps=deps)
+    events = [
+        e
+        async for e in svc.run(
+            notebook_id="nb1", model="qwen3-vl:notebook-override", question="これは何?",
+            history=[], num_ctx=8192, context_budget_ratio=0.6,
+            response_budget_tokens=1024, retrieval_top_k=5, min_history_turns=1,
+        )
+    ]
+    assert received_models == ["qwen3-vl:notebook-override"]
+    assert events[-1].data["model_used"] == "qwen3-vl:notebook-override"

@@ -49,7 +49,7 @@ async def test_vision_model_gets_figure_image_injected():
         deps=GenerationDeps(
             retrieval=FigureRetrieval(),
             ollama=gateway,
-            vision_check=lambda: _async_true(),
+            vision_check=lambda model: _async_true(),
             figure_images_lookup=lambda chunk_ids: {"fc1": FIGURE_PNG},
         )
     )
@@ -68,7 +68,7 @@ async def test_non_vision_model_gets_text_only():
         deps=GenerationDeps(
             retrieval=FigureRetrieval(),
             ollama=gateway,
-            vision_check=lambda: _async_false(),
+            vision_check=lambda model: _async_false(),
             figure_images_lookup=lambda chunk_ids: {"fc1": FIGURE_PNG},
         )
     )

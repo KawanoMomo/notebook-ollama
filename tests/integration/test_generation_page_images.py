@@ -34,7 +34,7 @@ class RecordingGateway:
             meta["done_reason"] = "stop"
 
 
-async def _vision_true():
+async def _vision_true(model):
     return True
 
 
