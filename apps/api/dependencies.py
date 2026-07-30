@@ -465,8 +465,12 @@ def build_context(config: AppConfig) -> AppContext:
         ),
     )
 
-    async def _probe_vision() -> bool:
-        # 判定対象は「現在チャット応答を生成しているモデル」(default_model)。
+    async def _probe_vision(model: str) -> bool:
+        # 判定対象は「実際に応答生成へ使われるモデル」。呼び出し元(chat.py)が
+        # nb.default_model or ctx.config.ollama.default_model で解決済みの値を
+        # 渡してくる — ここでグローバル既定(config.ollama.default_model)を
+        # 見ると、ノートブック単位で vision 対応モデルに上書きしているのに
+        # 誤って非vision判定される(実機検証で確認)。
         # 取込時の図説明/OCR専用モデル(vision_model)とは別軸(spec §7)。
         if not _pipeline_features.is_enabled("table-figure-rag"):
             return False
@@ -478,7 +482,7 @@ def build_context(config: AppConfig) -> AppContext:
         client = OllamaClient(
             endpoint=config.ollama.endpoint, timeout=config.ollama.request_timeout_seconds
         )
-        return await probe_vision_capability(client, config.ollama.default_model)
+        return await probe_vision_capability(client, model)
 
     def _lookup_figure_images(chunk_ids: list[str]) -> dict[str, bytes]:
         assets_by_desc_chunk = list_assets_for_desc_chunk_ids(conn, chunk_ids)
