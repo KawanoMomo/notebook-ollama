@@ -14,6 +14,7 @@ def format_location(
     heading_path: str | None,
     start_ms: int | None = None,
     speaker: str | None = None,
+    tile_index: int | None = None,
 ) -> str:
     if start_ms is not None or speaker is not None:
         parts: list[str] = []
@@ -24,7 +25,8 @@ def format_location(
         return " ".join(parts)
     parts = []
     if page is not None:
-        parts.append(f"p.{page}")
+        # tile_index は 0 始まりで保持し、表示だけ 1 始まりにする (Stage 4)
+        parts.append(f"p.{page} タイル{tile_index + 1}" if tile_index is not None else f"p.{page}")
     if heading_path:
         parts.append(heading_path)
     return ", ".join(parts)
