@@ -133,21 +133,3 @@ def test_page_point_id_is_unchanged_from_stage3(tmp_path):
     assert _unit_point_id("tile", "src1", 3, 2) == str(
         uuid.uuid5(_NS, "visualtile:src1:3:2")
     )
-
-
-def test_backward_compatible_aliases_exist(tmp_path):
-    """Stage 3 の呼び出し元(dependencies.py / sources.py / テスト)を壊さない。"""
-    from core.storage.visual_store import PageHit, PageVector, VisualPageStore
-
-    vs = VectorStore(path=tmp_path / "q", dim=4)
-    vs.ensure_collection()
-    store = VisualPageStore(client=vs.client)
-    store.ensure_collection(dim=4)
-    store.upsert_pages([
-        PageVector(
-            source_id="s1", page=1, vector=[1.0, 0.0, 0.0, 0.0],
-            notebook_id="nb1", embedding_model="m", built_at="t",
-        )
-    ])
-    hits = store.search(query=[1.0, 0.0, 0.0, 0.0], notebook_id="nb1", limit=5)
-    assert len(hits) == 1 and isinstance(hits[0], PageHit)

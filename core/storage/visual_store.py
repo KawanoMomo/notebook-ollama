@@ -20,9 +20,6 @@ from qdrant_client.http import models as qm
 PAGE_COLLECTION = "pages_visual"
 TILE_COLLECTION = "tiles_visual"
 
-# Stage 3 の呼び出し元との後方互換
-VISUAL_COLLECTION = PAGE_COLLECTION
-
 _COLLECTION_BY_UNIT = {"page": PAGE_COLLECTION, "tile": TILE_COLLECTION}
 
 _NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
@@ -57,11 +54,6 @@ class UnitHit:
     page: int
     score: float
     tile_index: int | None = None
-
-
-# Stage 3 の呼び出し元との後方互換エイリアス
-PageVector = UnitVector
-PageHit = UnitHit
 
 
 class VisualUnitStore:
@@ -116,9 +108,6 @@ class VisualUnitStore:
         ]
         self._client.upsert(collection_name=self._collection, points=points)
 
-    # Stage 3 の呼び出し元との後方互換
-    upsert_pages = upsert_units
-
     def search(self, *, query: list[float], notebook_id: str, limit: int) -> list[UnitHit]:
         if not self._exists():
             return []
@@ -163,14 +152,3 @@ class VisualUnitStore:
                 must=[qm.FieldCondition(key="notebook_id", match=qm.MatchValue(value=notebook_id))]
             ),
         )
-
-
-class VisualPageStore(VisualUnitStore):
-    """Stage 3 互換の薄いサブクラス(unit="page" 固定)。
-
-    apps/api/routers/sources.py など「ページ索引を消す」意図の既存呼び出しを
-    そのまま動かすために残す。新規コードは VisualUnitStore を使うこと。
-    """
-
-    def __init__(self, *, client: QdrantClient) -> None:
-        super().__init__(client=client, unit="page")

@@ -7,7 +7,7 @@ from core.storage.notebooks_repo import create_notebook
 from core.storage.sources_repo import create_source
 from core.storage.vector_store import ChunkVector, VectorStore
 from core.storage.visual_index_repo import VisualIndexMeta, upsert_meta
-from core.storage.visual_store import PageVector, UnitVector, VisualPageStore, VisualUnitStore
+from core.storage.visual_store import UnitVector, VisualUnitStore
 
 pytestmark = pytest.mark.qdrant
 
@@ -41,7 +41,7 @@ def _setup(tmp_path):
     src = create_source(conn, notebook_id=nb.id, kind="pdf", title="Doc", content_hash="h")
     vs = VectorStore(path=tmp_path / "q", dim=4)
     vs.ensure_collection()
-    ps = VisualPageStore(client=vs.client)
+    ps = VisualUnitStore(client=vs.client, unit="page")
     ps.ensure_collection(dim=4)
     return conn, nb, src, vs, ps
 
@@ -58,7 +58,7 @@ def _add_text_chunk(conn, vs, nb, src, *, cid, page, ord_, vec, text="本文"):
 
 
 def _add_visual_page(ps, nb, src, *, page, vec):
-    ps.upsert_pages([PageVector(
+    ps.upsert_units([UnitVector(
         source_id=src.id, page=page, vector=vec, notebook_id=nb.id,
         embedding_model="vm", built_at="t",
     )])
