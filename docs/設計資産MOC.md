@@ -44,7 +44,7 @@ tags:
 > - [[2026-07-20-pdf-table-figure-sidecar-design|PDF表・図サイドカー抽出 (Stage 1)]] ✅
 > - [[2026-07-20-vlm-figure-ocr-design|VLM図説明・スキャンPDF OCR (Stage 2)]] ✅
 > - [[2026-07-20-visual-embedding-index-design|視覚埋め込み第2インデックス (Stage 3)]] ✅
-> - [[2026-07-29-pixelrag-tile-index-design|PixelRAG式タイル索引と検索戦略の選択 (Stage 4)]] 📝
+> - [[2026-07-29-pixelrag-tile-index-design|PixelRAG式タイル索引と検索戦略の選択 (Stage 4)]] ✅
 
 > [!abstract] 要約 (summary)
 > - [[2026-06-26-meeting-adr-templates|議事録テンプレ + ADR 抽出機能]] ✅
@@ -82,6 +82,10 @@ tags:
 > - [[draft-2026-07-20-beta-feature-flag-registry|機能提供はコード内フラグレジストリ+設定オプトインのベータ機構]] — アーキテクチャ/リリース管理（ベータ基盤起票）
 > - [[draft-2026-07-20-assistant-prefill-continuation|打ち切り継続は assistant prefill(末尾assistantメッセージ再送)]] — アーキテクチャ/結合度（自動継続起票）
 > - [[draft-2026-07-20-truncated-persistence-update-in-place|truncatedはmessagesカラム永続化+手動継続は最終assistantメッセージ追記更新]] — データモデル（自動継続起票）
+> - [[draft-2026-07-29-visual-index-unit-collections|視覚索引の単位はコレクション分離(payloadフィルタでなく)とする]] — アーキテクチャ/データモデル（タイル索引Stage 4起票）
+> - [[draft-2026-07-29-pixel-native-explicit-failure|pixel_nativeは根拠画像なしで黙って劣化させず明示エラーにする]] — アーキテクチャ/エラー処理（タイル索引Stage 4起票）
+> - [[draft-2026-07-29-torch-cuda-wheel-index|visual extraのtorchはCUDAホイールインデックスに切替、CPUはフォールバックとして残す]] — 外部依存/パッケージング（タイル索引Stage 4起票）
+> - [[draft-2026-07-29-partial-success-per-unit|視覚索引構築の部分成功は単位ごとの独立性を意味する]] — アーキテクチャ/エラー処理（タイル索引Stage 4起票）
 
 ## 🏷️ ステータス凡例
 
