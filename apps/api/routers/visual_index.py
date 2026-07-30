@@ -100,10 +100,12 @@ async def _run_build(ctx, notebook_id: str, unit: str) -> None:
             )
         )
         result = await builder.build(notebook_id)
-        # 全単位が失敗した構築を「完了」と通知しない。ビルダは単位ごとの失敗を
-        # 握り潰して例外を投げない設計(部分成功)なので、例外の有無だけで
-        # 成否を判定すると「1件も索引できていないのに成功トースト」になる。
-        failed_entirely = result.indexed_pages == 0 and result.skipped_pages > 0
+        # 対象があったのに1件も索引できなかった構築を「完了」と通知しない。
+        # ビルダは単位ごとの失敗もレンダリング失敗も握り潰して例外を投げない
+        # 設計(部分成功)なので、例外の有無や skipped_pages だけで判定すると
+        # 「1件も索引できていないのに成功トースト」になる。レンダリングが
+        # 全ソースで失敗した場合は skipped_pages すら増えない。
+        failed_entirely = result.target_sources > 0 and result.indexed_pages == 0
         await ctx.sse.publish(
             f"notebook:{notebook_id}",
             {
