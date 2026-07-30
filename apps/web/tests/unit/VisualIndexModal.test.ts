@@ -1,116 +1,141 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { describe, expect, it, vi } from 'vitest';
+
 import VisualIndexModal from '$lib/components/VisualIndexModal.svelte';
+import type { VisualIndexStatus, VisualUnitStatus } from '$lib/api/visualIndex';
 
-afterEach(() => cleanup());
-
-function makeStatus(overrides: Record<string, unknown> = {}) {
+function unitStatus(over: Partial<VisualUnitStatus> = {}): VisualUnitStatus {
   return {
-    built: false, embedding_model: null, built_at: null,
-    indexed_sources: 0, pending_sources: 0, building: false,
-    extra_available: true, ...overrides,
+    built: false,
+    embedding_model: null,
+    built_at: null,
+    indexed_sources: 0,
+    pending_sources: 0,
+    building: false,
+    ...over,
   };
 }
 
+function makeStatus(over: Partial<VisualIndexStatus> = {}): VisualIndexStatus {
+  return {
+    extra_available: true,
+    index_unit: 'page',
+    search_strategy: 'hybrid_rrf',
+    units: { page: unitStatus(), tile: unitStatus() },
+    ...over,
+  };
+}
+
+function renderModal(over: Partial<VisualIndexStatus> = {}, props: Record<string, unknown> = {}) {
+  return render(VisualIndexModal, {
+    props: {
+      notebookId: 'nb1',
+      status: makeStatus(over),
+      progressFor: () => null,
+      onBuild: vi.fn(),
+      onDelete: vi.fn(),
+      onClose: vi.fn(),
+      ...props,
+    },
+  });
+}
+
 describe('VisualIndexModal', () => {
-  it('未構築時は構築ボタンが有効、削除ボタンは出ない', async () => {
-    render(VisualIndexModal, {
-      notebookId: 'nb1', status: makeStatus(), onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
-    });
-    const build = screen.getByRole('button', { name: '視覚インデックスを構築' });
-    expect((build as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.queryByRole('button', { name: '視覚インデックスを削除' })).toBeNull();
+  it('両方の索引の行を表示する', () => {
+    renderModal();
+    expect(screen.getByRole('group', { name: 'ページ索引' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'タイル索引' })).toBeTruthy();
   });
 
-  it('extra未導入時は構築ボタン無効+導入ヒント表示', () => {
-    render(VisualIndexModal, {
-      notebookId: 'nb1', status: makeStatus({ extra_available: false }),
-      onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
-    });
-    expect((screen.getByRole('button', { name: '視覚インデックスを構築' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/uv sync --extra visual/)).toBeTruthy();
+  it('未構築の行には削除ボタンを出さない', () => {
+    renderModal();
+    expect(screen.queryByRole('button', { name: 'ページ索引を削除' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'タイル索引を削除' })).toBeNull();
   });
 
-  it('構築済み時は状態と削除ボタンを表示、2段階確認で削除実行', async () => {
+  it('構築済みの行にだけ削除ボタンを出す', () => {
+    renderModal({
+      units: {
+        page: unitStatus({ built: true, embedding_model: 'm', built_at: '2026-07-29T10:00:00Z' }),
+        tile: unitStatus(),
+      },
+    });
+    expect(screen.getByRole('button', { name: 'ページ索引を削除' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'タイル索引を削除' })).toBeNull();
+  });
+
+  it('構築ボタンは単位を渡して呼ばれる', async () => {
+    const onBuild = vi.fn();
+    renderModal({}, { onBuild });
+    (screen.getByRole('button', { name: 'タイル索引を構築' }) as HTMLButtonElement).click();
+    expect(onBuild).toHaveBeenCalledWith('tile');
+  });
+
+  it('削除は2段階確認で、行ごとに独立している', async () => {
     const onDelete = vi.fn();
-    render(VisualIndexModal, {
-      notebookId: 'nb1',
-      status: makeStatus({ built: true, embedding_model: 'vm', built_at: '2026-07-25T00:00:00Z', indexed_sources: 3, pending_sources: 1 }),
-      onBuild: vi.fn(), onDelete, onClose: vi.fn(),
-    });
-    expect(screen.getByText(/vm/)).toBeTruthy();
-    expect(screen.getByText(/未索引 1 件/)).toBeTruthy();
-
-    // 第1段階: 削除ボタンをクリック (arm状態に遷移)
-    const deleteButton = screen.getByRole('button', { name: '視覚インデックスを削除' });
-    await fireEvent.click(deleteButton);
+    renderModal(
+      {
+        units: {
+          page: unitStatus({ built: true }),
+          tile: unitStatus({ built: true }),
+        },
+      },
+      { onDelete },
+    );
+    // 生の .click() は @testing-library/svelte の eventWrapper(flushSync)を経由せず、
+    // Svelte 5 の状態更新がマイクロタスクで反映される前に次の assertion が走ってしまう。
+    // fireEvent 経由(内部で act() -> flushSync)にして同期反映させてから検証する。
+    await fireEvent.click(screen.getByRole('button', { name: 'ページ索引を削除' }));
     expect(onDelete).not.toHaveBeenCalled();
+    // page 行だけが armed になり、tile 行は元のラベルのまま
+    expect(screen.getByRole('button', { name: '本当にページ索引を削除' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'タイル索引を削除' })).toBeTruthy();
 
-    // 削除ボタンが「本当に削除」に変わることを確認
-    expect(screen.getByRole('button', { name: '本当に削除' })).toBeTruthy();
-
-    // 第2段階: 「本当に削除」をクリック (削除実行)
-    const confirmButton = screen.getByRole('button', { name: '本当に削除' });
-    await fireEvent.click(confirmButton);
-    expect(onDelete).toHaveBeenCalledTimes(1);
+    await fireEvent.click(screen.getByRole('button', { name: '本当にページ索引を削除' }));
+    expect(onDelete).toHaveBeenCalledWith('page');
   });
 
-  it('削除確認中に「やめる」をクリックするとキャンセルされる', async () => {
-    const onDelete = vi.fn();
-    render(VisualIndexModal, {
-      notebookId: 'nb1',
-      status: makeStatus({ built: true, embedding_model: 'vm', built_at: '2026-07-25T00:00:00Z', indexed_sources: 3, pending_sources: 1 }),
-      onBuild: vi.fn(), onDelete, onClose: vi.fn(),
-    });
-
-    // 削除ボタンをクリックして arm状態に
-    await fireEvent.click(screen.getByRole('button', { name: '視覚インデックスを削除' }));
-    expect(screen.getByRole('button', { name: '本当に削除' })).toBeTruthy();
-
-    // 「やめる」をクリック
-    const cancelButton = screen.getByRole('button', { name: 'やめる' });
-    await fireEvent.click(cancelButton);
-
-    // 削除ボタンが元の状態に戻ることを確認
-    expect(screen.getByRole('button', { name: '視覚インデックスを削除' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'やめる' })).toBeNull();
-
-    // onDelete が呼ばれていないことを確認
-    expect(onDelete).not.toHaveBeenCalled();
+  it('「やめる」で armed 状態が解除される', async () => {
+    renderModal({ units: { page: unitStatus({ built: true }), tile: unitStatus() } });
+    await fireEvent.click(screen.getByRole('button', { name: 'ページ索引を削除' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'ページ索引の削除をやめる' }));
+    expect(screen.getByRole('button', { name: 'ページ索引を削除' })).toBeTruthy();
   });
 
-  it('etaSeconds があれば残り時間目安を表示、無ければ出さない', () => {
-    render(VisualIndexModal, {
-      notebookId: 'nb1', status: makeStatus({ building: true }),
-      progress: { done: 3, total: 10, etaSeconds: 370 },
-      onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
-    });
-    expect(screen.getByText(/残り目安 約7分/)).toBeTruthy();
-    cleanup();
-    render(VisualIndexModal, {
-      notebookId: 'nb1', status: makeStatus({ building: true }),
-      progress: { done: 1, total: 10, etaSeconds: null },
-      onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
-    });
-    expect(screen.queryByText(/残り目安/)).toBeNull();
+  it('構築中の行に進捗と残り時間目安を出す', () => {
+    renderModal(
+      { units: { page: unitStatus({ building: true }), tile: unitStatus() } },
+      { progressFor: (u: string) => (u === 'page' ? { done: 3, total: 10, etaSeconds: 400 } : null) },
+    );
+    const row = screen.getByRole('group', { name: 'ページ索引' });
+    expect(within(row).getByText(/3 \/ 10/)).toBeTruthy();
+    expect(within(row).getByText(/残り目安 約7分/)).toBeTruthy();
+    // tile 行には進捗が出ない
+    const tileRow = screen.getByRole('group', { name: 'タイル索引' });
+    expect(within(tileRow).queryByText(/\d+ \/ \d+/)).toBeNull();
   });
 
-  it('etaSeconds が60未満なら「1分未満」表示', () => {
-    render(VisualIndexModal, {
-      notebookId: 'nb1', status: makeStatus({ building: true }),
-      progress: { done: 9, total: 10, etaSeconds: 45 },
-      onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
-    });
+  it('60秒未満の ETA は「1分未満」と出す', () => {
+    renderModal(
+      { units: { page: unitStatus({ building: true }), tile: unitStatus() } },
+      { progressFor: () => ({ done: 9, total: 10, etaSeconds: 30 }) },
+    );
     expect(screen.getByText(/残り目安 1分未満/)).toBeTruthy();
   });
 
-  it('building中は構築ボタン無効+進捗表示', () => {
-    render(VisualIndexModal, {
-      notebookId: 'nb1', status: makeStatus({ building: true }),
-      progress: { done: 3, total: 10 },
-      onBuild: vi.fn(), onDelete: vi.fn(), onClose: vi.fn(),
-    });
-    expect((screen.getByRole('button', { name: '視覚インデックスを構築' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/3 \/ 10/)).toBeTruthy();
+  it('extra 未導入なら両方の構築ボタンを無効化する', () => {
+    renderModal({ extra_available: false });
+    expect(
+      (screen.getByRole('button', { name: 'ページ索引を構築' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'タイル索引を構築' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('検索に使われている単位を示す', () => {
+    renderModal({ index_unit: 'tile' });
+    const row = screen.getByRole('group', { name: 'タイル索引' });
+    expect(within(row).getByText(/検索に使用中/)).toBeTruthy();
   });
 });
