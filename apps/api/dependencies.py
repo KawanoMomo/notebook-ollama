@@ -468,7 +468,12 @@ def build_context(config: AppConfig) -> AppContext:
     async def _probe_vision() -> bool:
         # 判定対象は「現在チャット応答を生成しているモデル」(default_model)。
         # 取込時の図説明/OCR専用モデル(vision_model)とは別軸(spec §7)。
-        if not config.ollama.vision_model or not _pipeline_features.is_enabled("table-figure-rag"):
+        if not _pipeline_features.is_enabled("table-figure-rag"):
+            return False
+        # pixel_native はチャットモデルの vision 能力だけが要件。Stage 2 の
+        # vision_model(取込時OCR用)を設定していないユーザーでも使えるように、
+        # この戦略のときだけ vision_model の有無を条件から外す。
+        if config.visual.search_strategy != "pixel_native" and not config.ollama.vision_model:
             return False
         client = OllamaClient(
             endpoint=config.ollama.endpoint, timeout=config.ollama.request_timeout_seconds
@@ -519,6 +524,8 @@ def build_context(config: AppConfig) -> AppContext:
             vision_check=_probe_vision,
             figure_images_lookup=_lookup_figure_images,
             page_images_lookup=_lookup_page_images,
+            visual_strategy=lambda: config.visual.search_strategy,
+            max_images_getter=lambda: config.visual.max_images,
         )
     )
     recordings = RecordingRegistry()
