@@ -137,8 +137,10 @@
                 必要があります</strong>（未構築のままだと自動的にテキスト検索へ切り戻ります）。
                 構築時間は<strong>GPUが使える環境では1ページあたり約0.36秒</strong>、
                 <strong>CPUのみの環境では1ページあたり約52秒</strong>です（進捗と残り時間目安を表示）。
-                ただし<strong>録音機能(recording)を有効にした環境ではGPUが使えずCPU実行になります</strong>
-                （視覚埋め込みと録音のGPU利用は同一環境で両立しないため）。
+                <strong>注意</strong>: 録音機能(recording)とGPU版の視覚埋め込みは同一環境で
+                両立せず、<strong>視覚インデックスの構築が失敗します</strong>
+                （遅くなるのではなく失敗します）。視覚埋め込みをGPUで使う場合は、
+                recordingを入れない環境にしてください。
               </p>
               <img src="/help/table-figure-rag/visual-index-modal.png" alt="視覚インデックスの構築・削除モーダル" loading="lazy" />
 
