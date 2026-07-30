@@ -1,7 +1,8 @@
 <script lang="ts">
+  import type { VisualIndexStatus, VisualIndexUnit, VisualUnitStatus } from '$lib/api/visualIndex';
+  import { VISUAL_INDEX_UNITS } from '$lib/api/visualIndex';
   import Modal from './Modal.svelte';
   import Spinner from './Spinner.svelte';
-  import type { VisualIndexStatus } from '$lib/api/visualIndex';
 
   interface Progress {
     done: number;
@@ -12,87 +13,123 @@
   interface Props {
     notebookId: string;
     status: VisualIndexStatus;
-    progress?: Progress | null;
-    onBuild: () => void;
-    onDelete: () => void;
+    progressFor: (unit: VisualIndexUnit) => Progress | null;
+    onBuild: (unit: VisualIndexUnit) => void;
+    onDelete: (unit: VisualIndexUnit) => void;
     onClose: () => void;
   }
   // notebookId は呼び出し元(SourcesPanel)とのインタフェース合わせのため受け取るのみで、
   // このコンポーネント自体は表示専用のため参照しない。
-  let { status, progress = null, onBuild, onDelete, onClose }: Props = $props();
+  let { status, progressFor, onBuild, onDelete, onClose }: Props = $props();
 
-  let buildDisabled = $derived(status.building || !status.extra_available);
-  let deleteArmed = $state(false);
+  const UNIT_LABELS: Record<VisualIndexUnit, string> = {
+    page: 'ページ索引',
+    tile: 'タイル索引',
+  };
 
-  /** ISO-8601 をユーザのローカル時刻で整形する。パース失敗時は元の文字列を返す
-   * (BugReportTab.svelte の formatDate と同じ方針)。 */
+  // 行ごとに削除の2段階確認を持つ。単一の状態にすると片方を押したときに
+  // もう片方まで「本当に削除」表示になる。
+  let deleteArmed = $state<Record<VisualIndexUnit, boolean>>({ page: false, tile: false });
+
+  function unitOf(unit: VisualIndexUnit): VisualUnitStatus {
+    return status.units[unit];
+  }
+
+  function buildDisabled(unit: VisualIndexUnit): boolean {
+    return unitOf(unit).building || !status.extra_available;
+  }
+
   function formatDate(iso: string): string {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleString('ja-JP');
   }
 
-  /** 残り時間目安の表示文言。CPU推論では1ページ数十秒かかるため、目安表示は
-   * ADRドラフト(visual-embedding-ondemand-transformers)が求める要件。 */
   function formatEta(seconds: number): string {
     if (seconds < 60) return '残り目安 1分未満';
     return `残り目安 約${Math.ceil(seconds / 60)}分`;
+  }
+
+  function onDeleteClick(unit: VisualIndexUnit) {
+    if (deleteArmed[unit]) {
+      onDelete(unit);
+      deleteArmed = { ...deleteArmed, [unit]: false };
+    } else {
+      deleteArmed = { ...deleteArmed, [unit]: true };
+    }
   }
 </script>
 
 <Modal title="視覚インデックス" {onClose}>
   <div class="visual-index">
     {#if !status.extra_available}
-      <p class="hint">この機能には `uv sync --extra visual` が必要です</p>
+      <p class="hint">
+        視覚埋め込みの依存が未導入です。<code>uv sync --extra visual</code> を実行してください。
+      </p>
     {/if}
 
-    {#if status.built}
-      <p class="status">
-        構築済み: {status.embedding_model}（{status.built_at ? formatDate(status.built_at) : '日時不明'}）
-      </p>
-      <p class="status">
-        ソース {status.indexed_sources} 件 / 未索引 {status.pending_sources} 件
-      </p>
-    {:else}
-      <p class="status">未構築です</p>
-    {/if}
+    {#each VISUAL_INDEX_UNITS as unit (unit)}
+      {@const u = unitOf(unit)}
+      {@const progress = progressFor(unit)}
+      <section class="row" role="group" aria-label={UNIT_LABELS[unit]}>
+        <div class="row-head">
+          <h3>{UNIT_LABELS[unit]}</h3>
+          {#if status.index_unit === unit}
+            <span class="badge">検索に使用中</span>
+          {/if}
+        </div>
 
-    {#if status.building}
-      <p class="progress">
-        <Spinner size={14} />
-        構築中… {#if progress}{progress.done} / {progress.total}{:else}0 / 0{/if}
-        {#if progress?.etaSeconds != null}
-          <span class="eta">（{formatEta(progress.etaSeconds)}）</span>
+        {#if u.built}
+          <p class="state">
+            構築済み {u.indexed_sources} ソース
+            {#if u.pending_sources > 0}／未索引 {u.pending_sources} ソース{/if}
+            {#if u.embedding_model}<br /><small>{u.embedding_model}</small>{/if}
+            {#if u.built_at}<br /><small>{formatDate(u.built_at)}</small>{/if}
+          </p>
+        {:else}
+          <p class="state">
+            未構築です
+            {#if u.pending_sources > 0}(対象 {u.pending_sources} ソース){/if}
+          </p>
         {/if}
-      </p>
-    {/if}
 
-    <div class="actions">
-      <button type="button" onclick={onBuild} disabled={buildDisabled}>
-        視覚インデックスを構築
-      </button>
-      {#if status.built}
-        <button
-          type="button"
-          class={deleteArmed ? 'danger armed' : 'danger'}
-          onclick={() => {
-            if (deleteArmed) {
-              onDelete();
-              deleteArmed = false;
-            } else {
-              deleteArmed = true;
-            }
-          }}
-        >
-          {deleteArmed ? '本当に削除' : '視覚インデックスを削除'}
-        </button>
-        {#if deleteArmed}
-          <button type="button" class="cancel" onclick={() => (deleteArmed = false)}>
-            やめる
-          </button>
+        {#if u.building && progress}
+          <p class="progress">
+            <Spinner size={14} />
+            {progress.done} / {progress.total}
+            {#if progress.etaSeconds != null}
+              <span class="eta">{formatEta(progress.etaSeconds)}</span>
+            {/if}
+          </p>
         {/if}
-      {/if}
-    </div>
+
+        <div class="actions">
+          <button
+            type="button"
+            disabled={buildDisabled(unit)}
+            onclick={() => onBuild(unit)}>{UNIT_LABELS[unit]}を構築</button
+          >
+          {#if u.built}
+            <button
+              type="button"
+              class={deleteArmed[unit] ? 'danger armed' : 'danger'}
+              onclick={() => onDeleteClick(unit)}
+              >{deleteArmed[unit]
+                ? `本当に${UNIT_LABELS[unit]}を削除`
+                : `${UNIT_LABELS[unit]}を削除`}</button
+            >
+            {#if deleteArmed[unit]}
+              <button
+                type="button"
+                class="cancel"
+                onclick={() => (deleteArmed = { ...deleteArmed, [unit]: false })}
+                >{UNIT_LABELS[unit]}の削除をやめる</button
+              >
+            {/if}
+          {/if}
+        </div>
+      </section>
+    {/each}
   </div>
 </Modal>
 
@@ -103,16 +140,16 @@
     gap: var(--space-2);
     min-width: 320px;
   }
-  .status {
-    margin: 0;
-    font-size: 13px;
-    color: var(--color-fg);
-  }
   .hint {
     margin: 0;
     font-size: 12px;
     color: var(--color-warning, #b45309);
     font-family: var(--font-mono);
+  }
+  .state {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-fg);
   }
   .eta {
     color: var(--color-fg-muted);
@@ -125,10 +162,35 @@
     font-size: 13px;
     color: var(--color-fg-muted);
   }
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.6rem 0;
+  }
+  .row + .row {
+    border-top: 1px solid var(--border, #333);
+  }
+  .row-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .row-head h3 {
+    margin: 0;
+    font-size: 0.95rem;
+  }
+  .badge {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    background: var(--accent-bg, #2a3a55);
+  }
+  /* .dialog は min-width:400px 固定。2行 x 最大3ボタンで溢れるため折り返す */
   .actions {
     display: flex;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
+    flex-wrap: wrap;
+    gap: 0.4rem;
   }
   .actions button {
     font: inherit;

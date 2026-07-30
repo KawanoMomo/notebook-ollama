@@ -11,7 +11,12 @@
   import { recordingStore } from '$lib/stores/recording.svelte';
   import { presentationStore } from '$lib/stores/presentation.svelte';
   import { sourcesApi } from '$lib/api/sources';
-  import { visualIndexApi, type VisualIndexStatus } from '$lib/api/visualIndex';
+  import {
+    visualIndexApi,
+    VISUAL_INDEX_UNITS,
+    type VisualIndexStatus,
+    type VisualIndexUnit,
+  } from '$lib/api/visualIndex';
   import { featuresStore } from '$lib/stores/features.svelte';
   import { eventsStore } from '$lib/stores/events.svelte';
   import { pushToast } from './Toast.svelte';
@@ -228,39 +233,45 @@
     }
   }
 
-  async function onVisualIndexBuild() {
+  async function onVisualIndexBuild(unit: VisualIndexUnit) {
+    const label = unit === 'tile' ? 'タイル索引' : 'ページ索引';
     try {
-      await visualIndexApi.build(notebookId);
-      pushToast('視覚インデックスの構築を開始しました', 'info');
+      await visualIndexApi.build(notebookId, unit);
+      pushToast(`${label}の構築を開始しました`, 'info');
       await refreshVisualIndexStatus();
     } catch (e) {
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }
 
-  async function onVisualIndexDelete() {
+  async function onVisualIndexDelete(unit: VisualIndexUnit) {
+    const label = unit === 'tile' ? 'タイル索引' : 'ページ索引';
     try {
-      await visualIndexApi.remove(notebookId);
-      pushToast('視覚インデックスを削除しました', 'success');
+      await visualIndexApi.remove(notebookId, unit);
+      pushToast(`${label}を削除しました`, 'success');
       await refreshVisualIndexStatus();
     } catch (e) {
       pushToast(e instanceof Error ? e.message : String(e), 'error');
     }
   }
 
-  // SSE 完了/失敗の検知: eventsStore.visualIndexOutcome は発生の都度 `at` が
-  // 更新されるので、直前に見た値と比較して「新規発生」だけをトースト+再取得する
-  // (モーダルが閉じていても構築は進むため、開閉状態に依存させない)。
-  let lastSeenVisualIndexOutcomeAt = 0;
+  // SSE 完了/失敗の検知: eventsStore.visualIndexOutcomeFor(unit) は発生の都度
+  // `at` が更新されるので、単位ごとに直前に見た値と比較して「新規発生」だけを
+  // トースト+再取得する(モーダルが閉じていても構築は進むため、開閉状態に依存させない)。
+  let lastSeenOutcomeAt: Record<VisualIndexUnit, number> = { page: 0, tile: 0 };
+
   $effect(() => {
-    const outcome = eventsStore.visualIndexOutcome;
-    if (!outcome || outcome.at === lastSeenVisualIndexOutcomeAt) return;
-    lastSeenVisualIndexOutcomeAt = outcome.at;
-    pushToast(
-      outcome.ok ? '視覚インデックスの構築が完了しました' : '視覚インデックスの構築に失敗しました',
-      outcome.ok ? 'success' : 'error',
-    );
-    if (visualIndexModalOpen) void refreshVisualIndexStatus();
+    for (const unit of VISUAL_INDEX_UNITS) {
+      const outcome = eventsStore.visualIndexOutcomeFor(unit);
+      if (!outcome || outcome.at <= lastSeenOutcomeAt[unit]) continue;
+      lastSeenOutcomeAt = { ...lastSeenOutcomeAt, [unit]: outcome.at };
+      const label = unit === 'tile' ? 'タイル索引' : 'ページ索引';
+      pushToast(
+        outcome.ok ? `${label}の構築が完了しました` : `${label}の構築に失敗しました`,
+        outcome.ok ? 'success' : 'error',
+      );
+      if (visualIndexModalOpen) void refreshVisualIndexStatus();
+    }
   });
 
   async function onReingest(s: Source) {
@@ -455,10 +466,10 @@
         class="scan-icon"
         title="視覚インデックス"
         aria-label="視覚インデックス"
-        aria-busy={eventsStore.visualIndexProgress !== null}
+        aria-busy={eventsStore.visualIndexBusy}
         onclick={openVisualIndexModal}
       >
-        {#if eventsStore.visualIndexProgress !== null}
+        {#if eventsStore.visualIndexBusy}
           <Spinner size={16} />
         {:else}
           <ScanSearch size="16" />
@@ -544,7 +555,7 @@
   <VisualIndexModal
     {notebookId}
     status={visualIndexStatus}
-    progress={eventsStore.visualIndexProgress}
+    progressFor={(u) => eventsStore.visualIndexProgressFor(u)}
     onBuild={onVisualIndexBuild}
     onDelete={onVisualIndexDelete}
     onClose={closeVisualIndexModal}
