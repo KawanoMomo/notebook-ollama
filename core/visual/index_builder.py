@@ -70,6 +70,10 @@ class BuildResult:
     indexed_sources: int
     # unit="tile" のとき実際に埋め込んだタイル数。unit="page" では常に 0。
     indexed_tiles: int = 0
+    # 今回の構築で対象になった(未索引の READY な PDF)ソース数。
+    # レンダリング自体が全ソースで失敗すると indexed_pages も skipped_pages も
+    # 増えないため、この件数が無いと「対象なし」と「全滅」を区別できない。
+    target_sources: int = 0
 
 
 class VisualIndexBuilder:
@@ -212,4 +216,5 @@ class VisualIndexBuilder:
             skipped_pages=skipped_pages,
             indexed_sources=indexed_sources,
             indexed_tiles=indexed_tiles,
+            target_sources=len(targets),
         )

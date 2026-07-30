@@ -209,6 +209,76 @@ def test_all_pages_failing_publishes_error_not_complete(client, monkeypatch):
     assert terminal[0]["skipped_pages"] == 1
 
 
+def test_render_failure_on_all_sources_publishes_error_not_complete(client, monkeypatch):
+    """回帰テスト(レビュー指摘・不具合A残存ケース): PDFファイルが sources_dir から
+    欠落している(実運用ではソース削除漏れ・破損PDFでPyMuPDFが開けない等で起こりうる)と、
+    ビルダはそのソースを pages_by_source に一切登録せずページループごと丸ごとスキップする
+    ため、indexed_pages も skipped_pages も増えない。skipped_pages==0 だけを「対象なし」の
+    代理指標にすると、この経路で全滅していても visual_index_complete が出てしまう
+    (target_sources 基準の判定でこの抜け道を塞ぐ)。"""
+    from core.storage.sources_repo import SourceStatus, create_source, update_source_status
+
+    nb = _nb(client)
+    _beta(client, True)
+    _install_fake_encoder(client, monkeypatch)
+    ctx = client.app.state.ctx
+
+    # READY な PDF ソースは作るが実ファイルは書かない
+    # → pdf_path.exists() が False になり、レンダリングにすら到達せずスキップされる。
+    src = create_source(
+        ctx.conn, notebook_id=nb, kind="pdf", origin="missing.pdf", content_hash="hmiss"
+    )
+    update_source_status(ctx.conn, src.id, status=SourceStatus.READY)
+
+    published: list[dict] = []
+
+    async def fake_publish(channel: str, payload: dict) -> None:
+        published.append(payload)
+
+    monkeypatch.setattr(ctx.sse, "publish", fake_publish)
+
+    res = client.post(f"/api/notebooks/{nb}/visual-index?unit=page")
+    assert res.status_code == 202
+
+    terminal = [
+        p for p in published
+        if p["type"] in ("visual_index_complete", "visual_index_error")
+    ]
+    assert len(terminal) == 1, published
+    assert terminal[0]["type"] == "visual_index_error"
+    assert terminal[0]["indexed_pages"] == 0
+    assert terminal[0]["skipped_pages"] == 0
+
+
+def test_no_target_pdf_sources_still_publishes_complete(client, monkeypatch):
+    """判定条件のもう半分(ユーザーが名指しした境界): 対象PDFソースが1本も無い
+    ノートブックでの build は、対象が無かっただけで失敗ではないため従来どおり
+    visual_index_complete のまま。"""
+    nb = _nb(client)
+    _beta(client, True)
+    _install_fake_encoder(client, monkeypatch)
+    ctx = client.app.state.ctx
+
+    published: list[dict] = []
+
+    async def fake_publish(channel: str, payload: dict) -> None:
+        published.append(payload)
+
+    monkeypatch.setattr(ctx.sse, "publish", fake_publish)
+
+    res = client.post(f"/api/notebooks/{nb}/visual-index?unit=page")
+    assert res.status_code == 202
+
+    terminal = [
+        p for p in published
+        if p["type"] in ("visual_index_complete", "visual_index_error")
+    ]
+    assert len(terminal) == 1, published
+    assert terminal[0]["type"] == "visual_index_complete"
+    assert terminal[0]["indexed_pages"] == 0
+    assert terminal[0]["skipped_pages"] == 0
+
+
 def test_source_reingest_clears_visual_rows(client):
     """再取込したソースは視覚索引(両単位)から外れ、pending としてカウントされる。"""
     # ソース作成が重い(実PDF取込)ため、visual_index_sources への直接insert +
