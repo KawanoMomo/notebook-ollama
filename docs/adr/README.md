@@ -71,23 +71,27 @@ frontmatter は英語語彙 (`check_design_index.py` が検査)、本文表記�
 | [018](018-openai-compat-second-contract.md) | architecture | LLM/Embedding の第二共通契約として OpenAI 互換 API を採用する | 承認 | 2026-08-02 | iGPU/NPU Phase 1.5 |
 | [019](019-llm-backend-vulkan-promotion.md) | external-dep | iGPU の LLM 経路を Ollama Vulkan に一本化し IPEX-LLM/DirectML 系 id を廃止する | 承認 | 2026-08-02 | iGPU/NPU Phase 1.5 |
 
-## 「結果」「教訓」が未記入の ADR
+## 「結果」「教訓」の記入状況
 
 ADR の価値は決定そのものより **「決定どおりになったか」** にある。実装後に結果を
-書き戻さないと、次に同じ判断をするときの材料が残らない。以下は実装・マージ済み
-にもかかわらず該当節が `(実装後に記載)` のままのもの。
+書き戻さないと、次に同じ判断をするときの材料が残らない。
 
-| ADR | 起票元 | 状態 |
+**2026-08-02 時点で全 ADR (001〜019) が記入済み。**
+
+| 起票元 | ADR | 材料 |
 |---|---|---|
-| [001](001-source-links-generic-parent-child.md) [002](002-recording-timeline-markers.md) [003](003-pptx-render-powerpoint-com.md) | 発表モード (PR #19) | **未記入** — PR #19 の ECN 化と合わせて埋める |
-| [012](012-assistant-prefill-continuation.md) [013](013-truncated-persistence-update-in-place.md) | 自動継続 (PR #23) | **未記入** — PR #23 の ECN 化と合わせて埋める |
-| [005](005-beta-feature-flag-registry.md) [006](006-chunk-asset-sidecar.md) [007](007-table-dual-representation.md) | 表・図 Stage 1 (PR #24) | ✅ 記入済 ([[ECN-001_表・図サイドカー抽出とベータ機能フラグ基盤\|ECN-001]] より) |
-| [008](008-figure-desc-standalone-chunk.md) [009](009-vlm-ocr-ollama-only.md) | 表・図 Stage 2 (PR #25) | ✅ 記入済 ([[ECN-002_VLM図説明とスキャンPDF-OCR\|ECN-002]] より) |
+| 発表モード (PR #19) | 001 / 002 / 003 | [[ECN-008_発表モード\|ECN-008]] |
+| 音声入力 (PR #18) | 004 | [[ECN-007_チャット音声入力\|ECN-007]] |
+| 表・図 Stage 1 (PR #24) | 005 / 006 / 007 | [[ECN-001_表・図サイドカー抽出とベータ機能フラグ基盤\|ECN-001]] |
+| 表・図 Stage 2 (PR #25) | 008 / 009 | [[ECN-002_VLM図説明とスキャンPDF-OCR\|ECN-002]] |
+| 表・図 Stage 3 (PR #26) | 010 / 011 | [[ECN-003_視覚埋め込み第2インデックスとRRF融合\|ECN-003]] |
+| 自動継続 (PR #23) | 012 / 013 | [[ECN-009_応答の自動継続\|ECN-009]] |
+| 表・図 Stage 4 (PR #27) | 014〜017 | [[ECN-004_PixelRAG式タイル索引と検索戦略の選択\|ECN-004]] |
+| iGPU/NPU Phase 1.5 | 018 / 019 | 採番時に記入済み |
 
-> [!warning] 採番時の反省
-> 2026-08-02 の一括採番では、決定内容だけを見て `approved` を付け、結果節が
-> 空である点を確認しなかった。**次回からは採番の受入条件に「結果節が埋まって
-> いること」を含める。**
+> [!important] 採番の受入条件
+> **結果節が埋まっていること**を採番の条件に含める。2026-08-02 の一括採番では
+> 決定内容だけを見て `approved` を付け、11件が `(実装後に記載)` のままだった。
 >
 > 結果節を埋める材料は git 履歴にある。ECN 抽出 (`/ecn-from-git`) を先に回すと
 > 検証済みの事実が手に入り、そこから書き戻せる。**ECN → ADR の順が効率的。**
