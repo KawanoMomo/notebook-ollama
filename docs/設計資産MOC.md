@@ -97,6 +97,21 @@ tags:
 > - [[012-assistant-prefill-continuation|ADR-012 打ち切り継続は assistant prefill(末尾assistantメッセージ再送)]] — `architecture`
 > - [[013-truncated-persistence-update-in-place|ADR-013 truncatedはmessagesカラム永続化+手動継続は最終assistantメッセージ追記更新]] — `data-model`
 
+## 📋 ECN（変更通知）
+
+git履歴から抽出した「何を・なぜ・どう変えたか」。台帳は [[README|docs/ecn/README.md]]、
+姉妹プロジェクトへの照合結果は [[横展開分析_姉妹プロジェクト]]。
+
+> [!note] 表・図 RAG シリーズ
+> - [[ECN-001_表・図サイドカー抽出とベータ機能フラグ基盤|ECN-001 表・図サイドカー抽出とベータ機能フラグ基盤]] (Stage 1 / PR #24)
+> - [[ECN-002_VLM図説明とスキャンPDF-OCR|ECN-002 VLM図説明・スキャンPDF OCR]] (Stage 2 / PR #25)
+> - [[ECN-003_視覚埋め込み第2インデックスとRRF融合|ECN-003 視覚埋め込み第2インデックスとRRF融合]] (Stage 3 / PR #26)
+> - [[ECN-004_PixelRAG式タイル索引と検索戦略の選択|ECN-004 PixelRAG式タイル索引と検索戦略の選択]] (Stage 4 / PR #27)
+
+> [!tip] 横展開価値が高いもの
+> - [[ECN-005_torch-CUDA化とrecording-extraとの共存不可|ECN-005 torchのCUDA化とrecording extraとの共存不可]] — **HIGH**（GPU依存を持つ全プロジェクト）
+> - [[ECN-006_視覚索引の複合主キー移行|ECN-006 SQLiteテーブル再作成によるスキーマ移行]] — SQLiteを使う全プロジェクト
+
 ## 🏷️ ステータス凡例
 
 | アイコン | status | 意味 |
