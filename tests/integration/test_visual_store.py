@@ -85,6 +85,35 @@ def test_collection_absent_returns_none_dim(tmp_path, unit):
     assert ps.search(query=[1.0, 0.0, 0.0, 0.0], notebook_id="nb1", limit=5) == []
 
 
+@pytest.mark.parametrize("unit", UNITS)
+def test_search_scoped_to_source_ids(tmp_path, unit):
+    """最終レビュー I5: source_ids を指定すると、そのソースのヒットだけが返る。"""
+    _, ps = _store(tmp_path, unit)
+    ps.ensure_collection(dim=4)
+    ps.upsert_units([
+        _uv(unit, source_id="s1", page=1, vec=[1.0, 0.0, 0.0, 0.0]),
+        _uv(unit, source_id="s2", page=1, vec=[1.0, 0.0, 0.0, 0.0]),
+        _uv(unit, source_id="s3", page=1, vec=[1.0, 0.0, 0.0, 0.0]),
+    ])
+    hits = ps.search(
+        query=[1.0, 0.0, 0.0, 0.0], notebook_id="nb1", limit=10, source_ids=["s1", "s2"]
+    )
+    assert {h.source_id for h in hits} == {"s1", "s2"}
+
+
+@pytest.mark.parametrize("unit", UNITS)
+def test_search_without_source_ids_returns_all(tmp_path, unit):
+    """source_ids=None(既定)のときは従来どおり全件返る。"""
+    _, ps = _store(tmp_path, unit)
+    ps.ensure_collection(dim=4)
+    ps.upsert_units([
+        _uv(unit, source_id="s1", page=1, vec=[1.0, 0.0, 0.0, 0.0]),
+        _uv(unit, source_id="s2", page=1, vec=[1.0, 0.0, 0.0, 0.0]),
+    ])
+    hits = ps.search(query=[1.0, 0.0, 0.0, 0.0], notebook_id="nb1", limit=10)
+    assert {h.source_id for h in hits} == {"s1", "s2"}
+
+
 # --- タイル固有 --------------------------------------------------------------
 
 

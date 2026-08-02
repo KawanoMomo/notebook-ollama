@@ -124,7 +124,7 @@ class RetrievalService:
 
         visual_available, visual_results = await self._visual_hits(
             notebook_id=notebook_id, query=query, text_results=text_results,
-            visual_limit=cap, title_cache=title_cache,
+            visual_limit=cap, source_ids=source_ids, title_cache=title_cache,
         )
 
         if strategy != "hybrid_rrf" and not visual_available:
@@ -254,6 +254,7 @@ class RetrievalService:
         query: str,
         text_results: list[RetrievedChunk],
         visual_limit: int,
+        source_ids: list[str] | None = None,
         title_cache: dict[str, str],
     ) -> tuple[bool, list[RetrievedChunk]]:
         """視覚検索(単位はconfig依存)→RRF→展開。
@@ -294,7 +295,8 @@ class RetrievalService:
             rows, cols = v.tile_grid_getter()
             over = max(1, rows * cols) if unit == "tile" else 1
             raw_hits = store.search(
-                query=qvec, notebook_id=notebook_id, limit=visual_limit * over
+                query=qvec, notebook_id=notebook_id, limit=visual_limit * over,
+                source_ids=source_ids,
             )
             unit_hits = collapse_to_best_per_page(raw_hits)[:visual_limit]
             if not unit_hits:
