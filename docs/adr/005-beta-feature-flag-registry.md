@@ -1,25 +1,25 @@
 ---
-type: adr-draft
+type: adr
 title: 機能提供はコード内フラグレジストリ+設定オプトインのベータ機構とする
 summary: "フラグをコード内レジストリで宣言し設定オプトインで提供、GA昇格=stage 1行変更・データはベータ非依存スキーマとする設計判断。"
 aliases:
   - ベータフラグレジストリ
-status: proposed
+status: approved
 date: 2026-07-20
+adr: 005
 project: NotebookOllama
 area: platform
-category: アーキテクチャ/リリース管理
+category: release
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-beta-feature-flags-design]]"
 ---
 
-# ADR-draft: 機能提供はコード内フラグレジストリ+設定オプトインのベータ機構とする
+# ADR-005: 機能提供はコード内フラグレジストリ+設定オプトインのベータ機構とする
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: アーキテクチャ/リリース管理
+- **ステータス**: 承認
+- **カテゴリ**: release
 - **日付**: 2026-07-20
 - **出典**: 汎用ベータ機能フレームワーク設計 `docs/specs/2026-07-20-beta-feature-flags-design.md`
 

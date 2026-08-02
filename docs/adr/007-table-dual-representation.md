@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: 表は本文Markdown+サイドカーHTMLの二重表現とする
 summary: "検索・埋め込みはチャンク本文のMarkdown表、生成・表示は完全HTMLを使い分け、結合セル表のみ生成時にHTML置換する設計判断。"
 aliases:
   - 表の二重表現
-status: proposed
+status: approved
 date: 2026-07-20
+adr: 007
 project: NotebookOllama
 area: ingestion
-category: データ表現
+category: data-model
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-pdf-table-figure-sidecar-design]]"
-  - "[[draft-2026-07-20-chunk-asset-sidecar]]"
+  - "[[006-chunk-asset-sidecar]]"
 ---
 
-# ADR-draft: 表は本文Markdown+サイドカーHTMLの二重表現とする
+# ADR-007: 表は本文Markdown+サイドカーHTMLの二重表現とする
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: データ表現
+- **ステータス**: 承認
+- **カテゴリ**: data-model
 - **日付**: 2026-07-20
 - **出典**: 表・図サイドカー設計 `docs/specs/2026-07-20-pdf-table-figure-sidecar-design.md`
 

@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: VLM/OCRはOllama一本+エンジン抽象化とする
 summary: "図説明・スキャンOCRを既存Ollamaゲートウェイで実行し、専用OCRスタックはOcrEngine抽象化の差し替え候補に留める設計判断。"
 aliases:
   - VLM実行経路
-status: proposed
+status: approved
 date: 2026-07-20
+adr: 009
 project: NotebookOllama
 area: ingestion
-category: アーキテクチャ/外部依存
+category: external-dep
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-vlm-figure-ocr-design]]"
   - "[[2026-06-19-model-selection-design]]"
 ---
 
-# ADR-draft: VLM/OCRはOllama一本+エンジン抽象化とする
+# ADR-009: VLM/OCRはOllama一本+エンジン抽象化とする
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: アーキテクチャ/外部依存
+- **ステータス**: 承認
+- **カテゴリ**: external-dep
 - **日付**: 2026-07-20
 - **出典**: VLM図説明・OCR設計 `docs/specs/2026-07-20-vlm-figure-ocr-design.md`
 

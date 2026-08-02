@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: PPTXの見た目再現はPowerPoint COMによる取込時PDF化
 summary: "PPTXの見た目再現をPowerPoint COMで取込時PDF化+グレースフルデグレードで行う設計判断。"
 aliases:
   - PPTX描画
   - PowerPoint COM
-status: proposed
+status: approved
 date: 2026-07-06
+adr: 003
 project: NotebookOllama
 area: presentation
-category: 外部依存/取込パイプライン
+category: external-dep
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-06-presentation-mode-design]]"
 ---
 
-# ADR-draft: PPTXの見た目再現はPowerPoint COMによる取込時PDF化+グレースフルデグレード
+# ADR-003: PPTXの見た目再現はPowerPoint COMによる取込時PDF化+グレースフルデグレード
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: 外部依存/取込パイプライン
+- **ステータス**: 承認
+- **カテゴリ**: external-dep
 - **日付**: 2026-07-06
 - **対象プロジェクト**: NotebookOllama
 - **出典**: 発表モード設計 `docs/specs/2026-07-06-presentation-mode-design.md`

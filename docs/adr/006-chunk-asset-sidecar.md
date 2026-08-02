@@ -1,25 +1,25 @@
 ---
-type: adr-draft
+type: adr
 title: 表・図はチャンク紐付きサイドカーアセット方式で保存する
 summary: "chunk_assetsテーブル+ファイル保存でチャンクに表・図を紐付け、ベクトルには乗せず、再取込=削除再構築とする設計判断。"
 aliases:
   - チャンクアセットサイドカー
-status: proposed
+status: approved
 date: 2026-07-20
+adr: 006
 project: NotebookOllama
 area: ingestion
-category: データモデル/取込パイプライン
+category: data-model
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-pdf-table-figure-sidecar-design]]"
 ---
 
-# ADR-draft: 表・図はチャンク紐付きサイドカーアセット方式で保存する
+# ADR-006: 表・図はチャンク紐付きサイドカーアセット方式で保存する
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: データモデル/取込パイプライン
+- **ステータス**: 承認
+- **カテゴリ**: data-model
 - **日付**: 2026-07-20
 - **出典**: 表・図サイドカー設計 `docs/specs/2026-07-20-pdf-table-figure-sidecar-design.md`
 

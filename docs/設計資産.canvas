@@ -56,7 +56,7 @@
       "x": 0,
       "y": 3133,
       "width": 1660,
-      "height": 308,
+      "height": 530,
       "label": "▌ 基盤",
       "color": "1"
     },
@@ -81,13 +81,13 @@
       "color": "2"
     },
     {
-      "id": "be2a14683613f47f",
+      "id": "a6d32b2e1be00dfd",
       "type": "file",
       "x": 36,
       "y": 1087,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/chat-voice-input-stateless-stt.md",
+      "file": "docs/adr/004-chat-voice-input-stateless-stt.md",
       "color": "3"
     },
     {
@@ -101,23 +101,23 @@
       "color": "2"
     },
     {
-      "id": "fe18db89d8551034",
+      "id": "f5dcbd5aee03f0cf",
       "type": "file",
       "x": 36,
       "y": 1295,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-assistant-prefill-continuation.md",
+      "file": "docs/adr/012-assistant-prefill-continuation.md",
       "color": "3"
     },
     {
-      "id": "bdcfb3cfb7a19439",
+      "id": "a2095b6faaa9e1b7",
       "type": "file",
       "x": 36,
       "y": 1392,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-truncated-persistence-update-in-place.md",
+      "file": "docs/adr/013-truncated-persistence-update-in-place.md",
       "color": "3"
     },
     {
@@ -141,23 +141,23 @@
       "color": "2"
     },
     {
-      "id": "d45712af01ad1677",
+      "id": "2a31191fe123c078",
       "type": "file",
       "x": 368,
       "y": 1087,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-chunk-asset-sidecar.md",
+      "file": "docs/adr/006-chunk-asset-sidecar.md",
       "color": "3"
     },
     {
-      "id": "ebac458638db59cd",
+      "id": "7bd28da969ee14db",
       "type": "file",
       "x": 368,
       "y": 1184,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-table-dual-representation.md",
+      "file": "docs/adr/007-table-dual-representation.md",
       "color": "3"
     },
     {
@@ -171,23 +171,23 @@
       "color": "2"
     },
     {
-      "id": "4748ad5010aa7832",
+      "id": "c66a10e03464e048",
       "type": "file",
       "x": 368,
       "y": 1392,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-figure-desc-standalone-chunk.md",
+      "file": "docs/adr/008-figure-desc-standalone-chunk.md",
       "color": "3"
     },
     {
-      "id": "31a0adf3e5bcc3c0",
+      "id": "4ebe054bc3d87249",
       "type": "file",
       "x": 368,
       "y": 1489,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-vlm-ocr-ollama-only.md",
+      "file": "docs/adr/009-vlm-ocr-ollama-only.md",
       "color": "3"
     },
     {
@@ -211,33 +211,33 @@
       "color": "2"
     },
     {
-      "id": "4337c2da9f781807",
+      "id": "881370bf3186a838",
       "type": "file",
       "x": 700,
       "y": 1087,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-06-pptx-render-powerpoint-com.md",
+      "file": "docs/adr/001-source-links-generic-parent-child.md",
       "color": "3"
     },
     {
-      "id": "23d0883f79378c74",
+      "id": "742910b4e9ab3cbb",
       "type": "file",
       "x": 700,
       "y": 1184,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-06-recording-timeline-markers.md",
+      "file": "docs/adr/002-recording-timeline-markers.md",
       "color": "3"
     },
     {
-      "id": "5e027ac5eb49e7cb",
+      "id": "e87f7e8052d6afef",
       "type": "file",
       "x": 700,
       "y": 1281,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-06-source-links-generic-parent-child.md",
+      "file": "docs/adr/003-pptx-render-powerpoint-com.md",
       "color": "3"
     },
     {
@@ -381,23 +381,23 @@
       "color": "5"
     },
     {
-      "id": "603ca682d2a62875",
+      "id": "ca0962d6b3bde9ca",
       "type": "file",
       "x": 700,
       "y": 1833,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-visual-embedding-ondemand-transformers.md",
+      "file": "docs/adr/010-visual-index-qdrant-rrf.md",
       "color": "3"
     },
     {
-      "id": "eee28da3ed3eabd4",
+      "id": "1fe7a50911fa82b0",
       "type": "file",
       "x": 700,
       "y": 1930,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-visual-index-qdrant-rrf.md",
+      "file": "docs/adr/011-visual-embedding-ondemand-transformers.md",
       "color": "3"
     },
     {
@@ -411,43 +411,43 @@
       "color": "5"
     },
     {
-      "id": "5ba5c21ec92937ee",
+      "id": "5435ec06d285c361",
       "type": "file",
       "x": 984,
       "y": 1833,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-29-partial-success-per-unit.md",
+      "file": "docs/adr/014-visual-index-unit-collections.md",
       "color": "3"
     },
     {
-      "id": "7ef79a5665cd13cb",
+      "id": "7cb7c3162c1a3cc0",
       "type": "file",
       "x": 984,
       "y": 1930,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-29-pixel-native-explicit-failure.md",
+      "file": "docs/adr/015-partial-success-per-unit.md",
       "color": "3"
     },
     {
-      "id": "5eb6013faba1e403",
+      "id": "bda2149c3e9e8ebe",
       "type": "file",
       "x": 984,
       "y": 2027,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-29-torch-cuda-wheel-index.md",
+      "file": "docs/adr/016-pixel-native-explicit-failure.md",
       "color": "3"
     },
     {
-      "id": "87c7837f043387e1",
+      "id": "54d516004806536b",
       "type": "file",
       "x": 984,
       "y": 2124,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-29-visual-index-unit-collections.md",
+      "file": "docs/adr/017-torch-cuda-wheel-index.md",
       "color": "3"
     },
     {
@@ -606,7 +606,7 @@
       "x": 352,
       "y": 3177,
       "width": 292,
-      "height": 244,
+      "height": 466,
       "label": "platform  (基盤)",
       "color": "1"
     },
@@ -621,13 +621,33 @@
       "color": "1"
     },
     {
-      "id": "5f0383a70704f46a",
+      "id": "25186bee4e961802",
       "type": "file",
       "x": 368,
       "y": 3320,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-07-20-beta-feature-flag-registry.md",
+      "file": "docs/adr/005-beta-feature-flag-registry.md",
+      "color": "3"
+    },
+    {
+      "id": "4b4a1004d71db252",
+      "type": "file",
+      "x": 368,
+      "y": 3431,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/README.md",
+      "color": "3"
+    },
+    {
+      "id": "519d1b2f3b0b2638",
+      "type": "file",
+      "x": 368,
+      "y": 3542,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/categories.md",
       "color": "3"
     },
     {
@@ -772,7 +792,7 @@
       "id": "c5c83b5baf183ff2",
       "type": "text",
       "x": 0,
-      "y": 3461,
+      "y": 3683,
       "width": 780,
       "height": 190,
       "text": "### 凡例\n- 枠 = `area` (括弧内は レーンB の機能クラスタ)。枠の色 = クラスタ色\n- 島 = 1 つの spec + そこから起票された ADR ドラフト(黄)。縦線は「起票」\n- 横線 = 同じ area 内の spec どうしの `related` (シリーズの流れ)\n- area をまたぐ `related` は線を引かない。frontmatter の `related` と\n  Obsidian のグラフビューで辿ること\n- このボードは `scripts/gen_design_canvas.py` で自動生成 (手編集しない)"
@@ -780,153 +800,153 @@
   ],
   "edges": [
     {
-      "id": "064070629b972e33",
+      "id": "f8d1527e63d5edaa",
       "fromNode": "c1a466554b2410f3",
-      "toNode": "be2a14683613f47f",
+      "toNode": "a6d32b2e1be00dfd",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "12557a9a8b999b0c",
+      "id": "ce893b635eab90fd",
       "fromNode": "35d1378c4e056645",
-      "toNode": "fe18db89d8551034",
+      "toNode": "f5dcbd5aee03f0cf",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "ede53703d87df13a",
+      "id": "ecec7e8c8cb588e0",
       "fromNode": "35d1378c4e056645",
-      "toNode": "bdcfb3cfb7a19439",
+      "toNode": "a2095b6faaa9e1b7",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "066c05b4875a36d3",
+      "id": "8014aad44b905669",
       "fromNode": "253860cf71ba3e67",
-      "toNode": "d45712af01ad1677",
+      "toNode": "2a31191fe123c078",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "60004bf25f68865e",
+      "id": "a992de6f58c8e6a1",
       "fromNode": "253860cf71ba3e67",
-      "toNode": "ebac458638db59cd",
+      "toNode": "7bd28da969ee14db",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "6fcae7751bcda3c3",
+      "id": "7ccd33d7449a3075",
       "fromNode": "a8f6e60db116aea4",
-      "toNode": "4748ad5010aa7832",
+      "toNode": "c66a10e03464e048",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "46e0df8e80dda55c",
+      "id": "8933e99dd6378f7d",
       "fromNode": "a8f6e60db116aea4",
-      "toNode": "31a0adf3e5bcc3c0",
+      "toNode": "4ebe054bc3d87249",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "ea02cf609492ce47",
+      "id": "9fb17c3244b2f88c",
       "fromNode": "9c04dda32204c527",
-      "toNode": "4337c2da9f781807",
+      "toNode": "881370bf3186a838",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "9b4411853ad73f40",
+      "id": "6d3a66937e1d58cd",
       "fromNode": "9c04dda32204c527",
-      "toNode": "23d0883f79378c74",
+      "toNode": "742910b4e9ab3cbb",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "cc7d21dd7d08b7c1",
+      "id": "7f31bf909936e51a",
       "fromNode": "9c04dda32204c527",
-      "toNode": "5e027ac5eb49e7cb",
+      "toNode": "e87f7e8052d6afef",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "732614c54bdce39e",
+      "id": "5d9e6897856508e8",
       "fromNode": "133cbd3cef505d67",
-      "toNode": "603ca682d2a62875",
+      "toNode": "ca0962d6b3bde9ca",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "eb8e78e3f224cd40",
+      "id": "9c34661cde60f802",
       "fromNode": "133cbd3cef505d67",
-      "toNode": "eee28da3ed3eabd4",
+      "toNode": "1fe7a50911fa82b0",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "454b3e0369b02e95",
+      "id": "804669a9e38cb3d3",
       "fromNode": "735389d23d0dc1bc",
-      "toNode": "5ba5c21ec92937ee",
+      "toNode": "5435ec06d285c361",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "02e4c40eed61bdfd",
+      "id": "0ff00aa8bc5181b0",
       "fromNode": "735389d23d0dc1bc",
-      "toNode": "7ef79a5665cd13cb",
+      "toNode": "7cb7c3162c1a3cc0",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "9f2d428977dffc40",
+      "id": "175225210d90ad58",
       "fromNode": "735389d23d0dc1bc",
-      "toNode": "5eb6013faba1e403",
+      "toNode": "bda2149c3e9e8ebe",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "a6710c7ad9c370cb",
+      "id": "b397da1b17ae2e35",
       "fromNode": "735389d23d0dc1bc",
-      "toNode": "87c7837f043387e1",
+      "toNode": "54d516004806536b",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "c44593774d05d28c",
+      "id": "d7420207d00c17e5",
       "fromNode": "98e11bff2639cc10",
-      "toNode": "5f0383a70704f46a",
+      "toNode": "25186bee4e961802",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",

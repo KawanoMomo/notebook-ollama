@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: pixel_native は根拠画像なしで黙って劣化させず明示エラーにする
 summary: "pixel_native戦略でvision非対応モデル/根拠画像0枚のとき、AppErrorで明示的に失敗させる設計判断。専用SYSTEM_PROMPTとノートブック単位モデル上書き考慮を含む。"
 aliases:
   - pixel-native明示失敗
-status: proposed
+status: approved
 date: 2026-07-30
+adr: 016
 project: NotebookOllama
 area: retrieval
-category: アーキテクチャ/エラー処理
+category: error-handling
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-29-pixelrag-tile-index-design]]"
-  - "[[draft-2026-07-20-vlm-ocr-ollama-only]]"
+  - "[[009-vlm-ocr-ollama-only]]"
 ---
 
-# ADR-draft: pixel_native は根拠画像なしで黙って劣化させず明示エラーにする
+# ADR-016: pixel_native は根拠画像なしで黙って劣化させず明示エラーにする
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: アーキテクチャ/エラー処理
+- **ステータス**: 承認
+- **カテゴリ**: error-handling
 - **日付**: 2026-07-30
 - **出典**: PixelRAG式タイル索引と検索戦略の選択 `docs/specs/2026-07-29-pixelrag-tile-index-design.md` §7.4
 

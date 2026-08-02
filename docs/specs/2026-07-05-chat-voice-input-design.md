@@ -12,7 +12,7 @@ area: chat
 tags:
   - spec
 related:
-  - "[[chat-voice-input-stateless-stt]]"
+  - "[[004-chat-voice-input-stateless-stt]]"
 html: "[[2026-07-05-chat-voice-input-design.html]]"
 code:
   - apps/api/routers/stt.py

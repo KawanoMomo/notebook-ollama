@@ -12,9 +12,9 @@ area: presentation
 tags:
   - spec
 related:
-  - "[[draft-2026-07-06-recording-timeline-markers]]"
-  - "[[draft-2026-07-06-source-links-generic-parent-child]]"
-  - "[[draft-2026-07-06-pptx-render-powerpoint-com]]"
+  - "[[002-recording-timeline-markers]]"
+  - "[[001-source-links-generic-parent-child]]"
+  - "[[003-pptx-render-powerpoint-com]]"
 html: "[[2026-07-06-presentation-mode-design.html]]"
 ---
 

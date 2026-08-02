@@ -1,25 +1,25 @@
 ---
-type: adr-draft
+type: adr
 title: 視覚索引構築の部分成功は単位ごとの独立性を意味する
 summary: "ページ内タイルループ全体を1つのtryで囲まず単位ごとに例外を捕捉する設計判断。実装中に計画のテストと実装コードの矛盾が発覚しコントローラが裁定した経緯と、「部分成功≠全滅を成功として通知してよい」という教訓を記録。"
 aliases:
   - 部分成功の単位独立性
-status: proposed
+status: approved
 date: 2026-07-30
+adr: 015
 project: NotebookOllama
 area: retrieval
-category: アーキテクチャ/エラー処理
+category: error-handling
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-29-pixelrag-tile-index-design]]"
 ---
 
-# ADR-draft: 視覚索引構築の部分成功は単位ごとの独立性を意味する
+# ADR-015: 視覚索引構築の部分成功は単位ごとの独立性を意味する
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: アーキテクチャ/エラー処理
+- **ステータス**: 承認
+- **カテゴリ**: error-handling
 - **日付**: 2026-07-30
 - **出典**: PixelRAG式タイル索引と検索戦略の選択 `docs/specs/2026-07-29-pixelrag-tile-index-design.md` §9(部分成功はログ+スキップで構築継続)
 
