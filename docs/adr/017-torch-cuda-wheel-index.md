@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: visual extraのtorchはCUDAホイールインデックスに切替、CPUはフォールバックとして残す
 summary: "--extra visualのtorchを`[[tool.uv.index]]`(cu130)+marker付き`[tool.uv.sources]`でwin32のみCUDAホイールにし、CPU専用ホイールに起因していた対症療法群を解消した設計判断。recording extraとの共存不可という代償を伴う。"
 aliases:
   - torch CUDA化
-status: proposed
+status: approved
 date: 2026-07-30
+adr: 017
 project: NotebookOllama
 area: retrieval
-category: 外部依存/パッケージング
+category: external-dep
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-29-pixelrag-tile-index-design]]"
-  - "[[draft-2026-07-20-visual-embedding-ondemand-transformers]]"
+  - "[[011-visual-embedding-ondemand-transformers]]"
 ---
 
-# ADR-draft: visual extraのtorchはCUDAホイールインデックスに切替、CPUはフォールバックとして残す
+# ADR-017: visual extraのtorchはCUDAホイールインデックスに切替、CPUはフォールバックとして残す
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: 外部依存/パッケージング
+- **ステータス**: 承認
+- **カテゴリ**: external-dep
 - **日付**: 2026-07-30
 - **出典**: PixelRAG式タイル索引と検索戦略の選択 `docs/specs/2026-07-29-pixelrag-tile-index-design.md` §1.1, §8
 

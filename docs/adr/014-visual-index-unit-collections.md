@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: 視覚索引の単位はコレクション分離(payloadフィルタでなく)とする
 summary: "視覚索引の単位(ページ/タイル)を単一コレクションのpayloadフィルタで分けず、単位ごとに別コレクション(pages_visual/tiles_visual)を持ち同時保持する設計判断。"
 aliases:
   - 視覚索引単位コレクション分離
-status: proposed
+status: approved
 date: 2026-07-30
+adr: 014
 project: NotebookOllama
 area: retrieval
-category: アーキテクチャ/データモデル
+category: data-model
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-29-pixelrag-tile-index-design]]"
-  - "[[draft-2026-07-20-visual-index-qdrant-rrf]]"
+  - "[[010-visual-index-qdrant-rrf]]"
 ---
 
-# ADR-draft: 視覚索引の単位はコレクション分離(payloadフィルタでなく)とする
+# ADR-014: 視覚索引の単位はコレクション分離(payloadフィルタでなく)とする
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: アーキテクチャ/データモデル
+- **ステータス**: 承認
+- **カテゴリ**: data-model
 - **日付**: 2026-07-30
 - **出典**: PixelRAG式タイル索引と検索戦略の選択 `docs/specs/2026-07-29-pixelrag-tile-index-design.md` §5
 

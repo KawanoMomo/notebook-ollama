@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: ソース間ナレッジ結合は汎用親子リンク基盤(source_links)で実現する
 summary: "ソース間のナレッジ結合を汎用の親子リンク基盤(source_links)で実現する設計判断。"
 aliases:
   - source_links
   - 親子リンク基盤
-status: proposed
+status: approved
 date: 2026-07-06
+adr: 001
 project: NotebookOllama
 area: presentation
-category: データモデル
+category: data-model
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-06-presentation-mode-design]]"
 ---
 
-# ADR-draft: ソース間ナレッジ結合は汎用親子リンク基盤(source_links)で実現する
+# ADR-001: ソース間ナレッジ結合は汎用親子リンク基盤(source_links)で実現する
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: データモデル
+- **ステータス**: 承認
+- **カテゴリ**: data-model
 - **日付**: 2026-07-06
 - **対象プロジェクト**: NotebookOllama
 - **関連ADR**: なし(発表モード設計 `docs/specs/2026-07-06-presentation-mode-design.md` より起票)

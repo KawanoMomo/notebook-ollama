@@ -1,25 +1,25 @@
 ---
-type: adr-draft
+type: adr
 title: 視覚インデックスはQdrant別コレクション+RRF融合とする
 summary: "ページ視覚埋め込みをFAISSでなくQdrant別コレクションに置き、テキスト検索とRRFで自動融合する設計判断。"
 aliases:
   - 視覚インデックス基盤
-status: proposed
+status: approved
 date: 2026-07-20
+adr: 010
 project: NotebookOllama
 area: retrieval
-category: アーキテクチャ/検索
+category: retrieval
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-visual-embedding-index-design]]"
 ---
 
-# ADR-draft: 視覚インデックスはQdrant別コレクション+RRF融合とする
+# ADR-010: 視覚インデックスはQdrant別コレクション+RRF融合とする
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: アーキテクチャ/検索
+- **ステータス**: 承認
+- **カテゴリ**: retrieval
 - **日付**: 2026-07-20
 - **出典**: 視覚埋め込みインデックス設計 `docs/specs/2026-07-20-visual-embedding-index-design.md`
 

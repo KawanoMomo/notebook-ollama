@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: VLM図説明は独立チャンク方式で検索に乗せる
 summary: "図1つ=1チャンク(kind='figure_desc')として追加し、既存チャンク不変・再埋め込み不要・図単位引用を実現する設計判断。"
 aliases:
   - 図説明独立チャンク
-status: proposed
+status: approved
 date: 2026-07-20
+adr: 008
 project: NotebookOllama
 area: ingestion
-category: データモデル
+category: data-model
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-vlm-figure-ocr-design]]"
-  - "[[draft-2026-07-20-chunk-asset-sidecar]]"
+  - "[[006-chunk-asset-sidecar]]"
 ---
 
-# ADR-draft: VLM図説明は独立チャンク方式で検索に乗せる
+# ADR-008: VLM図説明は独立チャンク方式で検索に乗せる
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: データモデル
+- **ステータス**: 承認
+- **カテゴリ**: data-model
 - **日付**: 2026-07-20
 - **出典**: VLM図説明・OCR設計 `docs/specs/2026-07-20-vlm-figure-ocr-design.md`
 
