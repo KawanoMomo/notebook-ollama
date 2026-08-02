@@ -15,6 +15,9 @@ tags:
 
 このノートは `docs/specs`(設計書)と `docs/adr`(ADR)の入口です。横断ビューは [[設計資産.base|設計資産 Base]]、関係図は [[設計資産.canvas|設計資産 Canvas]] を参照してください。
 
+> [!tip] コードから逆引きするなら
+> 「このコードはどの設計書に規定されているか」は [[実装マップ]] を引く(Grep の代替)。
+
 > [!info] 使い方
 > - **一覧・絞り込み** → 下の埋め込み Base（領域別/ステータス別/ADR台帳/カード）
 > - **構成と機能の全体像** → [[設計資産.canvas]]（システム構成 → coreモジュール → 設計書 → ADR を1枚で俯瞰）
@@ -44,6 +47,7 @@ tags:
 > - [[2026-07-20-pdf-table-figure-sidecar-design|PDF表・図サイドカー抽出 (Stage 1)]] ✅
 > - [[2026-07-20-vlm-figure-ocr-design|VLM図説明・スキャンPDF OCR (Stage 2)]] ✅
 > - [[2026-07-20-visual-embedding-index-design|視覚埋め込み第2インデックス (Stage 3)]] ✅
+> - [[2026-07-29-pixelrag-tile-index-design|PixelRAG式タイル索引と検索戦略の選択 (Stage 4)]] ✅
 
 > [!abstract] 要約 (summary)
 > - [[2026-06-26-meeting-adr-templates|議事録テンプレ + ADR 抽出機能]] ✅
@@ -63,26 +67,54 @@ tags:
 > - [[2026-07-20-auto-continuation-design|応答自動継続 (Auto Continuation)]] ✅
 > - [[2026-06-21-youtube-source-design|YouTube ソース機能]] ⏸️（保留）
 
-## 🧭 ADR ドラフト（未採番）
+## 🧭 ADR（採番済み）
 
-採番・正式登録は承認後に `/adr` で行います。
+台帳は [[README|docs/adr/README.md]]、カテゴリ定義は [[categories]]。
+未採番のドラフトは `docs/adr/drafts/` に置く（**現在2件**）。採番・正式登録は承認後に `/adr` で行います。
 
-> [!question] 提案中の設計判断
-> - [[draft-2026-07-06-source-links-generic-parent-child|ソース間結合は汎用親子リンク基盤(source_links)]] — データモデル（発表モード起票）
-> - [[draft-2026-07-06-recording-timeline-markers|ページ遷移の記録は録音タイムラインマーカー機構]] — アーキテクチャ/結合度（発表モード起票）
-> - [[draft-2026-07-06-pptx-render-powerpoint-com|PPTX見た目再現は PowerPoint COM で取込時PDF化]] — 外部依存/取込パイプライン（発表モード起票）
-> - [[chat-voice-input-stateless-stt|チャット音声入力はステートレスSTT + ブラウザ側VAD構成]] — アーキテクチャ/結合度（音声入力起票）
-> - [[draft-2026-07-20-chunk-asset-sidecar|表・図はチャンク紐付きサイドカーアセット方式]] — データモデル/取込（表・図Stage 1起票）
-> - [[draft-2026-07-20-table-dual-representation|表は本文Markdown+サイドカーHTMLの二重表現]] — データ表現（表・図Stage 1起票）
-> - [[draft-2026-07-20-figure-desc-standalone-chunk|VLM図説明は独立チャンク方式]] — データモデル（表・図Stage 2起票）
-> - [[draft-2026-07-20-vlm-ocr-ollama-only|VLM/OCRはOllama一本+エンジン抽象化]] — アーキテクチャ/外部依存（表・図Stage 2起票）
-> - [[draft-2026-07-20-visual-index-qdrant-rrf|視覚インデックスはQdrant別コレクション+RRF融合]] — アーキテクチャ/検索（表・図Stage 3起票）
-> - [[draft-2026-07-20-visual-embedding-ondemand-transformers|視覚埋め込みはOllama外(transformers)でオンデマンド実行]] — 外部依存/リソース管理（表・図Stage 3起票）
-> - [[draft-2026-07-20-beta-feature-flag-registry|機能提供はコード内フラグレジストリ+設定オプトインのベータ機構]] — アーキテクチャ/リリース管理（ベータ基盤起票）
-> - [[draft-2026-07-20-assistant-prefill-continuation|打ち切り継続は assistant prefill(末尾assistantメッセージ再送)]] — アーキテクチャ/結合度（自動継続起票）
-> - [[draft-2026-07-20-truncated-persistence-update-in-place|truncatedはmessagesカラム永続化+手動継続は最終assistantメッセージ追記更新]] — データモデル（自動継続起票）
+> [!question] 提案中の設計判断（未採番ドラフト）
 > - [[draft-2026-08-02-openai-compat-second-contract|LLM/Embeddingの第二共通契約としてOpenAI互換APIを採用]] — アーキテクチャ/外部連携（iGPU/NPU Phase 1.5起票）
 > - [[draft-2026-08-02-llm-backend-vulkan-promotion|iGPUのLLM経路をOllama Vulkanに一本化しIPEX-LLM/DirectML系idを廃止]] — アーキテクチャ/バックエンド選定（iGPU/NPU Phase 1.5起票）
+
+> [!note] 発表モード / 音声入力 / ベータ基盤
+> - [[001-source-links-generic-parent-child|ADR-001 ソース間結合は汎用親子リンク基盤(source_links)]] — `data-model`
+> - [[002-recording-timeline-markers|ADR-002 ページ遷移の記録は録音タイムラインマーカー機構]] — `architecture`
+> - [[003-pptx-render-powerpoint-com|ADR-003 PPTX見た目再現は PowerPoint COM で取込時PDF化]] — `external-dep`
+> - [[004-chat-voice-input-stateless-stt|ADR-004 チャット音声入力はステートレスSTT + ブラウザ側VAD構成]] — `architecture`
+> - [[005-beta-feature-flag-registry|ADR-005 機能提供はコード内フラグレジストリ+設定オプトインのベータ機構]] — `release`
+
+> [!note] 表・図 RAG（Stage 1〜2）
+> - [[006-chunk-asset-sidecar|ADR-006 表・図はチャンク紐付きサイドカーアセット方式]] — `data-model`
+> - [[007-table-dual-representation|ADR-007 表は本文Markdown+サイドカーHTMLの二重表現]] — `data-model`
+> - [[008-figure-desc-standalone-chunk|ADR-008 VLM図説明は独立チャンク方式]] — `data-model`
+> - [[009-vlm-ocr-ollama-only|ADR-009 VLM/OCRはOllama一本+エンジン抽象化]] — `external-dep`
+
+> [!note] 視覚検索（Stage 3〜4）
+> - [[010-visual-index-qdrant-rrf|ADR-010 視覚インデックスはQdrant別コレクション+RRF融合]] — `retrieval`
+> - [[011-visual-embedding-ondemand-transformers|ADR-011 視覚埋め込みはOllama外(transformers)でオンデマンド実行]] — `external-dep` ⚠️ CUDA判断は017で覆された
+> - [[014-visual-index-unit-collections|ADR-014 視覚索引の単位はコレクション分離(payloadフィルタでなく)]] — `data-model`
+> - [[015-partial-success-per-unit|ADR-015 視覚索引構築の部分成功は単位ごとの独立性を意味する]] — `error-handling`
+> - [[016-pixel-native-explicit-failure|ADR-016 pixel_nativeは根拠画像なしで黙って劣化させず明示エラー]] — `error-handling`
+> - [[017-torch-cuda-wheel-index|ADR-017 visual extraのtorchはCUDAホイールインデックスに切替]] — `external-dep`
+
+> [!note] 応答の自動継続
+> - [[012-assistant-prefill-continuation|ADR-012 打ち切り継続は assistant prefill(末尾assistantメッセージ再送)]] — `architecture`
+> - [[013-truncated-persistence-update-in-place|ADR-013 truncatedはmessagesカラム永続化+手動継続は最終assistantメッセージ追記更新]] — `data-model`
+
+## 📋 ECN（変更通知）
+
+git履歴から抽出した「何を・なぜ・どう変えたか」。台帳は [[README|docs/ecn/README.md]]、
+姉妹プロジェクトへの照合結果は [[横展開分析_姉妹プロジェクト]]。
+
+> [!note] 表・図 RAG シリーズ
+> - [[ECN-001_表・図サイドカー抽出とベータ機能フラグ基盤|ECN-001 表・図サイドカー抽出とベータ機能フラグ基盤]] (Stage 1 / PR #24)
+> - [[ECN-002_VLM図説明とスキャンPDF-OCR|ECN-002 VLM図説明・スキャンPDF OCR]] (Stage 2 / PR #25)
+> - [[ECN-003_視覚埋め込み第2インデックスとRRF融合|ECN-003 視覚埋め込み第2インデックスとRRF融合]] (Stage 3 / PR #26)
+> - [[ECN-004_PixelRAG式タイル索引と検索戦略の選択|ECN-004 PixelRAG式タイル索引と検索戦略の選択]] (Stage 4 / PR #27)
+
+> [!tip] 横展開価値が高いもの
+> - [[ECN-005_torch-CUDA化とrecording-extraとの共存不可|ECN-005 torchのCUDA化とrecording extraとの共存不可]] — **HIGH**（GPU依存を持つ全プロジェクト）
+> - [[ECN-006_視覚索引の複合主キー移行|ECN-006 SQLiteテーブル再作成によるスキーマ移行]] — SQLiteを使う全プロジェクト
 
 ## 🏷️ ステータス凡例
 

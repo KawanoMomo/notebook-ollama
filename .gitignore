@@ -53,3 +53,6 @@ data/*
 .claudian/
 .superpowers/
 .worktrees/
+
+# 評価・検証の証拠(スクリーンショット等)。ローカル成果物なので追跡しない
+.eval/

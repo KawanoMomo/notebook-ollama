@@ -14,6 +14,20 @@ tags:
 related:
   - "[[2026-06-17-recording-source-design]]"
   - "[[2026-06-19-recording-naming-design]]"
+code:
+  - apps/api/routers/recording_ws.py
+  - apps/api/routers/sources.py
+  - apps/api/schemas/source_content.py
+  - apps/web/src/lib/api/source_outline.ts
+  - apps/web/src/lib/components/AudioCitationPlayer.svelte
+  - apps/web/src/lib/components/LiveCaptionView.svelte
+  - apps/web/src/lib/components/RecordingControls.svelte
+  - apps/web/src/lib/components/SourceViewer.svelte
+  - apps/web/src/lib/stores/recording.svelte.ts
+  - core/recording/recorder.py
+  - core/recording/recording_pipeline.py
+  - core/storage/chunks_repo.py
+  - core/storage/vector_store.py
 ---
 
 # 設計仕様: 録音チャンネル個別ミュート + 話者名一括リネーム(Notebook Ollama)

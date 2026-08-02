@@ -257,8 +257,9 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source not in notebook")
     delete_chunks_for_source(ctx.conn, source_id)
     ctx.vector_store.delete_by_source(source_id)
-    ctx.visual_store.delete_by_source(source_id)
-    delete_indexed_source(ctx.conn, source_id)
+    for store in ctx.visual_stores.values():
+        store.delete_by_source(source_id)
+    delete_indexed_source(ctx.conn, source_id)  # unit=None = 全単位削除(既定)
     # chunk_assets 行とアセットディレクトリ(表HTML/図クロップ/ページPNG)も掃除する。
     # Stage 1 以来ここだけ漏れており、ソース削除で孤児ファイルが残っていた
     # (retry/reingest 用の _clear_source_derived_data には最初からあった処理)。
@@ -580,8 +581,9 @@ def _clear_source_derived_data(ctx, source_id: str) -> None:
     ctx.vector_store.delete_by_source(source_id)
     delete_assets_for_source(ctx.conn, source_id)
     shutil.rmtree(ctx.config.assets_dir / source_id, ignore_errors=True)
-    ctx.visual_store.delete_by_source(source_id)
-    delete_indexed_source(ctx.conn, source_id)
+    for store in ctx.visual_stores.values():
+        store.delete_by_source(source_id)
+    delete_indexed_source(ctx.conn, source_id)  # unit=None = 全単位削除(既定)
 
 
 @router.post("/{notebook_id}/sources/{source_id}/retry", response_model=Source)

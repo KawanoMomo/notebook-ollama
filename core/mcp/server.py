@@ -59,6 +59,7 @@ def build_mcp_server(ctx: Any) -> FastMCP:
             query=query,
             max_quotes=max_quotes,
             retrieval=ctx.retrieval,
+            config=ctx.config,
         )
 
     @server.tool()

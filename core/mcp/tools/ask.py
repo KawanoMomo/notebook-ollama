@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from core.exceptions import AppError, ErrorCode
 from core.generation.citations import CitationSpec, build_citations
 from core.generation.locations import format_location
 from core.generation.prompts import SYSTEM_PROMPT, PromptChunk, build_user_prompt
@@ -48,6 +49,19 @@ async def ask_tool(
     config: Any,
     notebook_default_model: str | None,
 ) -> dict[str, Any]:
+    # pixel_native は画像が唯一の根拠だが、MCP 経路には画像投入機構が一切無い
+    # (build_image_message を呼ばず SYSTEM_PROMPT をそのまま使う)。そのまま
+    # 通すとプレースホルダ本文だけを見たモデルが根拠なく回答してしまう
+    # (spec §7.4 が名指しで禁じる失敗)。黙って通さず明示的に失敗させる。
+    if config.visual.search_strategy == "pixel_native":
+        raise AppError(
+            ErrorCode.INPUT_INVALID,
+            "MCP 経由の検索は pixel-native 戦略に対応していません",
+            remediation=(
+                "設定画面で検索戦略を「視覚のみ」または「RRF融合」に戻してください。"
+                "pixel-native はチャット画面でのみ利用できます。"
+            ),
+        )
     chosen_model = model or notebook_default_model or config.ollama.default_model
     show = await client.show(chosen_model)
     num_ctx = parse_context_window(show.get("parameters", "")) or 8192
@@ -92,7 +106,6 @@ async def ask_tool(
         {"role": "system", "content": SYSTEM_PROMPT + "\n" + style_hint},
         {"role": "user", "content": user_prompt},
     ]
-    from core.exceptions import AppError
     from core.generation.stream import TRUNCATION_NOTE_PREFIX
     from core.ollama.client import ThinkingChunk
 

@@ -160,6 +160,7 @@ class AppContext:
         ollama_gateway: OllamaGateway,
         text_embedder: _TextEmbedderLike,
         visual_store: Any = None,
+        visual_stores: Any = None,
         visual_encoder: Any = None,
     ) -> None:
         self.config = config
@@ -186,6 +187,7 @@ class AppContext:
         self.backend_factory = backend_factory
         self.text_embedder = text_embedder
         self.visual_store = visual_store
+        self.visual_stores = visual_stores or {}
         self.visual_encoder = visual_encoder
         # Lazy backend instances (built on first access via @property).
         self._transcriber: Any = None
@@ -445,10 +447,16 @@ def build_context(config: AppConfig) -> AppContext:
             ),
         )
     )
-    from core.storage.visual_store import VisualPageStore
+    from core.storage.visual_store import VisualUnitStore
     from core.visual.encoder import TransformersVisualEncoder, visual_extra_available
 
-    visual_store = VisualPageStore(client=vs.client)
+    # 単位ごとに別コレクション。QdrantClient は VectorStore と共有する
+    # (ローカルモードは1パス1クライアント制約)。
+    visual_stores = {
+        "page": VisualUnitStore(client=vs.client, unit="page"),
+        "tile": VisualUnitStore(client=vs.client, unit="tile"),
+    }
+    visual_store = visual_stores["page"]   # 既存呼び出し(sources.py)との互換
     visual_encoder = (
         TransformersVisualEncoder(
             model_name=config.visual.embedding_model,
@@ -472,31 +480,44 @@ def build_context(config: AppConfig) -> AppContext:
         embedding_model_getter=lambda: config.ollama.embedding_model,
         figure_desc_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
         visual=VisualSearchDeps(
-            store=visual_store,
+            stores=visual_stores,
             encoder=visual_encoder,
             enabled=lambda: (
                 config.visual.search_enabled
                 and visual_encoder is not None
                 and _pipeline_features.is_enabled("table-figure-rag")
             ),
-            meta_lookup=lambda nb_id: _visual_get_meta(conn, nb_id),
+            meta_lookup=lambda nb_id, unit: _visual_get_meta(conn, nb_id, unit),
             model_name_getter=lambda: config.visual.embedding_model,
+            unit_getter=lambda: config.visual.index_unit,
+            strategy_getter=lambda: config.visual.search_strategy,
+            tile_grid_getter=lambda: (config.visual.tile_rows, config.visual.tile_cols),
+            max_images_getter=lambda: config.visual.max_images,
         ),
     )
 
-    async def _probe_vision() -> bool:
-        # 判定対象は「現在チャット応答を生成しているモデル」(default_model)。
+    async def _probe_vision(model: str) -> bool:
+        # 判定対象は「実際に応答生成へ使われるモデル」。呼び出し元(chat.py)が
+        # nb.default_model or ctx.config.ollama.default_model で解決済みの値を
+        # 渡してくる — ここでグローバル既定(config.ollama.default_model)を
+        # 見ると、ノートブック単位で vision 対応モデルに上書きしているのに
+        # 誤って非vision判定される(実機検証で確認)。
         # 取込時の図説明/OCR専用モデル(vision_model)とは別軸(spec §7)。
-        if not config.ollama.vision_model or not _pipeline_features.is_enabled("table-figure-rag"):
+        if not _pipeline_features.is_enabled("table-figure-rag"):
+            return False
+        # pixel_native はチャットモデルの vision 能力だけが要件。Stage 2 の
+        # vision_model(取込時OCR用)を設定していないユーザーでも使えるように、
+        # この戦略のときだけ vision_model の有無を条件から外す。
+        if config.visual.search_strategy != "pixel_native" and not config.ollama.vision_model:
             return False
         client = OllamaClient(
             endpoint=config.ollama.endpoint, timeout=config.ollama.request_timeout_seconds
         )
         try:
-            return await probe_vision_capability(client, config.ollama.default_model)
+            return await probe_vision_capability(client, model)
         except Exception:
             # best-effort probe: モデル情報の取得失敗(Ollama 停止中、
-            # runtime_backend=openai-compat で default_model が Ollama に無い等)は
+            # runtime_backend=openai-compat でモデルが Ollama に無い等)は
             # 「vision なし」として扱い、チャット本体のストリームを巻き込まない。
             return False
 
@@ -511,6 +532,27 @@ def build_context(config: AppConfig) -> AppContext:
                 out[cid] = path.read_bytes()
         return out
 
+    def _visual_image_path(sid: str, page: int, tile_index: int | None):
+        """視覚ヒットの画像ファイル。単位ごとに保存先が違う(VisualIndexBuilder)。"""
+        if tile_index is None:
+            return config.assets_dir / sid / "pages" / f"{page}.png"
+        return config.assets_dir / sid / "tiles" / f"{page}-{tile_index}.png"
+
+    def _lookup_page_images(
+        keys: list[tuple[str, int, int | None]],
+    ) -> dict[tuple[str, int, int | None], bytes]:
+        out: dict[tuple[str, int, int | None], bytes] = {}
+        for key in keys:
+            sid, page, tile_index = key
+            path = _visual_image_path(sid, page, tile_index)
+            if path.exists():
+                out[key] = path.read_bytes()
+            else:
+                # 索引未構築 / 別単位で構築済み などで欠落しうる。無言で
+                # 落とすと「本文も画像も無いソース」の原因が追えないので残す。
+                _log.warning("visual_image_missing", source_id=sid, page=page, tile=tile_index)
+        return out
+
     generation = GenerationService(
         deps=GenerationDeps(
             retrieval=retrieval,
@@ -522,11 +564,9 @@ def build_context(config: AppConfig) -> AppContext:
             ),
             vision_check=_probe_vision,
             figure_images_lookup=_lookup_figure_images,
-            page_images_lookup=lambda keys: {
-                (sid, page): (config.assets_dir / sid / "pages" / f"{page}.png").read_bytes()
-                for (sid, page) in keys
-                if (config.assets_dir / sid / "pages" / f"{page}.png").exists()
-            },
+            page_images_lookup=_lookup_page_images,
+            visual_strategy=lambda: config.visual.search_strategy,
+            max_images_getter=lambda: config.visual.max_images,
         )
     )
     recordings = RecordingRegistry()
@@ -575,5 +615,6 @@ def build_context(config: AppConfig) -> AppContext:
         ollama_gateway=gateway,
         text_embedder=text_embedder,
         visual_store=visual_store,
+        visual_stores=visual_stores,
         visual_encoder=visual_encoder,
     )

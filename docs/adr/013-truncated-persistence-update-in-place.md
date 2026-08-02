@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: truncated は messages カラムで永続化し手動継続は最終 assistant メッセージの追記更新で行う
 summary: "打ち切りフラグを messages.truncated カラムで永続化し、手動継続では新規メッセージを作らず最終 assistant メッセージへ追記更新する(citations再計算+conversations.updated_at bump)設計判断。"
 aliases:
   - truncated永続化
   - 追記更新
-status: proposed
+status: approved
 date: 2026-07-21
+adr: 013
 project: NotebookOllama
 area: chat
-category: データモデル
+category: data-model
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-auto-continuation-design]]"
 ---
 
-# ADR-draft: truncated は messages カラムで永続化し手動継続は最終 assistant メッセージの追記更新で行う
+# ADR-013: truncated は messages カラムで永続化し手動継続は最終 assistant メッセージの追記更新で行う
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: データモデル
+- **ステータス**: 承認
+- **カテゴリ**: data-model
 - **日付**: 2026-07-21
 - **対象プロジェクト**: NotebookOllama
 - **関連ADR**: なし(応答自動継続設計 `docs/specs/2026-07-20-auto-continuation-design.md` §4.3/4.4 より起票)

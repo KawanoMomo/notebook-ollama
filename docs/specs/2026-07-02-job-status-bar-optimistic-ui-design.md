@@ -13,6 +13,14 @@ area: rag-ux
 tags:
   - spec
 note: 実機検証レポート PASS 有り(docs/eval/2026-07-02-job-status-bar)
+code:
+  - apps/web/src/lib/components/JobStatusBar.svelte
+  - apps/web/src/lib/stores/currentNotebook.svelte.ts
+  - apps/web/src/lib/stores/events.svelte.ts
+  - apps/web/src/routes/notebooks
+  - core/adr/adr_job.py
+  - core/storage/sources_repo.py
+  - core/summary/summarizer.py
 ---
 
 # ジョブ状態可視化 + Optimistic UI 設計 (2026-07-02)

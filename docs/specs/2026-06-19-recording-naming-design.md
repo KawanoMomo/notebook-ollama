@@ -11,6 +11,18 @@ project: NotebookOllama
 area: recording
 tags:
   - spec
+code:
+  - apps/api/routers/recordings.py
+  - apps/api/routers/sources.py
+  - apps/api/schemas/settings.py
+  - apps/web/src/lib/api/sources.ts
+  - apps/web/src/lib/components/SourceCard.svelte
+  - apps/web/src/lib/components/SourcesPanel.svelte
+  - apps/web/src/lib/components/settings/AudioSettingsSection.svelte
+  - core/config.py
+  - core/recording/recording_pipeline.py
+  - core/recording/title_inference.py
+  - core/storage/sources_repo.py
 ---
 
 # 録音の自動命名・ソース名編集 + しきい値表示改善 設計仕様

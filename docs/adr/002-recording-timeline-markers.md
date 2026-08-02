@@ -1,26 +1,26 @@
 ---
-type: adr-draft
+type: adr
 title: ページ遷移の記録は録音セッションの汎用タイムラインマーカー機構で行う
 summary: "ページ遷移の記録を録音セッションの汎用タイムラインマーカー機構で行う設計判断。"
 aliases:
   - タイムラインマーカー
-status: proposed
+status: approved
 date: 2026-07-06
+adr: 002
 project: NotebookOllama
 area: presentation
-category: アーキテクチャ/結合度
+category: architecture
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-06-presentation-mode-design]]"
-  - "[[draft-2026-07-06-source-links-generic-parent-child]]"
+  - "[[001-source-links-generic-parent-child]]"
 ---
 
-# ADR-draft: ページ遷移の記録は録音セッションの汎用タイムラインマーカー機構で行う
+# ADR-002: ページ遷移の記録は録音セッションの汎用タイムラインマーカー機構で行う
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: アーキテクチャ/結合度
+- **ステータス**: 承認
+- **カテゴリ**: architecture
 - **日付**: 2026-07-06
 - **対象プロジェクト**: NotebookOllama
 - **関連ADR**: draft-2026-07-06-source-links-generic-parent-child

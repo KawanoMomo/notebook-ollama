@@ -13,6 +13,19 @@ tags:
   - spec
 related:
   - "[[2026-06-19-model-selection-design]]"
+code:
+  - apps/api/main.py
+  - core/accel/factory.py
+  - core/accel/planner.py
+  - core/accel/probe.py
+  - core/config.py
+  - core/ollama/client.py
+  - core/recording/recording_pipeline.py
+  - core/recording/transcriber.py
+  - core/recording/whisper_postprocess.py
+  - tests/integration/test_api/test_settings_acceleration.py
+  - tests/perf/baseline.json
+  - tests/perf/test_cuda_regression.py
 ---
 
 # Intel iGPU/NPU・AMD Ryzen AI 対応設計

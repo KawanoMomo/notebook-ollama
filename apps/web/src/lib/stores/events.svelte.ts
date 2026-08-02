@@ -1,5 +1,6 @@
 import { openNotebookEvents, type SourceStatusEvent } from "$lib/api/events";
 import type { Source } from "$lib/api/types";
+import type { VisualIndexUnit } from "$lib/api/visualIndex";
 import { currentNotebookStore } from "./currentNotebook.svelte";
 import { notify } from "$lib/utils/notifications";
 
@@ -19,10 +20,18 @@ export interface VisualIndexProgress {
 }
 
 export interface VisualIndexOutcome {
-  ok: boolean;
-  // SSE イベントは同一 {ok} でも別の発生を区別できないため、発生時刻を
+  // "complete" = 1件以上索引できた / "error" = 対象はあったが1件も索引でき
+  // なかった / "noop" = 対象が0件だった(タイル格子等のパラメータを変えても
+  // 既に索引済みのソースは再構築対象にならず、無言で何もしないまま「完了」
+  // を装うのを防ぐための区分。最終レビュー I3)。
+  kind: "complete" | "error" | "noop";
+  // SSE イベントは同一 {kind} でも別の発生を区別できないため、発生時刻を
   // change-detection のキーとして使う(購読側 $effect が「新しい完了/失敗」を検知する)。
   at: number;
+  // 部分失敗(半滅)の件数。kind:"complete" でも1件以上あれば「完了」の
+  // 見た目の裏でスキップされたページがあることを示す(最終レビュー I4)。
+  // ペイロードに無ければ 0。
+  skippedPages: number;
 }
 
 export interface EventsStore {
@@ -36,8 +45,10 @@ export interface EventsStore {
    * (実機FB 2026-07-26)。
    */
   figureEtaFor(sourceId: string): number | null;
-  readonly visualIndexProgress: VisualIndexProgress | null;
-  readonly visualIndexOutcome: VisualIndexOutcome | null;
+  visualIndexProgressFor(unit: VisualIndexUnit): VisualIndexProgress | null;
+  /** どちらかの索引単位が構築中かどうか(ツールバーの aria-busy / スピナー用)。 */
+  readonly visualIndexBusy: boolean;
+  visualIndexOutcomeFor(unit: VisualIndexUnit): VisualIndexOutcome | null;
 }
 
 export function createEventsStore(): EventsStore {
@@ -48,11 +59,11 @@ export function createEventsStore(): EventsStore {
   // 視覚インデックス構築ジョブはノートブック単位(ソース単位の activeJobs 機構とは
   // 別系統)なので、進捗/結果を専用の state として持つ(events.ts は全イベントを
   // 単一の "source_status" SSE イベント名で運ぶため、type で分岐する)。
-  let visualIndexProgress = $state<VisualIndexProgress | null>(null);
-  let visualIndexOutcome = $state<VisualIndexOutcome | null>(null);
-  // ETA計算用: 最初に観測した進捗イベントの (時刻, done)。途中からモーダルを
-  // 開いた場合でも「観測開始以降のペース」で目安を出す。
-  let progressBaseline: { at: number; done: number } | null = null;
+  // 索引単位ごとに進捗と ETA 基準点を持つ。ページ索引とタイル索引は
+  // 独立に走らせられるため、シングルトンだと進捗が混線し ETA が壊れる。
+  let visualIndexProgress = $state<Map<VisualIndexUnit, VisualIndexProgress>>(new Map());
+  let visualIndexOutcome = $state<Map<VisualIndexUnit, VisualIndexOutcome>>(new Map());
+  let visualBaselines = new Map<VisualIndexUnit, { at: number; done: number }>();
   // 図解析の ETA 基準点(ソース単位)。視覚インデックスと同じ考え方だが、
   // こちらは複数ソースが同時に走りうるので source_id ごとに持つ。
   const figureBaselines = new Map<string, { at: number; done: number }>();
@@ -65,50 +76,68 @@ export function createEventsStore(): EventsStore {
     figureEtaFor(sourceId) {
       return figureEtas[sourceId] ?? null;
     },
-    get visualIndexProgress() {
-      return visualIndexProgress;
+    visualIndexProgressFor(unit) {
+      return visualIndexProgress.get(unit) ?? null;
     },
-    get visualIndexOutcome() {
-      return visualIndexOutcome;
+    get visualIndexBusy() {
+      return visualIndexProgress.size > 0;
+    },
+    visualIndexOutcomeFor(unit) {
+      return visualIndexOutcome.get(unit) ?? null;
     },
     start(notebookId) {
       close?.();
       lastStatus.clear();
       convSteps = {};
-      visualIndexProgress = null;
-      visualIndexOutcome = null;
-      progressBaseline = null;
+      visualIndexProgress = new Map();
+      visualIndexOutcome = new Map();
+      visualBaselines = new Map();
       figureBaselines.clear();
       figureEtas = {};
       close = openNotebookEvents(notebookId, (ev: SourceStatusEvent) => {
         // 視覚インデックスジョブのイベントには source_id が無いため、
         // 通常のソース状態パッチに入る前に分岐して処理する。
         if (ev.type === "visual_index_progress") {
+          const unit = (ev.unit as VisualIndexUnit) ?? "page";
           const done = typeof ev.done === "number" ? ev.done : 0;
           const total = typeof ev.total === "number" ? ev.total : 0;
-          const now = Date.now();
-          if (progressBaseline === null) {
-            progressBaseline = { at: now, done };
+          const base = visualBaselines.get(unit);
+          let etaSeconds: number | null = null;
+          if (base) {
+            const advanced = done - base.done;
+            const elapsedMs = Date.now() - base.at;
+            if (advanced > 0 && elapsedMs > 0) {
+              etaSeconds = Math.round(((total - done) * (elapsedMs / advanced)) / 1000);
+            }
+          } else {
+            visualBaselines.set(unit, { at: Date.now(), done });
           }
-          const advanced = done - progressBaseline.done;
-          const elapsedMs = now - progressBaseline.at;
-          const etaSeconds =
-            advanced > 0 && elapsedMs > 0
-              ? Math.round(((total - done) * (elapsedMs / advanced)) / 1000)
-              : null;
-          visualIndexProgress = { done, total, etaSeconds };
+          const next = new Map(visualIndexProgress);
+          next.set(unit, { done, total, etaSeconds });
+          visualIndexProgress = next;
           return;
         }
-        if (ev.type === "visual_index_complete") {
-          visualIndexProgress = null;
-          progressBaseline = null;
-          visualIndexOutcome = { ok: true, at: Date.now() };
-          return;
-        }
-        if (ev.type === "visual_index_error") {
-          visualIndexProgress = null;
-          progressBaseline = null;
-          visualIndexOutcome = { ok: false, at: Date.now() };
+        if (
+          ev.type === "visual_index_complete" ||
+          ev.type === "visual_index_error" ||
+          ev.type === "visual_index_noop"
+        ) {
+          const unit = (ev.unit as VisualIndexUnit) ?? "page";
+          const nextProgress = new Map(visualIndexProgress);
+          nextProgress.delete(unit);
+          visualIndexProgress = nextProgress;
+          visualBaselines.delete(unit);
+          const kind: VisualIndexOutcome["kind"] =
+            ev.type === "visual_index_complete"
+              ? "complete"
+              : ev.type === "visual_index_noop"
+                ? "noop"
+                : "error";
+          const skippedPages =
+            typeof ev.skipped_pages === "number" ? ev.skipped_pages : 0;
+          const nextOutcome = new Map(visualIndexOutcome);
+          nextOutcome.set(unit, { kind, at: Date.now(), skippedPages });
+          visualIndexOutcome = nextOutcome;
           return;
         }
         // Record the latest pipeline step for this source (if the payload carries one).
@@ -225,9 +254,9 @@ export function createEventsStore(): EventsStore {
       close?.();
       lastStatus.clear();
       convSteps = {};
-      visualIndexProgress = null;
-      visualIndexOutcome = null;
-      progressBaseline = null;
+      visualIndexProgress = new Map();
+      visualIndexOutcome = new Map();
+      visualBaselines = new Map();
       figureBaselines.clear();
       figureEtas = {};
       close = null;

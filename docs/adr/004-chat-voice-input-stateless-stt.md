@@ -1,17 +1,17 @@
 ---
-type: adr-draft
+type: adr
 title: チャット音声入力はステートレス STT + ブラウザ側 VAD 構成
 summary: "STT は POST /api/stt/transcribe のステートレス1本とし、VAD/無音検出はブラウザ側で行う。録音ソースのサーバー側キャプチャ基盤とは分離する設計判断。"
 aliases:
   - ステートレスSTT
-status: proposed
+status: approved
 date: 2026-07-07
+adr: 004
 project: NotebookOllama
 area: chat
-category: アーキテクチャ/結合度
+category: architecture
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-05-chat-voice-input-design]]"
 ---

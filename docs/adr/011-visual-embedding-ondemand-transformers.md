@@ -1,26 +1,27 @@
 ---
-type: adr-draft
+type: adr
 title: 視覚埋め込みはOllama外(transformers)でオンデマンド実行する
 summary: "Ollama非対応の視覚埋め込みをtransformers+extra依存で実行し、オンデマンドロード+アイドルアンロードで11GB VRAMと共存させる設計判断。"
 aliases:
   - 視覚埋め込み実行基盤
-status: proposed
+status: approved
 date: 2026-07-20
+adr: 011
 project: NotebookOllama
 area: retrieval
-category: 外部依存/リソース管理
+category: external-dep
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-visual-embedding-index-design]]"
-  - "[[draft-2026-07-20-visual-index-qdrant-rrf]]"
+  - "[[010-visual-index-qdrant-rrf]]"
+  - "[[017-torch-cuda-wheel-index]]"
 ---
 
-# ADR-draft: 視覚埋め込みはOllama外(transformers)でオンデマンド実行する
+# ADR-011: 視覚埋め込みはOllama外(transformers)でオンデマンド実行する
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: 外部依存/リソース管理
+- **ステータス**: 承認
+- **カテゴリ**: external-dep
 - **日付**: 2026-07-20
 - **出典**: 視覚埋め込みインデックス設計 `docs/specs/2026-07-20-visual-embedding-index-design.md`
 
@@ -72,6 +73,25 @@ A を採用する。例外は視覚埋め込みに限定し、`OcrEngine` 同様
   だが、Ollamaチャットモデル常駐下ではWDDM共有メモリスピルで画像8.7〜20.4秒/枚と
   CPU fp32より遅い。**11GBでの同時常駐は不成立(spec §7の警告を実測確認)**。
   CUDA index 導入は見送り
+  → **この判断は [[017-torch-cuda-wheel-index|ADR-017]] で覆された。** 下記「後日の訂正」を参照
+
+## 後日の訂正 (2026-07-30 / ADR-017)
+
+上記「CUDA index 導入は見送り」は **cu126 での測定に基づく判断であり、cu130 では
+再現しなかった**。ADR-017 の実測では、同じ RTX 2080 Ti・同じ Ollama 常駐条件
+(qwen2.5:14b 9.5GB 常駐、エンコーダ4.4GBと合わせて約13.9GB > VRAM 11.26GB)で
+**0.358秒/ページ**、CPU(52.5秒)の約147倍だった。
+
+この ADR は破棄せず残す。判断そのものは当時の測定に対して妥当であり、**「CUDAは常駐下で
+遅い」という結論だけが後続の測定で否定された**という経緯自体が記録に値するため。
+
+派生する訂正:
+
+- 本 ADR が「CPUフォールバック運用が現実の既定」としてスレッド上限・バースト間休止などの
+  負荷ノブを正当化した前提は、GPU 経路では成立しない
+- ただし `build_cooldown_seconds`(既定10.0秒)だけは実装上デバイスを見ずページ間に挟まり、
+  GPU でも効き続けることが 2026-08-02 の効果測定で判明した(約9倍の速度低下)。
+  詳細と再測定値は [[2026-07-29-pixelrag-tile-index-design|Stage 4 設計書]] の「効果測定」節
 
 ## 教訓
 

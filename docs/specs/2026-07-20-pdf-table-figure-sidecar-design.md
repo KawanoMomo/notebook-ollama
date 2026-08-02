@@ -15,10 +15,17 @@ tags:
   - rag
 related:
   - "[[notebook-ollama-design]]"
-  - "[[draft-2026-07-06-pptx-render-powerpoint-com]]"
+  - "[[003-pptx-render-powerpoint-com]]"
   - "[[2026-06-19-model-selection-design]]"
   - "[[2026-07-02-job-status-bar-optimistic-ui-design]]"
   - "[[2026-07-20-beta-feature-flags-design]]"
+code:
+  - core/generation/stream.py
+  - core/ingestion/types.py
+  - core/retrieval/budgeter.py
+  - core/storage/migrations.py
+  - tests/integration
+  - tests/unit
 ---
 
 # PDF表・図サイドカー抽出 (Stage 1) 設計書
@@ -182,7 +189,7 @@ PDF ─▶ PdfParser
 ## 13. 参照
 
 - 基盤設計: [[notebook-ollama-design]](原本保持・チャンク二重持ち・取込フロー)
-- サイドカー前例: [[draft-2026-07-06-pptx-render-powerpoint-com]](取込時PDF併産+グレースフルデグレード)
+- サイドカー前例: [[003-pptx-render-powerpoint-com]](取込時PDF併産+グレースフルデグレード)
 - 再インデックス制約: [[2026-06-19-model-selection-design]]
 - 進捗表示: [[2026-07-02-job-status-bar-optimistic-ui-design]]
 - 調査対象: [PixelRAG](https://github.com/StarTrail-org/PixelRAG) / [Unlimited-OCR](https://github.com/baidu/Unlimited-OCR)

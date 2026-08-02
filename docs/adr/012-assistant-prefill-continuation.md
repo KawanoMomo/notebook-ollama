@@ -1,25 +1,25 @@
 ---
-type: adr-draft
+type: adr
 title: 打ち切り継続は assistant prefill(末尾 assistant メッセージ再送)で行う
 summary: "num_predict 上限による打ち切りの継続を、元 messages + 途中応答全文を assistant ロールで再送する assistant prefill 方式で行う設計判断。"
 aliases:
   - assistant prefill
-status: proposed
+status: approved
 date: 2026-07-21
+adr: 012
 project: NotebookOllama
 area: chat
-category: アーキテクチャ/結合度
+category: architecture
 tags:
   - adr
-  - draft
 related:
   - "[[2026-07-20-auto-continuation-design]]"
 ---
 
-# ADR-draft: 打ち切り継続は assistant prefill(末尾 assistant メッセージ再送)で行う
+# ADR-012: 打ち切り継続は assistant prefill(末尾 assistant メッセージ再送)で行う
 
-- **ステータス**: 提案(ドラフト・未採番)
-- **カテゴリ**: アーキテクチャ/結合度
+- **ステータス**: 承認
+- **カテゴリ**: architecture
 - **日付**: 2026-07-21
 - **対象プロジェクト**: NotebookOllama
 - **関連ADR**: なし(応答自動継続設計 `docs/specs/2026-07-20-auto-continuation-design.md` §3 より起票)

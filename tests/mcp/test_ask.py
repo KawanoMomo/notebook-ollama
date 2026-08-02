@@ -54,6 +54,7 @@ async def test_ask_returns_answer_and_citations():
         ollama=FakeGateway(),
         client=FakeClient(),
         config=SimpleNamespace(
+            visual=SimpleNamespace(search_strategy="hybrid_rrf"),
             generation=SimpleNamespace(
                 context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
             ),
@@ -104,6 +105,7 @@ async def test_ask_auto_continues_on_length():
         ollama=gw,
         client=FakeClient(),
         config=SimpleNamespace(
+            visual=SimpleNamespace(search_strategy="hybrid_rrf"),
             generation=SimpleNamespace(
                 context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
             ),
@@ -131,6 +133,7 @@ async def test_ask_appends_note_when_exhausted():
         ollama=gw,
         client=FakeClient(),
         config=SimpleNamespace(
+            visual=SimpleNamespace(search_strategy="hybrid_rrf"),
             generation=SimpleNamespace(
                 context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
             ),
@@ -174,6 +177,7 @@ async def test_ask_continuation_error_degrades_gracefully():
         ollama=gw,
         client=FakeClient(),
         config=SimpleNamespace(
+            visual=SimpleNamespace(search_strategy="hybrid_rrf"),
             generation=SimpleNamespace(
                 context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
             ),
@@ -184,3 +188,33 @@ async def test_ask_continuation_error_degrades_gracefully():
     )
     assert result["answer"].startswith("前半")
     assert "続きの生成に失敗" in result["answer"]
+
+
+@pytest.mark.asyncio
+async def test_ask_rejects_pixel_native_strategy():
+    """最終レビュー I1: MCP の ask は pixel_native を選んでいると画像投入機構が
+    無いまま SYSTEM_PROMPT だけを渡してしまう(根拠のない回答を生成する)ため、
+    黙って通さず明示的に AppError で失敗させる(spec §7.4)。"""
+    from types import SimpleNamespace
+
+    from core.exceptions import AppError
+
+    with pytest.raises(AppError):
+        await ask_tool(
+            notebook_id="nb1",
+            question="?",
+            model=None,
+            style="concise",
+            retrieval=FakeRetrieval(),
+            ollama=FakeGateway(),
+            client=FakeClient(),
+            config=SimpleNamespace(
+                visual=SimpleNamespace(search_strategy="pixel_native"),
+                generation=SimpleNamespace(
+                    context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
+                ),
+                retrieval=SimpleNamespace(top_k=8, min_history_turns=0),
+                ollama=SimpleNamespace(default_model="qwen2.5:14b"),
+            ),
+            notebook_default_model=None,
+        )

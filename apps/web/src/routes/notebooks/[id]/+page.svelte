@@ -192,10 +192,10 @@
           <ChatPanel
             notebookId={data.notebookId}
             onCitationClick={(cid, sourceId) => {
-              if (cid.startsWith('vp:')) {
-                // 視覚インデックス由来の合成チャンク(vp:<source_id>:<page>)は
-                // BE 側に実チャンク行が無く getChunk が失敗するため、
-                // 通常のソース選択(全文ビュー)へフォールバックする。
+              // 視覚検索の合成チャンクは BE 側に実チャンク行が無く getChunk が失敗するため、
+              // 通常のソース選択(全文ビュー)へフォールバックする。
+              // 'vp:' = ページ単位、'vt:' = タイル単位 (Stage 4)。
+              if (cid.startsWith('vp:') || cid.startsWith('vt:')) {
                 selectedSourceId = sourceId;
                 selectedChunkId = null;
                 return;

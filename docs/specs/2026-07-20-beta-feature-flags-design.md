@@ -18,6 +18,8 @@ related:
   - "[[2026-07-20-vlm-figure-ocr-design]]"
   - "[[2026-07-20-visual-embedding-index-design]]"
   - "[[2026-07-02-developer-mode-design]]"
+code:
+  - core/features.py
 ---
 
 # 汎用ベータ機能フレームワーク (Feature Flags) 設計書

@@ -155,7 +155,31 @@ uv sync --extra recording
 - 話者は「あなた」（マイク）/「相手1…」（システム）として記録され、チップから**リネーム**可能
 - NVIDIA GPU（CUDA）推奨。録音依存が未導入のままでも API サーバ・取り込み・チャットは通常通り起動しますが、録音系エンドポイント (`/api/notebooks/{id}/recordings*`) は HTTP 503 を返し、UI 側では録音ボタンが失敗します（`uv sync --extra recording` で解消）。
 - `uv sync --extra recording` は一度実行すれば十分です。付属の起動スクリプト（`start.ps1` / `start.sh` / `dev.ps1` / `dev.sh`）は `uv run --no-sync` で起動するため、次回以降の起動でこの依存が勝手に外れることはありません。
-- **注意**: これらのスクリプトを経由せず、後日 **素の `uv sync`（`--extra` を付けない）** を再実行すると、以前入れた `recording` / `pdf` extra は静かにアンインストールされます（`git pull` 後の「依存を更新しよう」で踏みがちです）。全部まとめて維持したい場合は `uv sync --all-extras` を使ってください。
+- **注意**: これらのスクリプトを経由せず、後日 **素の `uv sync`（`--extra` を付けない）** を再実行すると、以前入れた `recording` / `pdf` / `visual` extra は静かにアンインストールされます（`git pull` 後の「依存を更新しよう」で踏みがちです）。全部まとめて維持したい場合は `uv sync --all-extras` を使ってください。**ただし `recording` と GPU 版 `visual`（CUDA 版 torch）は同一 venv で共存できません**（同時に有効化した状態だと視覚インデックスの構築が全ページ失敗します。詳細は次節「視覚埋め込み」を参照）。両方を使いたい場合は `--all-extras` ではなく用途ごとに venv を分けてください。
+
+### 視覚埋め込み (任意, Stage 3/4)
+
+PDF ページを画像のまま検索する視覚インデックス機能。
+
+```bash
+uv sync --extra visual
+```
+
+GPU (NVIDIA) を使う場合、`pyproject.toml` の `[[tool.uv.index]]` が
+`download.pytorch.org/whl/cu130` を指しているため CUDA 版 torch が入る。
+CUDA が使えない環境では自動的に CPU 実行へフォールバックする(1ページ
+あたり 1〜2 分かかる)。
+
+```bash
+uv run --no-sync python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_arch_list())"
+```
+
+**注意(`recording` extra との共存不可)**: `recording` extra と GPU 版
+`visual` extra(CUDA 版 torch)は同一 venv で共存できません。両方を同時に
+有効化した環境では、視覚インデックスの構築時に
+`CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH` 等により**全ページが失敗します**
+(遅くなるのではなく失敗します)。GPU で視覚埋め込みを使う場合は、
+`recording` extra を入れていない別の venv / 環境を用意してください。
 
 ## Windows: PowerShell 実行ポリシーについて
 

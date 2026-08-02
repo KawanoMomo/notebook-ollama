@@ -7,11 +7,11 @@ PAGE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x01" * 10
 FIGURE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x02" * 10
 
 
-def _hit(cid, *, page=3, via_visual=True, score=0.9):
+def _hit(cid, *, page=3, via_visual=True, score=0.9, tile_index=None):
     return RetrievedChunk(
         chunk_id=cid, source_id="s1", source_title="Doc", source_kind="pdf",
         page=page, heading_path=None, ord=0, text=f"text-{cid}", token_count=5,
-        score=score, via_visual=via_visual,
+        score=score, via_visual=via_visual, tile_index=tile_index,
     )
 
 
@@ -34,7 +34,7 @@ class RecordingGateway:
             meta["done_reason"] = "stop"
 
 
-async def _vision_true():
+async def _vision_true(model):
     return True
 
 
@@ -51,7 +51,7 @@ async def test_visual_hit_page_image_injected():
     svc = GenerationService(deps=GenerationDeps(
         retrieval=Retrieval([_hit("c1", page=3)]), ollama=gw,
         vision_check=_vision_true,
-        page_images_lookup=lambda keys: {("s1", 3): PAGE_PNG},
+        page_images_lookup=lambda keys: {("s1", 3, None): PAGE_PNG},
     ))
     async for _ in svc.run(**_run_args()):
         pass
@@ -71,7 +71,7 @@ async def test_total_image_cap_is_two_across_figures_and_pages():
         retrieval=Retrieval(hits), ollama=gw,
         vision_check=_vision_true,
         figure_images_lookup=lambda cids: {"f1": FIGURE_PNG},
-        page_images_lookup=lambda keys: {("s1", 3): PAGE_PNG, ("s1", 4): PAGE_PNG},
+        page_images_lookup=lambda keys: {("s1", 3, None): PAGE_PNG, ("s1", 4, None): PAGE_PNG},
     ))
     async for _ in svc.run(**_run_args()):
         pass
@@ -99,3 +99,60 @@ async def test_no_page_lookup_configured_keeps_text_only():
     async for _ in svc.run(**_run_args()):
         pass
     assert "images" not in gw.received_messages[-1]
+
+
+async def test_tile_hit_attaches_tile_image_not_page_image():
+    """タイルヒットではタイルPNGが投入され、ページPNGは使われない。"""
+    calls: list[list[tuple]] = []
+
+    def lookup(keys):
+        calls.append(keys)
+        return {("s1", 3, 1): b"TILE-PNG"}
+
+    gw = RecordingGateway()
+    svc = GenerationService(deps=GenerationDeps(
+        retrieval=Retrieval([_hit("vt:s1:3:1", page=3, via_visual=True, tile_index=1)]),
+        ollama=gw,
+        vision_check=_vision_true,
+        page_images_lookup=lookup,
+    ))
+    async for _ in svc.run(**_run_args()):
+        pass
+    assert calls[0] == [("s1", 3, 1)]
+    assert gw.received_messages[-1]["images"] == [base64.b64encode(b"TILE-PNG").decode("ascii")]
+
+
+async def test_page_hit_key_has_none_tile_index():
+    """ページヒットのキーは3要素目が None(既存の pages/ レイアウトを引く)。"""
+    calls: list[list[tuple]] = []
+
+    def lookup(keys):
+        calls.append(keys)
+        return {("s1", 3, None): b"PAGE-PNG"}
+
+    gw = RecordingGateway()
+    svc = GenerationService(deps=GenerationDeps(
+        retrieval=Retrieval([_hit("vp:s1:3", page=3, via_visual=True)]),
+        ollama=gw,
+        vision_check=_vision_true,
+        page_images_lookup=lookup,
+    ))
+    async for _ in svc.run(**_run_args()):
+        pass
+    assert calls[0] == [("s1", 3, None)]
+    assert gw.received_messages[-1]["images"] == [base64.b64encode(b"PAGE-PNG").decode("ascii")]
+
+
+async def test_tile_citation_location_shows_tile_number():
+    gw = RecordingGateway()
+    svc = GenerationService(deps=GenerationDeps(
+        retrieval=Retrieval([_hit("vt:s1:3:1", page=3, via_visual=True, tile_index=1)]),
+        ollama=gw,
+        vision_check=_vision_true,
+        page_images_lookup=lambda keys: {},
+    ))
+    events = []
+    async for ev in svc.run(**_run_args()):
+        events.append(ev)
+    retrieval = next(e for e in events if e.kind == "retrieval")
+    assert retrieval.data["hits"][0]["location"] == "p.3 タイル2(視覚検索)"
