@@ -96,6 +96,51 @@ def test_put_ollama_persists_across_restart(tmp_path, monkeypatch):
         assert ollama["default_model"] == "qwen2.5:14b"
 
 
+def test_put_ollama_preserves_hand_edited_openai_compat_fields(tmp_path, monkeypatch):
+    """PUT /api/settings/ollama が手編集の Phase 1.5 フィールドを消さない。
+
+    settings.json 手編集が openai-compat を有効化する唯一の手段なので、
+    UI からモデルを変えた瞬間に runtime_backend / openai_compat_* が
+    settings.json から消えて次回起動で "auto" に巻き戻るのは致命的
+    (/code-review 指摘、2026-08-02)。ollama セクションはマージ更新とする。
+    """
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NOTEBOOK_OLLAMA_OLLAMA__ENDPOINT", "http://fake")
+    (tmp_path / "settings.json").write_text(
+        json.dumps(
+            {
+                "ollama": {
+                    "default_model": "qwen2.5:14b",
+                    "embedding_model": "bge-m3",
+                    "embedding_dim": 1024,
+                    "runtime_backend": "openai-compat",
+                    "text_embed_backend": "openai-compat-embed",
+                    "openai_compat_endpoint": "http://localhost:8080",
+                    "openai_compat_embed_endpoint": "http://localhost:9090",
+                    "openai_compat_api_key": "sk-keepme",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with TestClient(create_app()) as c:
+        with respx.mock(assert_all_called=False) as router:
+            _mock_tags_and_show(router, name="llama3.1:8b", capabilities=["completion"])
+            r = c.put("/api/settings/ollama", json={"default_model": "llama3.1:8b"})
+        assert r.status_code == 200, r.text
+        # PUT 応答も実際の設定値を反映する(従来は "auto"/"" を返していた)
+        assert r.json()["runtime_backend"] == "openai-compat"
+        assert r.json()["openai_compat_endpoint"] == "http://localhost:8080"
+
+    saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["ollama"]
+    assert saved["default_model"] == "llama3.1:8b"
+    assert saved["runtime_backend"] == "openai-compat"
+    assert saved["text_embed_backend"] == "openai-compat-embed"
+    assert saved["openai_compat_endpoint"] == "http://localhost:8080"
+    assert saved["openai_compat_embed_endpoint"] == "http://localhost:9090"
+    assert saved["openai_compat_api_key"] == "sk-keepme"
+
+
 def test_put_ollama_preserves_existing_embedding_dim(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_OLLAMA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("NOTEBOOK_OLLAMA_OLLAMA__ENDPOINT", "http://fake")

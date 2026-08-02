@@ -81,6 +81,8 @@ tags:
 > - [[draft-2026-07-20-beta-feature-flag-registry|機能提供はコード内フラグレジストリ+設定オプトインのベータ機構]] — アーキテクチャ/リリース管理（ベータ基盤起票）
 > - [[draft-2026-07-20-assistant-prefill-continuation|打ち切り継続は assistant prefill(末尾assistantメッセージ再送)]] — アーキテクチャ/結合度（自動継続起票）
 > - [[draft-2026-07-20-truncated-persistence-update-in-place|truncatedはmessagesカラム永続化+手動継続は最終assistantメッセージ追記更新]] — データモデル（自動継続起票）
+> - [[draft-2026-08-02-openai-compat-second-contract|LLM/Embeddingの第二共通契約としてOpenAI互換APIを採用]] — アーキテクチャ/外部連携（iGPU/NPU Phase 1.5起票）
+> - [[draft-2026-08-02-llm-backend-vulkan-promotion|iGPUのLLM経路をOllama Vulkanに一本化しIPEX-LLM/DirectML系idを廃止]] — アーキテクチャ/バックエンド選定（iGPU/NPU Phase 1.5起票）
 
 ## 🏷️ ステータス凡例
 

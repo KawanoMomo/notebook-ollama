@@ -35,16 +35,10 @@ from typing import Any
 import httpx
 
 from core.exceptions import AppError, ErrorCode
-from core.ollama.client import ThinkingChunk
 
-
-def _emit_dev(level: str, msg: str, payload: dict) -> None:
-    """開発者モードへの計装点。disabled 時は 1 チェックで抜ける。"""
-    from core.dev_logs.broker import broker as _broker
-    from core.dev_logs.ring import ring as _ring
-    from core.dev_logs.sink import push_dev_entry
-    push_dev_entry(ring=_ring, broker=_broker, level=level, source="ollama",
-                   msg=msg, payload=payload)
+# _emit_dev は client.py の計装シムをそのまま使う(source="ollama" 共通)。
+# 複製すると push_dev_entry の配線変更時に片方だけ直る事故が起きる。
+from core.ollama.client import ThinkingChunk, _emit_dev
 
 
 # Ollama options → OpenAI chat/completions パラメータの対応表。
@@ -164,7 +158,17 @@ class OpenAICompatClient:
                     detail=str(exc),
                 ) from exc
         if r.status_code == 404:
-            raise AppError(ErrorCode.OLLAMA_MODEL_NOT_FOUND, f"model {model} not found")
+            # OpenAI互換サーバーの 404 は「モデル無し」とは限らない
+            # (/v1/embeddings 未実装・ベース URL の typo でも 404)。detail に
+            # 実際の URL を残し、エンドポイント側の誤設定も疑えるようにする。
+            raise AppError(
+                ErrorCode.OLLAMA_MODEL_NOT_FOUND,
+                f"model {model} not found",
+                detail=(
+                    f"POST {self._endpoint}/v1/embeddings returned 404 — "
+                    "モデル名と openai_compat_endpoint の両方を確認してください"
+                ),
+            )
         if r.status_code >= 400:
             raise AppError(
                 ErrorCode.OLLAMA_GENERATION_FAILED,
@@ -230,6 +234,11 @@ class OpenAICompatClient:
                             raise AppError(
                                 ErrorCode.OLLAMA_MODEL_NOT_FOUND,
                                 f"model {model} not found",
+                                detail=(
+                                    f"POST {self._endpoint}/v1/chat/completions "
+                                    "returned 404 — モデル名と openai_compat_endpoint "
+                                    "の両方を確認してください"
+                                ),
                             )
                         raise AppError(
                             ErrorCode.OLLAMA_GENERATION_FAILED,

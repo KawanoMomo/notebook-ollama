@@ -587,3 +587,28 @@ def test_build_text_embedder_openai_compat_without_endpoint_raises() -> None:
 
     with pytest.raises(ValueError, match="openai_compat_embed_endpoint"):
         BackendFactory().build_text_embedder(plan, ollama_cfg)
+
+
+def test_build_text_embedder_ollama_cpu_does_not_reuse_compat_gateway() -> None:
+    """llm=openai-compat + embed=ollama-bge-m3-cpu: the embedder must NOT
+    reuse the passed (compat) gateway — bge-m3 embeds would silently go to
+    the compat server and lose the num_gpu=0 NaN workaround (/code-review
+    finding, 2026-08-02)."""
+    from core.ollama.client import OllamaClient
+
+    ollama_cfg = OllamaSettings(
+        endpoint="http://localhost:11434",
+        embedding_model="bge-m3",
+        openai_compat_endpoint="http://localhost:8080",
+    )
+    factory = BackendFactory()
+    plan = _cpu_plan(llm_id="openai-compat", text_embed_id="ollama-bge-m3-cpu")
+    compat_gateway = factory.build_llm_gateway(plan, ollama_cfg)
+
+    embedder = factory.build_text_embedder(plan, ollama_cfg, gateway=compat_gateway)
+
+    assert embedder.gateway is not compat_gateway
+    assert isinstance(embedder.gateway._client, OllamaClient)
+    assert embedder.gateway._client._endpoint == "http://localhost:11434"
+    # Ollama 経路なので num_gpu=0 の NaN 回避はそのまま効く。
+    assert embedder.gateway._embedding_options == {"num_gpu": 0}

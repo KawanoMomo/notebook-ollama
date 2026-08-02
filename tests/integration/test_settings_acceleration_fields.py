@@ -155,6 +155,69 @@ def test_get_api_exposes_openai_compat_endpoints(memory_data_dir):
         assert "sk-secret" not in json.dumps(body)
 
 
+def test_embed_wiring_stays_on_ollama_when_llm_is_openai_compat(memory_data_dir):
+    """runtime_backend=openai-compat / text_embed=auto のとき、チャットは
+    compat gateway、取込・検索の埋め込みは Ollama gateway に分離される
+    (/code-review 指摘の修正、2026-08-02: 従来は埋め込みまで compat へ
+    誤ルーティングされ、bge-m3 が 404 / num_gpu=0 回避も失われた)。"""
+    from core.ollama.client import OllamaClient
+    from core.ollama.openai_compat import OpenAICompatClient
+
+    (memory_data_dir / "settings.json").write_text(
+        json.dumps(
+            {
+                "ollama": {
+                    "default_model": "qwen2.5:14b",
+                    "embedding_model": "bge-m3",
+                    "embedding_dim": 1024,
+                    "runtime_backend": "openai-compat",
+                    "openai_compat_endpoint": "http://localhost:8080",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with TestClient(create_app()) as client:
+        ctx = client.app.state.ctx
+        # LLM 側 gateway は compat client
+        assert isinstance(ctx.ollama_gateway._client, OpenAICompatClient)
+        # 埋め込み側(text_embedder / 取込 / 検索)は Ollama client のまま
+        assert isinstance(ctx.text_embedder.gateway._client, OllamaClient)
+        assert ctx.text_embedder.gateway is not ctx.ollama_gateway
+        assert ctx.pipeline._deps.ollama is ctx.text_embedder.gateway
+        assert ctx.retrieval._ollama is ctx.text_embedder.gateway
+        # num_gpu=0 の NaN 回避は埋め込み側にだけ残る
+        assert ctx.text_embedder.gateway._embedding_options == {"num_gpu": 0}
+
+
+def test_embed_wiring_uses_compat_embed_gateway_when_forced(memory_data_dir):
+    """text_embed_backend=openai-compat-embed のとき、取込・検索の埋め込みが
+    実際に compat embed gateway を通る(addendum M が呼び出し経路まで通る)。"""
+    from core.ollama.openai_compat import OpenAICompatClient
+
+    (memory_data_dir / "settings.json").write_text(
+        json.dumps(
+            {
+                "ollama": {
+                    "default_model": "qwen2.5:14b",
+                    "embedding_model": "bge-m3",
+                    "embedding_dim": 1024,
+                    "text_embed_backend": "openai-compat-embed",
+                    "openai_compat_embed_endpoint": "http://localhost:9090",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with TestClient(create_app()) as client:
+        ctx = client.app.state.ctx
+        embed_client = ctx.text_embedder.gateway._client
+        assert isinstance(embed_client, OpenAICompatClient)
+        assert embed_client._endpoint == "http://localhost:9090"
+        assert ctx.pipeline._deps.ollama is ctx.text_embedder.gateway
+        assert ctx.retrieval._ollama is ctx.text_embedder.gateway
+
+
 def test_settings_round_trip_via_get_api_reflects_persisted_backend_values(
     memory_data_dir,
 ):

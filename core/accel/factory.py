@@ -244,9 +244,7 @@ class BackendFactory:
                     "ollama.openai_compat_endpoint to be set in settings.json "
                     "(e.g. \"http://localhost:8080\" for llama-server)"
                 )
-            return self._build_openai_compat_gateway(
-                ollama_cfg, endpoint, with_embedding_options=False
-            )
+            return self._build_openai_compat_gateway(ollama_cfg, endpoint)
         raise _phase2_not_implemented("LLM", lid)
 
     # ------------------------------------------------------------------
@@ -282,7 +280,15 @@ class BackendFactory:
         """
         tid = plan.text_embed_id
         if tid == "ollama-bge-m3-cpu":
-            if gateway is None:
+            # Reuse the passed-in gateway ONLY when the LLM side is also an
+            # Ollama transport. When plan.llm_id == "openai-compat" the passed
+            # gateway wraps an OpenAICompatClient — reusing it would silently
+            # redirect bge-m3 embeds to the compat server (wrong server, wrong
+            # NaN workaround). Build a dedicated Ollama gateway instead.
+            if gateway is None or plan.llm_id not in (
+                "ollama-cuda",
+                "ollama-vulkan",
+            ):
                 gateway = self._build_ollama_gateway(ollama_cfg)
             return _OllamaTextEmbedder(gateway, ollama_cfg.embedding_model)
         if tid == "openai-compat-embed":
@@ -302,9 +308,7 @@ class BackendFactory:
                     "ollama.openai_compat_embed_endpoint (or "
                     "ollama.openai_compat_endpoint) to be set in settings.json"
                 )
-            embed_gateway = self._build_openai_compat_gateway(
-                ollama_cfg, endpoint, with_embedding_options=False
-            )
+            embed_gateway = self._build_openai_compat_gateway(ollama_cfg, endpoint)
             return _OllamaTextEmbedder(embed_gateway, ollama_cfg.embedding_model)
         raise _phase2_not_implemented("TEXT_EMBED", tid)
 
@@ -331,11 +335,7 @@ class BackendFactory:
         )
 
     def _build_openai_compat_gateway(
-        self,
-        ollama_cfg: OllamaSettings,
-        endpoint: str,
-        *,
-        with_embedding_options: bool,
+        self, ollama_cfg: OllamaSettings, endpoint: str
     ) -> OllamaGateway:
         """Construct an ``OllamaGateway`` over an ``OpenAICompatClient``.
 
@@ -343,10 +343,8 @@ class BackendFactory:
         is transport-agnostic — only the ``_ClientLike`` implementation
         changes (addendum L). Timeouts reuse the same Ollama settings so a
         slow local server gets the same generous budget.
-
-        ``with_embedding_options`` is accepted for signature clarity but is
-        always ``False`` today: ``embedding_options`` (``num_gpu=0``) is the
-        Ollama-specific NaN workaround and has no OpenAI-API counterpart.
+        ``embedding_options`` (``num_gpu=0``) is the Ollama-specific NaN
+        workaround with no OpenAI-API counterpart — never forwarded here.
         """
         from core.ollama.openai_compat import OpenAICompatClient
 
@@ -356,14 +354,7 @@ class BackendFactory:
             timeout=ollama_cfg.request_timeout_seconds,
             chat_read_timeout=ollama_cfg.chat_read_timeout_seconds,
         )
-        return OllamaGateway(
-            client=client,
-            embedding_options=(
-                (ollama_cfg.embedding_options or None)
-                if with_embedding_options
-                else None
-            ),
-        )
+        return OllamaGateway(client=client, embedding_options=None)
 
 
 __all__ = ["BackendFactory"]

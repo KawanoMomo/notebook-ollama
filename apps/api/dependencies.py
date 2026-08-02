@@ -348,6 +348,14 @@ def build_context(config: AppConfig) -> AppContext:
     text_embedder = backend_factory.build_text_embedder(
         backend_plan, config.ollama, gateway=gateway
     )
+    # RAG コア(取込 / 検索)の埋め込みは text_embedder 側の gateway を使う。
+    # 既定(全て Ollama)では text_embedder.gateway is gateway なので従来と
+    # 同一インスタンス。llm=openai-compat / embed=openai-compat-embed のときに
+    # 初めて分岐し、「生成と埋め込みの独立エンドポイント」(addendum M)が
+    # 実際の呼び出し経路まで通る。録音パイプラインは LLM 補助タスク
+    # (話者名推定・校正・タイトル)と埋め込みが同じ dep を共有しているため
+    # Phase 1.5 では LLM 側 gateway のまま(spec addendum Q の既知制限)。
+    embed_gateway = text_embedder.gateway
 
     sse_broker = SseBroker()
 
@@ -411,7 +419,9 @@ def build_context(config: AppConfig) -> AppContext:
         deps=PipelineDeps(
             conn=conn,
             vector_store=vs,
-            ollama=gateway,
+            # PipelineDeps.ollama は埋め込み専用の呼び出し口(figure describer /
+            # OCR は下で別途 LLM 側 gateway を受け取る)。embed_gateway を渡す。
+            ollama=embed_gateway,
             embedding_model=config.ollama.embedding_model,
             embedding_model_getter=lambda: config.ollama.embedding_model,
             broker=sse_broker,
@@ -456,7 +466,8 @@ def build_context(config: AppConfig) -> AppContext:
     retrieval = RetrievalService(
         conn=conn,
         vector_store=vs,
-        ollama=gateway,
+        # RetrievalService.ollama も埋め込み専用(クエリベクトル化)。
+        ollama=embed_gateway,
         embedding_model=config.ollama.embedding_model,
         embedding_model_getter=lambda: config.ollama.embedding_model,
         figure_desc_enabled=lambda: _pipeline_features.is_enabled("table-figure-rag"),
@@ -481,7 +492,13 @@ def build_context(config: AppConfig) -> AppContext:
         client = OllamaClient(
             endpoint=config.ollama.endpoint, timeout=config.ollama.request_timeout_seconds
         )
-        return await probe_vision_capability(client, config.ollama.default_model)
+        try:
+            return await probe_vision_capability(client, config.ollama.default_model)
+        except Exception:
+            # best-effort probe: モデル情報の取得失敗(Ollama 停止中、
+            # runtime_backend=openai-compat で default_model が Ollama に無い等)は
+            # 「vision なし」として扱い、チャット本体のストリームを巻き込まない。
+            return False
 
     def _lookup_figure_images(chunk_ids: list[str]) -> dict[str, bytes]:
         assets_by_desc_chunk = list_assets_for_desc_chunk_ids(conn, chunk_ids)

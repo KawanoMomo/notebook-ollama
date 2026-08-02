@@ -247,10 +247,16 @@ async def put_ollama_settings(
     vision_model = existing.get(
         "vision_model", getattr(cfg.ollama, "vision_model", "")
     )
+    # ``{**existing, ...}`` で既存キーを土台にマージする。ollama セクションを
+    # 固定キーで丸ごと再構築すると、手編集でしか設定できないフィールド
+    # (runtime_backend / text_embed_backend / openai_compat_* — Phase 1.5)が
+    # 消えて次回起動時に "auto" へ黙って巻き戻る(vision_model で過去に起きた
+    # のと同じバグクラス)。
     save_section(
         cfg.data_dir,
         "ollama",
         {
+            **existing,
             "default_model": cfg.ollama.default_model,
             "embedding_model": embedding_model,
             "embedding_dim": embedding_dim,
@@ -262,8 +268,13 @@ async def put_ollama_settings(
         default_model=cfg.ollama.default_model,
         embedding_model=cfg.ollama.embedding_model,
         embedding_dim=request.app.state.ctx.vector_store.collection_dim(),
+        runtime_backend=cfg.ollama.runtime_backend,
+        text_embed_backend=cfg.ollama.text_embed_backend,
+        openai_compat_endpoint=cfg.ollama.openai_compat_endpoint,
+        openai_compat_embed_endpoint=cfg.ollama.openai_compat_embed_endpoint,
         request_timeout_seconds=cfg.ollama.request_timeout_seconds,
         chat_read_timeout_seconds=cfg.ollama.chat_read_timeout_seconds,
+        vision_model=cfg.ollama.vision_model,
     )
 
 
@@ -542,10 +553,18 @@ async def switch_embedding(
         cfg.ollama = cfg.ollama.model_copy(
             update={"embedding_model": model, "embedding_dim": new_dim}
         )
+        # 既存キーへのマージ更新(put_ollama_settings と同じ規約)。固定キーで
+        # 再構築すると vision_model / runtime_backend / openai_compat_* が
+        # settings.json から消えて次回起動時に巻き戻る。
+        from core.settings_store import load_overrides
+
+        _existing = load_overrides(cfg.data_dir).get("ollama")
+        _existing = _existing if isinstance(_existing, dict) else {}
         save_section(
             cfg.data_dir,
             "ollama",
             {
+                **_existing,
                 "default_model": cfg.ollama.default_model,
                 "embedding_model": model,
                 "embedding_dim": new_dim,

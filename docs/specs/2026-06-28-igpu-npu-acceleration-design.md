@@ -609,3 +609,19 @@ LLM/Embedding は Ollama HTTP API を共通契約とする方針(§3.2)は維持
 - Ollama options → OpenAI パラメータは最小マッピング(`num_predict`→`max_tokens`、`temperature`、`top_p`)。対応概念の無い option は dev ログに警告して破棄。
 
 **Phase 1.5 で実装していないもの**: override 操作 UI(Phase 2 Sprint 7)、OpenAI 互換サーバーの導入スクリプト、P 節の検証タスク(P1 は Ollama 再起動を要するため保留)、`openvino-*` / `amd-whispercpp-vulkan` の実 builder(Phase 2、実機待ち)。
+
+**コードレビュー反映(2026-08-02、/code-review 9件)**:
+
+- 埋め込み経路の配線を修正: 取込(`IngestionPipeline`)と検索(`RetrievalService`)の埋め込みは `text_embedder.gateway` を使うようにし、`text_embed_backend` の選択が実際の呼び出しまで通るようにした(従来は LLM 側 gateway に固定で、`openai-compat-embed` が死んでいた / `runtime_backend=openai-compat` 時に埋め込みまで compat サーバーへ誤ルーティングされた)
+- Factory: LLM が openai-compat のとき `ollama-bge-m3-cpu` embedder が LLM 側 gateway を再利用しないようガード(embed は必ず Ollama へ)
+- チャット事前検査(`_resolve_num_ctx`)は openai-compat 時に Ollama `/api/show` を叩かず num_ctx=8192 で予算検査のみ(compat 運用でチャットが塞がるのを解消)
+- `PUT /api/settings/ollama` と再インデックス保存が ollama セクションを固定キーで再構築して手編集フィールド(`runtime_backend` / `openai_compat_*` 等)を消すバグを、既存キーへのマージ更新に修正
+- Planner: NPU contention 判定を STT override 適用後の最終 STT id で行うよう修正
+- vision capability probe を best-effort 化(取得失敗はチャットを巻き込まず vision なし扱い)
+- ADR ドラフト 2 件を起票: `draft-2026-08-02-openai-compat-second-contract` / `draft-2026-08-02-llm-backend-vulkan-promotion`
+
+**既知制限(Phase 1.5、openai-compat 運用時)**:
+
+1. **モデルメタ層は Ollama 前提のまま**: 設定 UI のモデル検証・モデル一覧・vision capability・num_ctx 取得は Ollama に問い合わせる。openai-compat のモデル名は settings.json 手編集でのみ設定可能で、num_ctx は既定 8192 と見なす(打ち切りは done_reason=length の自動継続で救済)
+2. **録音パイプラインは Ollama 前提のまま**: LLM 補助タスク(話者名推定・校正・タイトル)と埋め込みが同一 dep を共有しており、Phase 1.5 では分離しない。runtime_backend=openai-compat で録音取込した場合、録音の埋め込みも compat サーバーに向かう(recording extra 利用者は Ollama 併用を推奨)
+3. **MCP サーバーの ask 経路**も Ollama 直結のまま(将来課題)

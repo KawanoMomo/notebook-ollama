@@ -83,6 +83,13 @@ async def _resolve_num_ctx(ctx, model: str, *, model_source: str) -> int:
     model_source は "notebook" / "global" / "message" のいずれかで、
     not found 時にどの設定を直せばよいかをメッセージに反映する。
     """
+    if ctx.config.ollama.runtime_backend == "openai-compat":
+        # OpenAI互換サーバーには /api/show が無く num_ctx をメタデータから
+        # 取得できない(Phase 1.5 既知制限: モデルメタ層は Ollama 前提)。
+        # ここで Ollama を叩くと compat 運用時にチャット自体が塞がるため、
+        # 事前検査は既定 num_ctx=8192 での予算検査のみ行う。実際の打ち切りは
+        # done_reason=length 検知(自動継続 issue #22)で救済される。
+        return _check_prompt_budget(ctx, model, num_ctx=8192)
     raw = OllamaClient(
         endpoint=ctx.config.ollama.endpoint,
         timeout=ctx.config.ollama.request_timeout_seconds,
@@ -110,7 +117,11 @@ async def _resolve_num_ctx(ctx, model: str, *, model_source: str) -> int:
             remediation=f"{_MODEL_SOURCE_REMEDIATIONS[model_source]}{hint}",
         ) from exc
     num_ctx = parse_context_window(show.get("parameters", "")) or 8192
+    return _check_prompt_budget(ctx, model, num_ctx=num_ctx)
 
+
+def _check_prompt_budget(ctx, model: str, *, num_ctx: int) -> int:
+    """num_ctx と応答予算の両立を検査し、通れば num_ctx を返す。"""
     response_budget = ctx.config.generation.response_budget_tokens
     prompt_budget = (
         int(num_ctx * ctx.config.generation.context_budget_ratio) - response_budget

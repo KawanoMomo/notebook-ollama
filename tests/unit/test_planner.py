@@ -441,6 +441,23 @@ def test_override_forces_cpu_stt_on_cuda_host() -> None:
     assert plan.stt_id == "faster-whisper-cpu"
 
 
+def test_override_cpu_stt_frees_npu_for_embed() -> None:
+    """STT override は NPU contention 判定より先に適用される。
+
+    Intel iGPU+NPU ホストで transcriber_backend="faster-whisper-cpu" を強制
+    すると STT は NPU を使わないため、TEXT_EMBED は contention 降格せず
+    openvino-bge-m3-npu を選べる(/code-review 指摘の修正、2026-08-02)。
+    """
+    from core.accel.planner import BackendOverrides
+
+    plan = BackendPlanner().plan(
+        _INTEL_METEOR, BackendOverrides(stt="faster-whisper-cpu")
+    )
+    assert plan.stt_id == "faster-whisper-cpu"
+    assert plan.text_embed_id == "openvino-bge-m3-npu"
+    assert "NPU contention" not in plan.reason
+
+
 def test_override_invalid_id_raises_value_error() -> None:
     """An unknown forced id is rejected by BackendPlan validation — the
     planner never emits a silently-wrong plan."""

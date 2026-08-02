@@ -95,13 +95,17 @@ class BackendPlanner:
     ) -> BackendPlan:
         """Return the ``BackendPlan`` for ``hw``, honouring user overrides."""
         ov = overrides or BackendOverrides()
+        # STT override is applied BEFORE the NPU-contention check: the
+        # contention rule (spec §6.3) must see the *final* STT choice. A user
+        # forcing STT off the NPU (e.g. faster-whisper-cpu) frees the NPU for
+        # TEXT_EMBED; the reverse would emit a bogus "NPU contention" reason.
         stt_id, stt_reason = self._pick_stt(hw)
+        stt_id, stt_reason = _apply_override(ov.stt, stt_id, stt_reason)
         diarize_id, diarize_reason = self._pick_diarize(hw)
         llm_id, llm_reason = self._pick_llm(hw)
         text_embed_id, text_embed_reason = self._pick_text_embed(
             hw, avoid_npu=(stt_id == "openvino-whisper-npu")
         )
-        stt_id, stt_reason = _apply_override(ov.stt, stt_id, stt_reason)
         diarize_id, diarize_reason = _apply_override(
             ov.diarize, diarize_id, diarize_reason
         )
