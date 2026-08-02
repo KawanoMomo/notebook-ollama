@@ -14,6 +14,7 @@
   import {
     visualIndexApi,
     VISUAL_INDEX_UNITS,
+    VISUAL_UNIT_LABELS,
     type VisualIndexStatus,
     type VisualIndexUnit,
   } from '$lib/api/visualIndex';
@@ -234,7 +235,7 @@
   }
 
   async function onVisualIndexBuild(unit: VisualIndexUnit) {
-    const label = unit === 'tile' ? 'タイル索引' : 'ページ索引';
+    const label = VISUAL_UNIT_LABELS[unit];
     try {
       await visualIndexApi.build(notebookId, unit);
       pushToast(`${label}の構築を開始しました`, 'info');
@@ -245,7 +246,7 @@
   }
 
   async function onVisualIndexDelete(unit: VisualIndexUnit) {
-    const label = unit === 'tile' ? 'タイル索引' : 'ページ索引';
+    const label = VISUAL_UNIT_LABELS[unit];
     try {
       await visualIndexApi.remove(notebookId, unit);
       pushToast(`${label}を削除しました`, 'success');
@@ -265,7 +266,7 @@
       const outcome = eventsStore.visualIndexOutcomeFor(unit);
       if (!outcome || outcome.at <= lastSeenOutcomeAt[unit]) continue;
       lastSeenOutcomeAt = { ...lastSeenOutcomeAt, [unit]: outcome.at };
-      const label = unit === 'tile' ? 'タイル索引' : 'ページ索引';
+      const label = VISUAL_UNIT_LABELS[unit];
       if (outcome.kind === 'complete') {
         if (outcome.skippedPages > 0) {
           // 部分失敗(半滅): 1件でも索引できれば「完了」の見た目になるが、

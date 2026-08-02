@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.crash_reporter.settings import CrashReportSettings
+from core.visual.units import DEFAULT_VISUAL_UNIT, VisualUnit
 
 
 class OllamaSettings(BaseModel):
@@ -117,7 +118,7 @@ class VisualSettings(BaseModel):
     # 検索に使う視覚索引の単位。"page" = 現行(1ページ1ベクトル)、
     # "tile" = PixelRAG式(ページをタイル分割して各タイルを1ベクトル)。
     # 両方の索引を同時保持できるため、切替に再構築は不要。
-    index_unit: Literal["page", "tile"] = "page"
+    index_unit: VisualUnit = DEFAULT_VISUAL_UNIT
     # 検索戦略。
     #   hybrid_rrf   = テキスト検索 + 視覚検索を RRF 融合(現行・既定)
     #   visual_only  = 視覚検索のみで候補を決め、本文は従来どおりページ展開

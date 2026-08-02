@@ -5,6 +5,12 @@ export type VisualSearchStrategy = 'hybrid_rrf' | 'visual_only' | 'pixel_native'
 
 export const VISUAL_INDEX_UNITS: VisualIndexUnit[] = ['page', 'tile'];
 
+/** 索引単位の日本語表示名。Modal とトーストで同じ語を使うための単一の出どころ。 */
+export const VISUAL_UNIT_LABELS: Record<VisualIndexUnit, string> = {
+  page: 'ページ索引',
+  tile: 'タイル索引',
+};
+
 /** 索引単位ごとの構築状態。 */
 export interface VisualUnitStatus {
   built: boolean;

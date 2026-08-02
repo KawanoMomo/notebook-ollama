@@ -32,6 +32,17 @@ class VisualEncoder(Protocol):
     async def embed_text(self, *, text: str) -> list[float]: ...
     def unload(self) -> None: ...
 
+    @property
+    def device(self) -> str | None:
+        """実際にモデルが載っているデバイス。未ロードなら None。
+
+        呼び出し側(index_builder のクールダウン判定)が CPU 固有の安全弁を
+        適用すべきかを決めるために使う。`torch.cuda.is_available()` は
+        cuDNN のバージョン衝突下でも True を返す(ECN-005)ため、可用性ではなく
+        実際のロード先を公開する。
+        """
+        ...
+
 
 def _set_execution_speed_throttling(*, disable: bool) -> bool:
     """Windows の EcoQoS(効率モード)実行速度スロットリングを切り替える。
@@ -139,6 +150,10 @@ class _TransformersBackend:
             model_kwargs={"torch_dtype": dtype},
         )
 
+    @property
+    def device(self) -> str:
+        return self._device
+
     def embed_image(self, png: bytes) -> list[float]:
         import io
 
@@ -198,6 +213,16 @@ class TransformersVisualEncoder:
     @property
     def loaded(self) -> bool:
         return self._backend is not None
+
+    @property
+    def device(self) -> str | None:
+        """バックエンドが載っているデバイス。未ロードなら None。
+
+        アンロード後も None に戻る(次のロードで別デバイスになりうるため、
+        古い値を持ち回らない)。
+        """
+        backend = self._backend
+        return None if backend is None else backend.device
 
     def _load_backend(self) -> Any:
         return _TransformersBackend(

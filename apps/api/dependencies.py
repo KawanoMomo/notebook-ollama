@@ -162,6 +162,7 @@ class AppContext:
         visual_store: Any = None,
         visual_stores: Any = None,
         visual_encoder: Any = None,
+        effective_visual_strategy: Any = None,
     ) -> None:
         self.config = config
         self.conn = conn
@@ -189,6 +190,9 @@ class AppContext:
         self.visual_store = visual_store
         self.visual_stores = visual_stores or {}
         self.visual_encoder = visual_encoder
+        # ベータOFF時に既定戦略へ丸めた実効値を返す callable (MCP と生成で共有)。
+        # None なら config の生値にフォールバックする (テストの簡易 ctx 用)。
+        self.effective_visual_strategy = effective_visual_strategy
         # Lazy backend instances (built on first access via @property).
         self._transcriber: Any = None
         self._diarizer_resolved: bool = False
@@ -471,6 +475,24 @@ def build_context(config: AppConfig) -> AppContext:
     from core.retrieval.search import VisualSearchDeps
     from core.storage.visual_index_repo import get_meta as _visual_get_meta
 
+    def _effective_strategy() -> str:
+        """ベータ OFF のときは検索戦略を既定 (hybrid_rrf) として扱う。
+
+        `search_strategy` は設定に永続化されるので、ユーザーが `pixel_native` を
+        選んだ後にベータをOFFにすると値だけが残る。これをそのまま生成側へ渡すと、
+        `_probe_vision` がベータゲートで False を返すのと合わさって
+        「視覚対応のチャットモデルが必要です」という**原因と違うエラー**が出ていた
+        (実際の原因はベータOFF)。
+
+        ADR-005 の規約「OFF時もデータは保持し、露出のみ消す」に従い、OFF のときは
+        この設定が存在しないかのように振る舞う (spec §10 の1行目「ベータOFF →
+        従来のテキスト検索のみ」が3行目より優先)。設定値そのものは書き換えない
+        ので、ON に戻せば `pixel_native` がそのまま復帰する。
+        """
+        if not _pipeline_features.is_enabled("table-figure-rag"):
+            return "hybrid_rrf"
+        return config.visual.search_strategy
+
     retrieval = RetrievalService(
         conn=conn,
         vector_store=vs,
@@ -490,7 +512,7 @@ def build_context(config: AppConfig) -> AppContext:
             meta_lookup=lambda nb_id, unit: _visual_get_meta(conn, nb_id, unit),
             model_name_getter=lambda: config.visual.embedding_model,
             unit_getter=lambda: config.visual.index_unit,
-            strategy_getter=lambda: config.visual.search_strategy,
+            strategy_getter=_effective_strategy,
             tile_grid_getter=lambda: (config.visual.tile_rows, config.visual.tile_cols),
             max_images_getter=lambda: config.visual.max_images,
         ),
@@ -565,7 +587,7 @@ def build_context(config: AppConfig) -> AppContext:
             vision_check=_probe_vision,
             figure_images_lookup=_lookup_figure_images,
             page_images_lookup=_lookup_page_images,
-            visual_strategy=lambda: config.visual.search_strategy,
+            visual_strategy=_effective_strategy,
             max_images_getter=lambda: config.visual.max_images,
         )
     )
@@ -617,4 +639,5 @@ def build_context(config: AppConfig) -> AppContext:
         visual_store=visual_store,
         visual_stores=visual_stores,
         visual_encoder=visual_encoder,
+        effective_visual_strategy=_effective_strategy,
     )

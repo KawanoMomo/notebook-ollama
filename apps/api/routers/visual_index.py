@@ -6,7 +6,7 @@ GET は Modal が2行を1リクエストで描けるよう両単位をまとめ�
 """
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
@@ -23,6 +23,7 @@ from core.visual.index_builder import (
     mark_building,
     unmark_building,
 )
+from core.visual.units import VISUAL_UNITS, VisualUnit
 
 log = get_logger("api.visual_index")
 
@@ -32,10 +33,10 @@ router = APIRouter(
     dependencies=[Depends(require_feature("table-figure-rag"))],
 )
 
-UNITS = ("page", "tile")
+UNITS = VISUAL_UNITS
 
 # FastAPI が 422 を返すので、不正な unit のハンドリングはここで完結する
-UnitParam = Annotated[Literal["page", "tile"], Query()]
+UnitParam = Annotated[VisualUnit, Query()]
 
 
 def _require_extra() -> None:

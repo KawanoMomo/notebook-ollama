@@ -1,4 +1,9 @@
-import type { AppSettings, CrashReportSettings, Stats } from '$lib/api/types';
+import type {
+  AppSettings,
+  CrashReportSettings,
+  Stats,
+  VisualSettingsPatch,
+} from '$lib/api/types';
 import { settingsApi } from '$lib/api/settings';
 import type { VisualIndexUnit, VisualSearchStrategy } from '$lib/api/visualIndex';
 
@@ -34,11 +39,7 @@ export interface SettingsStore {
   load(): Promise<void>;
   putOllama(default_model: string): Promise<void>;
   putVisionModel(model: string): Promise<void>;
-  putVisual(patch: {
-    search_enabled?: boolean;
-    index_unit?: VisualIndexUnit;
-    search_strategy?: VisualSearchStrategy;
-  }): Promise<void>;
+  putVisual(patch: VisualSettingsPatch): Promise<void>;
   /**
    * クラッシュレポート設定の更新。現行値に `patch` をマージして送信し、
    * 成功時のレスポンスを store に反映する。失敗時は例外を呼び出し元へ伝播。

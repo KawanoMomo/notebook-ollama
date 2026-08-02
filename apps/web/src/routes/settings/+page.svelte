@@ -108,6 +108,16 @@
     return modelsStore.models.filter((m) => m.has_vision === true).map((m) => m.name);
   }
 
+  function visionModelOptions(): string[] {
+    const names = visionModelNames();
+    const cur = settingsStore.settings?.ollama.vision_model ?? '';
+    // 現在値が候補に無くても選択肢として残す。has_vision はモデルごとの probe 結果で
+    // 埋まるため、既定モデル変更などで一覧を取り直した直後は未確定のことがある。
+    // そのままだと value に一致する option が無くなり、BE は値を保持しているのに
+    // 表示だけ「(未設定)」に戻って見える(実機検証の不具合C)。
+    return cur && !names.includes(cur) ? [cur, ...names] : names;
+  }
+
   function isTableFigureRagEnabled(): boolean {
     return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
   }
@@ -516,12 +526,12 @@
               <dt>視覚モデル(図の解析・OCR用)</dt>
               <dd>
                 <select
-                  class="vision-select"
+                  class="model-select"
                   value={settingsStore.settings.ollama.vision_model}
                   onchange={onVisionModelChange}
                 >
                   <option value="">(未設定)</option>
-                  {#each visionModelNames() as name (name)}
+                  {#each visionModelOptions() as name (name)}
                     <option value={name}>{name}</option>
                   {/each}
                 </select>

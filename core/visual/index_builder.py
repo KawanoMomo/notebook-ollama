@@ -109,6 +109,29 @@ class VisualIndexBuilder:
         )
         return [(t.index, t.png, Path("tiles")) for t in tiles]
 
+    def _cooldown_seconds(self) -> float:
+        """ページ間クールダウンの実効値。GPU 実行中は 0 にする。
+
+        このクールダウンは CPU 推論の安全弁である(全論理コアAVX全開が
+        実質ストレステストになり、実機で長時間構築中に BSOD を観測したため
+        導入した。ADR-011 / ECN-003)。GPU ではその負荷は生じないので、
+        既定値 10 秒をそのまま適用すると 1ページ 0.4 秒の埋め込みに対して
+        10 秒待つことになり、構築が約 20〜30 倍遅くなる(ECN-004 の効果測定で
+        実測: 7.5 秒/ページ → 0.44 秒/ページ)。
+
+        判定は `torch.cuda.is_available()` ではなく **エンコーダが実際に載って
+        いるデバイス**を見る。ECN-005 のとおり、cuDNN のバージョン衝突下では
+        `is_available()` が True のまま演算だけが失敗するため、可用性の問い合わせは
+        「GPUで動いている」ことの証拠にならない。ここでは 1 ページ目の埋め込みが
+        済んだ後に呼ばれるので、バックエンドはロード済みでデバイスが確定している。
+
+        デバイスを申告しないエンコーダ(テスト用のフェイク等)では None が返るため、
+        従来どおり設定値をそのまま使う(安全側)。
+        """
+        if getattr(self._deps.encoder, "device", None) == "cuda":
+            return 0.0
+        return self._deps.page_cooldown_seconds
+
     async def build(self, notebook_id: str) -> BuildResult:
         d = self._deps
         already = list_indexed_source_ids(d.conn, notebook_id, d.unit)
@@ -195,8 +218,8 @@ class VisualIndexBuilder:
                     skipped_pages += 1
                 if d.progress is not None:
                     await d.progress(done, total)
-                if d.page_cooldown_seconds > 0 and done < total:
-                    await asyncio.sleep(d.page_cooldown_seconds)
+                if self._cooldown_seconds() > 0 and done < total:
+                    await asyncio.sleep(self._cooldown_seconds())
             if source_indexed > 0:
                 mark_source_indexed(
                     d.conn, notebook_id=notebook_id, source_id=s.id,
