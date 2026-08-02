@@ -13,6 +13,21 @@ from core.ollama.client import OllamaClient
 from core.storage import notebooks_repo
 
 
+def _strategy(ctx: Any) -> str | None:
+    """ベータOFF時に既定へ丸めた実効の検索戦略。
+
+    `config.visual.search_strategy` は永続化されるため、`pixel_native` を選んだ後に
+    ベータをOFFにすると値だけが残る。生値で判定すると、機能自体が無効なのに
+    「MCP は pixel-native に対応していません」という**原因と違うエラー**になる。
+    実効値は build_context が組み立てて AppContext に載せる (生成側と同じ値)。
+
+    テスト等で `effective_visual_strategy` を持たない簡易 ctx の場合は None を返し、
+    呼び出し先が `config.visual.search_strategy` にフォールバックする。
+    """
+    getter = getattr(ctx, "effective_visual_strategy", None)
+    return getter() if callable(getter) else None
+
+
 def build_mcp_server(ctx: Any) -> FastMCP:
     server = FastMCP("notebook-ollama")
 
@@ -50,6 +65,7 @@ def build_mcp_server(ctx: Any) -> FastMCP:
             client=client,
             config=ctx.config,
             notebook_default_model=nb.default_model,
+            search_strategy=_strategy(ctx),
         )
 
     @server.tool()
@@ -60,6 +76,7 @@ def build_mcp_server(ctx: Any) -> FastMCP:
             max_quotes=max_quotes,
             retrieval=ctx.retrieval,
             config=ctx.config,
+            search_strategy=_strategy(ctx),
         )
 
     @server.tool()

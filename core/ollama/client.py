@@ -60,8 +60,12 @@ class OllamaClient:
             except httpx.HTTPError as exc:
                 raise AppError(
                     ErrorCode.OLLAMA_UNREACHABLE,
-                    "Ollama unreachable",
+                    "Ollama に接続できません",
                     detail=str(exc),
+                    remediation=(
+                        "Ollama が起動しているか確認してください"
+                        "(`ollama serve`)。エンドポイントの設定は設定画面から変更できます。"
+                    ),
                 ) from exc
         if r.status_code == 404:
             raise AppError(ErrorCode.OLLAMA_MODEL_NOT_FOUND, f"model {model} not found")
@@ -148,7 +152,13 @@ class OllamaClient:
                 _emit_dev("error", "chat error",
                           {"phase": "error", "model": model, "detail": str(exc)})
                 raise AppError(
-                    ErrorCode.OLLAMA_UNREACHABLE, "Ollama unreachable", detail=str(exc)
+                    ErrorCode.OLLAMA_UNREACHABLE,
+                    "Ollama に接続できません",
+                    detail=str(exc),
+                    remediation=(
+                        "Ollama が起動しているか確認してください"
+                        "(`ollama serve`)。エンドポイントの設定は設定画面から変更できます。"
+                    ),
                 ) from exc
 
     async def list_tags(self) -> list[dict[str, Any]]:
@@ -157,7 +167,13 @@ class OllamaClient:
                 r = await client.get(f"{self._endpoint}/api/tags")
             except httpx.HTTPError as exc:
                 raise AppError(
-                    ErrorCode.OLLAMA_UNREACHABLE, "Ollama unreachable", detail=str(exc)
+                    ErrorCode.OLLAMA_UNREACHABLE,
+                    "Ollama に接続できません",
+                    detail=str(exc),
+                    remediation=(
+                        "Ollama が起動しているか確認してください"
+                        "(`ollama serve`)。エンドポイントの設定は設定画面から変更できます。"
+                    ),
                 ) from exc
         r.raise_for_status()
         return r.json().get("models", [])
@@ -168,7 +184,13 @@ class OllamaClient:
                 r = await client.post(f"{self._endpoint}/api/show", json={"name": model})
             except httpx.HTTPError as exc:
                 raise AppError(
-                    ErrorCode.OLLAMA_UNREACHABLE, "Ollama unreachable", detail=str(exc)
+                    ErrorCode.OLLAMA_UNREACHABLE,
+                    "Ollama に接続できません",
+                    detail=str(exc),
+                    remediation=(
+                        "Ollama が起動しているか確認してください"
+                        "(`ollama serve`)。エンドポイントの設定は設定画面から変更できます。"
+                    ),
                 ) from exc
         if r.status_code == 404:
             raise AppError(ErrorCode.OLLAMA_MODEL_NOT_FOUND, f"model {model} not found")

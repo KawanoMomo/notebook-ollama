@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { VisualIndexStatus, VisualIndexUnit, VisualUnitStatus } from '$lib/api/visualIndex';
-  import { VISUAL_INDEX_UNITS } from '$lib/api/visualIndex';
+  import { VISUAL_INDEX_UNITS, VISUAL_UNIT_LABELS } from '$lib/api/visualIndex';
   import Modal from './Modal.svelte';
   import Spinner from './Spinner.svelte';
 
@@ -21,11 +21,6 @@
   // notebookId は呼び出し元(SourcesPanel)とのインタフェース合わせのため受け取るのみで、
   // このコンポーネント自体は表示専用のため参照しない。
   let { status, progressFor, onBuild, onDelete, onClose }: Props = $props();
-
-  const UNIT_LABELS: Record<VisualIndexUnit, string> = {
-    page: 'ページ索引',
-    tile: 'タイル索引',
-  };
 
   // 行ごとに削除の2段階確認を持つ。単一の状態にすると片方を押したときに
   // もう片方まで「本当に削除」表示になる。
@@ -71,9 +66,9 @@
     {#each VISUAL_INDEX_UNITS as unit (unit)}
       {@const u = unitOf(unit)}
       {@const progress = progressFor(unit)}
-      <section class="row" role="group" aria-label={UNIT_LABELS[unit]}>
+      <section class="row" role="group" aria-label={VISUAL_UNIT_LABELS[unit]}>
         <div class="row-head">
-          <h3>{UNIT_LABELS[unit]}</h3>
+          <h3>{VISUAL_UNIT_LABELS[unit]}</h3>
           {#if status.index_unit === unit}
             <span class="badge">検索に使用中</span>
           {/if}
@@ -107,7 +102,7 @@
           <button
             type="button"
             disabled={buildDisabled(unit)}
-            onclick={() => onBuild(unit)}>{UNIT_LABELS[unit]}を構築</button
+            onclick={() => onBuild(unit)}>{VISUAL_UNIT_LABELS[unit]}を構築</button
           >
           {#if u.built}
             <button
@@ -115,15 +110,15 @@
               class={deleteArmed[unit] ? 'danger armed' : 'danger'}
               onclick={() => onDeleteClick(unit)}
               >{deleteArmed[unit]
-                ? `本当に${UNIT_LABELS[unit]}を削除`
-                : `${UNIT_LABELS[unit]}を削除`}</button
+                ? `本当に${VISUAL_UNIT_LABELS[unit]}を削除`
+                : `${VISUAL_UNIT_LABELS[unit]}を削除`}</button
             >
             {#if deleteArmed[unit]}
               <button
                 type="button"
                 class="cancel"
                 onclick={() => (deleteArmed = { ...deleteArmed, [unit]: false })}
-                >{UNIT_LABELS[unit]}の削除をやめる</button
+                >{VISUAL_UNIT_LABELS[unit]}の削除をやめる</button
               >
             {/if}
           {/if}

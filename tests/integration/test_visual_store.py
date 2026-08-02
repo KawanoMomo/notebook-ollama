@@ -162,3 +162,45 @@ def test_page_point_id_is_unchanged_from_stage3(tmp_path):
     assert _unit_point_id("tile", "src1", 3, 2) == str(
         uuid.uuid5(_NS, "visualtile:src1:3:2")
     )
+
+
+@pytest.mark.parametrize("unit", UNITS)
+def test_ensure_collection_probes_qdrant_only_once(tmp_path, unit):
+    """回帰テスト: ensure_collection が毎回 get_collections() を叩いていた。
+
+    構築ループは単位ごとに呼ぶため、タイル索引では 1 ページあたり 3 回。
+    167 ページなら 500 往復になる (issue #28 M8)。
+    """
+    vs, store = _store(tmp_path, unit)
+    try:
+        calls = 0
+        real = store._client.get_collections
+
+        def counting():
+            nonlocal calls
+            calls += 1
+            return real()
+
+        store._client.get_collections = counting
+        for _ in range(5):
+            store.ensure_collection(dim=4)
+        assert calls == 1, f"get_collections が {calls} 回呼ばれた (期待 1)"
+        # 実際に使えること (キャッシュが作成をスキップしていない)
+        store._client.get_collections = real
+        store.upsert_units([_uv(unit)])
+        assert store.collection_dim() == 4
+    finally:
+        vs.close()
+
+
+@pytest.mark.parametrize("unit", UNITS)
+def test_ensure_collection_creates_when_absent(tmp_path, unit):
+    """キャッシュを入れてもコレクション作成そのものは走ること。"""
+    vs, store = _store(tmp_path, unit)
+    try:
+        assert store.collection_dim() is None      # まだ無い
+        store.ensure_collection(dim=4)
+        assert store.collection_dim() == 4         # 作られた
+        assert store.collection in (PAGE_COLLECTION, TILE_COLLECTION)
+    finally:
+        vs.close()

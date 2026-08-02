@@ -157,6 +157,68 @@ async def test_page_cooldown_sleeps_between_pages(tmp_path, monkeypatch):
     assert sleeps == [1.5]
 
 
+class _DeviceEncoder(FakeEncoder):
+    """デバイスを申告するエンコーダ。実物と同じく未ロードなら None を返す。"""
+
+    def __init__(self, device: str | None):
+        super().__init__()
+        self._device = device
+
+    @property
+    def device(self) -> str | None:
+        return self._device
+
+
+async def _collect_sleeps(tmp_path, monkeypatch, encoder) -> list[float]:
+    import core.visual.index_builder as builder_mod
+
+    sleeps: list[float] = []
+    real_sleep = builder_mod.asyncio.sleep
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(builder_mod.asyncio, "sleep", fake_sleep)
+    conn, nb, ps, sources_dir, assets_dir = _setup(tmp_path)
+    _add_pdf_source(conn, nb, sources_dir)  # 2ページ
+    result = await VisualIndexBuilder(deps=BuilderDeps(
+        conn=conn, visual_store=ps, encoder=encoder,
+        sources_dir=sources_dir, assets_dir=assets_dir,
+        embedding_model_name="test-model", page_cooldown_seconds=10.0,
+    )).build(nb.id)
+    assert result.indexed_pages == 2
+    return sleeps
+
+
+async def test_cooldown_is_skipped_on_gpu(tmp_path, monkeypatch):
+    """回帰テスト: クールダウンは CPU 推論の安全弁であり、GPU では不要。
+
+    spec §8.3 は「device == "cpu" 分岐の内側なので GPU なら自動的に無効化される」
+    としていたが、実装はデバイスを見ずに無条件で待っていた。既定値 10 秒のまま
+    GPU で構築すると 1ページ 0.4 秒の埋め込みに 10 秒待つことになり、実測で
+    7.5 秒/ページ(= 約20倍の低下)になっていた(ECN-004 の効果測定で発見)。
+    """
+    sleeps = await _collect_sleeps(tmp_path, monkeypatch, _DeviceEncoder("cuda"))
+    assert sleeps == []
+
+
+async def test_cooldown_still_applies_on_cpu(tmp_path, monkeypatch):
+    """GPU 判定を入れても CPU の安全弁は残ること(BSOD 対策の回帰防止)。"""
+    sleeps = await _collect_sleeps(tmp_path, monkeypatch, _DeviceEncoder("cpu"))
+    assert sleeps == [10.0]
+
+
+async def test_cooldown_applies_when_encoder_has_no_device(tmp_path, monkeypatch):
+    """デバイスを申告しないエンコーダでは設定値をそのまま使う(安全側)。"""
+    assert await _collect_sleeps(tmp_path, monkeypatch, FakeEncoder()) == [10.0]
+
+
+async def test_cooldown_applies_when_encoder_not_loaded(tmp_path, monkeypatch):
+    """未ロード(device=None)も安全側。GPU だと確認できたときだけ省略する。"""
+    assert await _collect_sleeps(tmp_path, monkeypatch, _DeviceEncoder(None)) == [10.0]
+
+
 def _setup_unit(tmp_path, unit):
     """既存 _setup の unit 版。VisualUnitStore を返す。"""
     conn = connect(tmp_path / "m.db")

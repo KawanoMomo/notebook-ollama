@@ -47,9 +47,9 @@ def delete_meta(
 ) -> None:
     """メタと索引済みソース行を消す。
 
-    unit=None は全単位削除。ノートブック削除・埋め込みモデル切替の既存呼び出しは
-    「全部消える」前提で書かれているため、これを既定にする(page 既定にすると
-    tile 索引が孤児として残る)。
+    unit=None は全単位削除。呼び出し側 (ノートブック削除・埋め込みモデル切替) は
+    「全部消える」前提なので、これを既定にする(page 既定にすると tile 索引が
+    孤児として残る)。unit 指定は視覚索引の DELETE API (単位ごとの削除) から。
     """
     if unit is None:
         conn.execute("DELETE FROM visual_index_meta WHERE notebook_id = ?", (notebook_id,))

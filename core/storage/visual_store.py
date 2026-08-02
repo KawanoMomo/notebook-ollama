@@ -17,10 +17,20 @@ from dataclasses import dataclass
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 
+from core.visual.units import VISUAL_UNITS, VisualUnit
+
 PAGE_COLLECTION = "pages_visual"
 TILE_COLLECTION = "tiles_visual"
 
-_COLLECTION_BY_UNIT = {"page": PAGE_COLLECTION, "tile": TILE_COLLECTION}
+_COLLECTION_BY_UNIT: dict[VisualUnit, str] = {
+    "page": PAGE_COLLECTION,
+    "tile": TILE_COLLECTION,
+}
+# 語彙を増やしたらここも埋めること。VISUAL_UNITS との差分を起動時に検出する。
+assert set(_COLLECTION_BY_UNIT) == set(VISUAL_UNITS), (
+    "visual unit vocabulary and collection map are out of sync: "
+    f"{sorted(set(VISUAL_UNITS) ^ set(_COLLECTION_BY_UNIT))}"
+)
 
 _NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 
@@ -32,6 +42,12 @@ def _unit_point_id(unit: str, source_id: str, page: int, tile_index: int | None)
     pages_visual が全部ゴミになり再構築が必要になる。
     """
     if unit == "tile":
+        if tile_index is None:
+            # そのまま通すとシードに文字列 "None" が埋まり、同一ページの全タイルが
+            # 1点に潰れる(静かなデータ破損)。現在は _units_for_page が必ず int を
+            # 返すので到達しないが、ID の生成は間違えたときの被害が大きいので
+            # 落として気づけるようにしておく。
+            raise ValueError("tile_index is required for unit='tile'")
         return str(uuid.uuid5(_NS, f"visualtile:{source_id}:{page}:{tile_index}"))
     return str(uuid.uuid5(_NS, f"visualpage:{source_id}:{page}"))
 
@@ -63,6 +79,9 @@ class VisualUnitStore:
         self._client = client
         self._unit = unit
         self._collection = _COLLECTION_BY_UNIT[unit]
+        # ensure_collection() の結果キャッシュ。構築ループが単位ごとに呼ぶため
+        # (タイルなら1ページ3回)、毎回 get_collections() を叩かないようにする。
+        self._ensured = False
 
     @property
     def unit(self) -> str:
@@ -77,12 +96,25 @@ class VisualUnitStore:
         return self._collection in existing
 
     def ensure_collection(self, *, dim: int) -> None:
-        if self._exists():
+        """コレクションが無ければ作る。作成済みならプロセス内キャッシュで即返す。
+
+        構築ループは 1 単位ごとにこれを呼ぶ (タイルなら 1 ページあたり 3 回)。
+        素直に毎回 `get_collections()` を叩くと、167 ページ × 3 タイルで 500 往復を
+        Qdrant に投げることになる。作成はこのプロセスがやる操作なので、
+        「作った/在ることを確認した」という事実はプロセス内で覚えてよい。
+
+        キャッシュは「存在する」方向にしか倒さない。外部でコレクションを消された
+        場合は upsert が失敗するが、それは元々 `_exists()` の確認と upsert の
+        隙間でも起きうる競合で、キャッシュの有無で変わらない。
+        """
+        if self._ensured:
             return
-        self._client.create_collection(
-            collection_name=self._collection,
-            vectors_config=qm.VectorParams(size=dim, distance=qm.Distance.COSINE),
-        )
+        if not self._exists():
+            self._client.create_collection(
+                collection_name=self._collection,
+                vectors_config=qm.VectorParams(size=dim, distance=qm.Distance.COSINE),
+            )
+        self._ensured = True
 
     def collection_dim(self) -> int | None:
         if not self._exists():

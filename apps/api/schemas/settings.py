@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from core.visual.units import DEFAULT_VISUAL_UNIT, VisualUnit
+
 
 class DevSettingsSchema(BaseModel):
     enabled: bool
@@ -151,7 +153,7 @@ class VisualSettingsSchema(BaseModel):
     embedding_model: str
     search_enabled: bool
     # Stage 4: 索引単位と検索戦略
-    index_unit: Literal["page", "tile"] = "page"
+    index_unit: VisualUnit = DEFAULT_VISUAL_UNIT
     search_strategy: Literal["hybrid_rrf", "visual_only", "pixel_native"] = "hybrid_rrf"
 
 
@@ -163,7 +165,7 @@ class VisualSettingsUpdate(BaseModel):
     """
 
     search_enabled: bool | None = None
-    index_unit: Literal["page", "tile"] | None = None
+    index_unit: VisualUnit | None = None
     search_strategy: Literal["hybrid_rrf", "visual_only", "pixel_native"] | None = None
 
 

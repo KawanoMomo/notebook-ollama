@@ -33,6 +33,7 @@ code:
   - core/visual/encoder.py
   - core/visual/index_builder.py
   - core/visual/tiling.py
+  - tests/integration/test_visual_index_builder.py
   - tests/integration/test_visual_store.py
   - tests/unit
   - tests/unit/test_visual_encoder.py
@@ -282,7 +283,18 @@ RTX 2080 Ti は Turing (sm_75) であり、選んだ CUDA ビルドが sm_75 カ
 
 ### 8.3 通った場合の副次効果
 
-`build_cooldown_seconds` / `cpu_threads` / `cpu_prefer_performance_cores` は既に `device == "cpu"` の分岐内にあるため、コード変更なしで自動的に無効化される。これらの既定値は CPU フォールバック用として残す。
+`cpu_threads` / `cpu_prefer_performance_cores` は既に `device == "cpu"` の分岐内(`core/visual/encoder.py`)にあるため、コード変更なしで自動的に無効化される。これらの既定値は CPU フォールバック用として残す。
+
+> [!warning] 2026-08-02 訂正
+> **`build_cooldown_seconds` だけは当初この記述が誤りだった。** 実装は
+> `core/visual/index_builder.py` のページループにあり、`device` を見ずに無条件で
+> 適用されていた。既定値 10 秒のまま GPU で構築すると 7.5 秒/ページとなり、
+> 埋め込み本体 0.44 秒/ページに対して約 20 倍遅くなっていた(下記「効果測定」節)。
+>
+> 現在は `VisualIndexBuilder._cooldown_seconds()` が**エンコーダの実デバイス**を
+> 参照し、`cuda` のときは 0 を返す。`torch.cuda.is_available()` ではなく実際の
+> ロード先を見るのは、cuDNN のバージョン衝突下では `is_available()` が True のまま
+> 演算だけ失敗するため(ADR-017 / ECN-005)。
 
 ### 8.4 通らなかった場合
 
@@ -322,13 +334,25 @@ UI変更を含むため、evaluator による実機スクリーンショット�
 
 | 状況 | 挙動 |
 |---|---|
-| ベータフラグ `table-figure-rag` OFF | 従来のテキスト検索のみ。構築済みデータは保持し、ON で再開 |
+| ベータフラグ `table-figure-rag` OFF | 従来のテキスト検索のみ。構築済みデータは保持し、ON で再開。**`search_strategy` の設定値も無視され既定 (`hybrid_rrf`) として扱われる**(下記の注記) |
 | `--extra visual` 未導入 | 視覚関連APIは 503 + `uv sync --extra visual` ヒント。検索はテキストのみに自動縮退 |
 | 選択中 unit の索引が未構築 | `hybrid_rrf` / `visual_only` はテキスト検索へ自動縮退(既存挙動)。`pixel_native` は縮退できないため明示エラー |
 | `pixel_native` × vision 非対応モデル | 明示エラー(§7.4) |
 | タイル分割失敗(極小ページ) | ページ画像1枚にフォールバックしてログ、構築は継続(§6.3) |
 | 構築中の再構築要求 | 202 + `{"status": "already_building"}`。単一飛行キーは `(notebook_id, unit)` |
 | ページ単位の埋め込み失敗 | ログ + スキップで構築継続(部分成功。Stage 3 と同じ) |
+
+> [!important] ベータOFF は「戦略の選択」より優先する (2026-08-02 明確化)
+> 1行目と4行目は当初どちらが優先か決めていなかった。`search_strategy` は設定に
+> **永続化される**ため、`pixel_native` を選んだ後にベータをOFFにすると値だけが残る。
+> これをそのまま生成側へ渡すと `_probe_vision` がベータゲートで False を返し、
+> **「視覚対応のチャットモデルが必要です」という原因と違うエラー**が出ていた。
+>
+> ADR-005 の規約「OFF時もデータは保持し、露出のみ消す」に従い、
+> **ベータOFF時は `search_strategy` が存在しないかのように振る舞う**(既定へ丸める)。
+> 設定値そのものは書き換えないので、ON に戻せば選択が復帰する。
+> 実装は `build_context._effective_strategy()` で、検索・生成・MCP の3経路が
+> 同じ実効値を共有する。
 
 ## 11. テスト方針
 
@@ -498,8 +522,18 @@ index_builder.py` のページループ)では **`build_cooldown_seconds` だけ
 検出)、167ページ完走に約21分かかる見込みだった。`build_cooldown_seconds=0` に変更して
 再構築したところ、page索引73秒(0.437秒/ページ)、tile索引96秒(0.575秒/ページ相当、
 0.192秒/タイル、501タイル)で完走した。**spec §8.3の記述とコードの実装が食い違って
-いる。** 実装変更はこの測定のスコープ外だが、follow-upとして「GPU検出時は
-`build_cooldown_seconds` を0にする」分岐の追加を提案する。
+いる。**
+
+> [!done] 2026-08-02 修正済み
+> `VisualIndexBuilder._cooldown_seconds()` を追加し、**エンコーダの実デバイスが
+> `cuda` のときはクールダウンを 0 にする**ようにした。§8.3 の記述も実態に合わせて
+> 訂正済み。判定に `torch.cuda.is_available()` を使わないのは、cuDNN のバージョン
+> 衝突下では True のまま演算だけが失敗する(ADR-017 / ECN-005)ため、可用性が
+> 「GPUで動いている」証拠にならないから。クールダウンはページ埋め込みの**後**に
+> 呼ばれるのでバックエンドはロード済みで、デバイスは確定している。
+> CPU 経路の安全弁(BSOD 対策)は従来どおり残る。回帰テストは
+> `tests/integration/test_visual_index_builder.py` の
+> `test_cooldown_is_skipped_on_gpu` / `test_cooldown_still_applies_on_cpu`。
 
 (付随する訂正: `visual_index_meta.built_at` はページループ開始前にセットされる実装
 であり完了時刻ではない。page/tileそれぞれのbuilt_at差分を「構築所要時間」として使うと

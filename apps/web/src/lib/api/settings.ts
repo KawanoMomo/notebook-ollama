@@ -6,6 +6,7 @@ import type {
   OllamaSettings,
   OllamaSettingsUpdate,
   Stats,
+  VisualSettingsPatch,
   VoiceInputSettings,
 } from './types';
 import type { VisualIndexUnit, VisualSearchStrategy } from './visualIndex';
@@ -28,11 +29,7 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify({ model }),
     }),
-  putVisual: (patch: {
-    search_enabled?: boolean;
-    index_unit?: VisualIndexUnit;
-    search_strategy?: VisualSearchStrategy;
-  }) =>
+  putVisual: (patch: VisualSettingsPatch) =>
     request<{
       search_enabled: boolean;
       index_unit: VisualIndexUnit;

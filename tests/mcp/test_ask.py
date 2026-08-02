@@ -69,6 +69,56 @@ async def test_ask_returns_answer_and_citations():
     assert result["model_used"] == "qwen2.5:14b"
 
 
+class _LocationRetrieval:
+    """location の全項目を持つヒットを返す fake。"""
+
+    def __init__(self, **overrides):
+        self._overrides = overrides
+
+    async def search(self, *, notebook_id, query, limit):
+        base = dict(
+            chunk_id="c1", source_id="s1", source_title="T", source_kind="pdf",
+            page=None, heading_path=None, ord=0, text="x", token_count=1, score=0.9,
+        )
+        base.update(self._overrides)
+        return [RetrievedChunk(**base)]
+
+
+async def _ask_location(retrieval) -> str:
+    from types import SimpleNamespace
+
+    result = await ask_tool(
+        notebook_id="nb1", question="?", model=None, style="concise",
+        retrieval=retrieval, ollama=FakeGateway(), client=FakeClient(),
+        config=SimpleNamespace(
+            visual=SimpleNamespace(search_strategy="hybrid_rrf"),
+            generation=SimpleNamespace(
+                context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
+            ),
+            retrieval=SimpleNamespace(top_k=8, min_history_turns=0),
+            ollama=SimpleNamespace(default_model="qwen2.5:14b"),
+        ),
+        notebook_default_model=None,
+    )
+    return result["citations"][0]["location"]
+
+
+@pytest.mark.asyncio
+async def test_ask_location_keeps_speaker_and_timecode():
+    """回帰テスト: MCP が page/heading_path しか渡さず、録音チャンク
+    (どちらも None) で location が空文字になっていた。"""
+    loc = await _ask_location(
+        _LocationRetrieval(source_kind="recording", start_ms=65000, speaker="話者A")
+    )
+    assert loc == "話者A 00:01:05"
+
+
+@pytest.mark.asyncio
+async def test_ask_location_keeps_tile_index():
+    """回帰テスト: タイル索引の「タイルN」表記が MCP 経路で落ちていた (spec §7.2)。"""
+    assert await _ask_location(_LocationRetrieval(page=12, tile_index=1)) == "p.12 タイル2"
+
+
 class SequenceGateway:
     """round ごとに (tokens, done_reason) を返す fake。prefill 検証用に
     受け取った messages を記録する。

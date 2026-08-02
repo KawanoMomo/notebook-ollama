@@ -236,13 +236,22 @@ export interface AppSettings {
   /** 開発者モード(spec 2026-07-02)。旧BEでは無いこともあるため optional。 */
   dev?: DevSettings;
   /** 視覚埋め込み検索設定(Stage 3/4、ベータ)。 */
-  visual: {
-    embedding_model: string;
-    search_enabled: boolean;
-    index_unit: VisualIndexUnit;
-    search_strategy: VisualSearchStrategy;
-  };
+  visual: VisualSettings;
 }
+
+/** 視覚埋め込み検索の設定(Stage 3/4、ベータ)。 */
+export interface VisualSettings {
+  embedding_model: string;
+  search_enabled: boolean;
+  index_unit: VisualIndexUnit;
+  search_strategy: VisualSearchStrategy;
+}
+
+/**
+ * PUT /settings/visual のリクエスト。embedding_model は再構築を伴うため
+ * このAPIでは変更できない(視覚インデックスの再構築フローが別にある)。
+ */
+export type VisualSettingsPatch = Partial<Omit<VisualSettings, 'embedding_model'>>;
 
 export interface DevSettings {
   enabled: boolean;

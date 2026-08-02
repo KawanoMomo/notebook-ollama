@@ -48,12 +48,17 @@ async def ask_tool(
     client: _ClientLike,
     config: Any,
     notebook_default_model: str | None,
+    search_strategy: str | None = None,
 ) -> dict[str, Any]:
     # pixel_native は画像が唯一の根拠だが、MCP 経路には画像投入機構が一切無い
     # (build_image_message を呼ばず SYSTEM_PROMPT をそのまま使う)。そのまま
     # 通すとプレースホルダ本文だけを見たモデルが根拠なく回答してしまう
     # (spec §7.4 が名指しで禁じる失敗)。黙って通さず明示的に失敗させる。
-    if config.visual.search_strategy == "pixel_native":
+    strategy = (
+        search_strategy if search_strategy is not None
+        else config.visual.search_strategy
+    )
+    if strategy == "pixel_native":
         raise AppError(
             ErrorCode.INPUT_INVALID,
             "MCP 経由の検索は pixel-native 戦略に対応していません",
@@ -74,7 +79,16 @@ async def ask_tool(
     prompt_chunks: list[PromptChunk] = []
     specs: dict[int, CitationSpec] = {}
     for i, h in enumerate(hits, start=1):
-        loc = format_location(page=h.page, heading_path=h.heading_path)
+        # Web 側 (core/generation/stream.py) と同じ全項目を渡す。page/heading_path
+        # だけだと録音チャンク (page も heading_path も None) で location が空文字に
+        # なり、タイル索引の「タイルN」も落ちる。
+        loc = format_location(
+            page=h.page,
+            heading_path=h.heading_path,
+            start_ms=h.start_ms,
+            speaker=h.speaker,
+            tile_index=getattr(h, "tile_index", None),
+        )
         prompt_chunks.append(PromptChunk(n=i, title=h.source_title, location=loc, text=h.text))
         specs[i] = CitationSpec(
             chunk_id=h.chunk_id,
