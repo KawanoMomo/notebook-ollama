@@ -139,3 +139,39 @@ describe('VisualIndexModal', () => {
     expect(within(row).getByText(/検索に使用中/)).toBeTruthy();
   });
 });
+
+describe('VisualIndexModal 構築中の表示', () => {
+  it('progress 到着前でも構築中とわかる表示を出す', () => {
+    // 回帰テスト: `u.building && progress` の AND だったため、構築開始から
+    // 最初の progress イベントまでが完全に無表示だった (issue #28 M2)。
+    // タイル索引は1ページ目で分割+3回の埋め込みを行うのでこの区間が長い。
+    renderModal(
+      {
+        units: { page: unitStatus({ building: true }), tile: unitStatus() },
+      },
+      { progressFor: () => null },
+    );
+    const row = screen.getByRole('group', { name: 'ページ索引' });
+    expect(within(row).getByText('準備中…')).toBeTruthy();
+  });
+
+  it('progress が来たら件数表示に切り替わる', () => {
+    renderModal(
+      {
+        units: { page: unitStatus({ building: true }), tile: unitStatus() },
+      },
+      {
+        progressFor: (u: string) =>
+          u === 'page' ? { done: 3, total: 10, etaSeconds: null } : null,
+      },
+    );
+    const row = screen.getByRole('group', { name: 'ページ索引' });
+    expect(within(row).getByText(/3 \/ 10/)).toBeTruthy();
+    expect(within(row).queryByText('準備中…')).toBeNull();
+  });
+
+  it('構築していない行には構築中表示を出さない', () => {
+    renderModal({ units: { page: unitStatus(), tile: unitStatus() } });
+    expect(screen.queryByText('準備中…')).toBeNull();
+  });
+});

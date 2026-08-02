@@ -345,3 +345,47 @@ async def test_visual_only_does_not_fall_back_when_visual_is_healthy_but_empty(t
     svc = _svc(conn, vs, ps, strategy="visual_only")
     hits = await svc.search(notebook_id=nb.id, query="q", limit=10)
     assert hits == []
+
+
+class _BoomEncoder:
+    async def embed_text(self, *, text):
+        raise RuntimeError("encoder unavailable")
+
+    async def embed_image(self, *, png):
+        raise RuntimeError("encoder unavailable")
+
+
+@pytest.mark.asyncio
+async def test_encoder_failure_still_degrades_to_text(tmp_path):
+    """外部要因(エンコーダ失敗)は従来どおり available=False へ縮退する。"""
+    conn, nb, src, vs, ps = _setup(tmp_path)
+    _add_text_chunk(conn, vs, nb, src, cid="c1", page=1, ord_=0, vec=[1.0, 0.0, 0.0, 0.0])
+    _add_visual_page(ps, nb, src, page=3, vec=[1.0, 0.0, 0.0, 0.0])
+    upsert_meta(conn, VisualIndexMeta(notebook_id=nb.id, embedding_model="vm", built_at="t"))
+
+    svc = _svc(conn, vs, ps, encoder=_BoomEncoder(), strategy="visual_only")
+    hits = await svc.search(notebook_id=nb.id, query="q", limit=10)
+    # visual_only でも視覚が使えないならテキストへ縮退する(既存挙動)
+    assert [h.chunk_id for h in hits] == ["c1"]
+
+
+@pytest.mark.asyncio
+async def test_assembly_error_is_not_swallowed_as_unavailable(tmp_path):
+    """回帰テスト: ヒット組み立て中のプログラミングエラーまで except Exception が
+    握り、「視覚検索が使えない」に丸めていた (issue #28 M10)。
+
+    visual_only は無言でテキストへ縮退するため、バグが可用性の問題に化けて
+    原因が見えなくなる。組み立ては try の外に出したので例外は伝播する。
+    """
+    conn, nb, src, vs, ps = _setup(tmp_path)
+    _add_visual_page(ps, nb, src, page=3, vec=[1.0, 0.0, 0.0, 0.0])
+    upsert_meta(conn, VisualIndexMeta(notebook_id=nb.id, embedding_model="vm", built_at="t"))
+
+    svc = _svc(conn, vs, ps, strategy="visual_only")
+
+    def _boom(*a, **kw):
+        raise KeyError("programming error in assembly")
+
+    svc._source_title = _boom
+    with pytest.raises(KeyError):
+        await svc.search(notebook_id=nb.id, query="q", limit=10)

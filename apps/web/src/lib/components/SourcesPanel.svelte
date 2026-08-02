@@ -15,6 +15,7 @@
     visualIndexApi,
     VISUAL_INDEX_UNITS,
     VISUAL_UNIT_LABELS,
+    visualIndexOutcomeToast,
     type VisualIndexStatus,
     type VisualIndexUnit,
   } from '$lib/api/visualIndex';
@@ -266,32 +267,10 @@
       const outcome = eventsStore.visualIndexOutcomeFor(unit);
       if (!outcome || outcome.at <= lastSeenOutcomeAt[unit]) continue;
       lastSeenOutcomeAt = { ...lastSeenOutcomeAt, [unit]: outcome.at };
-      const label = VISUAL_UNIT_LABELS[unit];
-      if (outcome.kind === 'complete') {
-        if (outcome.skippedPages > 0) {
-          // 部分失敗(半滅): 1件でも索引できれば「完了」の見た目になるが、
-          // 失敗ページ数を隠すと利用者が気付けない(最終レビュー I4)。
-          // ToastLevel は 'info' | 'success' | 'error' の3値しかないため、
-          // 警告寄りの文言で 'info' を使う。
-          pushToast(
-            `${label}の構築が完了しました(${outcome.skippedPages}件のページをスキップしました)`,
-            'info',
-          );
-        } else {
-          pushToast(`${label}の構築が完了しました`, 'success');
-        }
-      } else if (outcome.kind === 'noop') {
-        // target_sources == 0: 未索引の対象が無かった。タイル格子等の
-        // パラメータを変えても既に索引済みのソースは再構築対象にならない
-        // ため、無言で何もしないまま「完了」を装わせない(最終レビュー I3)。
-        pushToast(
-          `${label}の対象が0件でした。すべて索引済みです。` +
-            'パラメータを変えて作り直すには、先に索引を削除してください。',
-          'info',
-        );
-      } else {
-        pushToast(`${label}の構築に失敗しました`, 'error');
-      }
+      // 文言の分岐は visualIndexOutcomeToast (純関数) にある。ここに直接書くと
+      // SourcesPanel をマウントしないと検証できず、自動テストで固定できない。
+      const toast = visualIndexOutcomeToast(unit, outcome);
+      pushToast(toast.message, toast.level);
       if (visualIndexModalOpen) void refreshVisualIndexStatus();
     }
   });
