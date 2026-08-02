@@ -14,12 +14,16 @@ tags:
 related:
   - "[[2026-06-19-model-selection-design]]"
 code:
+  - apps/api/dependencies.py
   - apps/api/main.py
+  - apps/api/schemas/settings.py
+  - core/accel/backend_ids.py
   - core/accel/factory.py
   - core/accel/planner.py
   - core/accel/probe.py
   - core/config.py
   - core/ollama/client.py
+  - core/ollama/openai_compat.py
   - core/recording/recording_pipeline.py
   - core/recording/transcriber.py
   - core/recording/whisper_postprocess.py
