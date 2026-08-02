@@ -1,7 +1,7 @@
 ---
 type: adr-draft
 title: visual extraのtorchはCUDAホイールインデックスに切替、CPUはフォールバックとして残す
-summary: "--extra visualのtorchを[[tool.uv.index]](cu130)+marker付き[tool.uv.sources]でwin32のみCUDAホイールにし、CPU専用ホイールに起因していた対症療法群を解消した設計判断。recording extraとの共存不可という代償を伴う。"
+summary: "--extra visualのtorchを`[[tool.uv.index]]`(cu130)+marker付き`[tool.uv.sources]`でwin32のみCUDAホイールにし、CPU専用ホイールに起因していた対症療法群を解消した設計判断。recording extraとの共存不可という代償を伴う。"
 aliases:
   - torch CUDA化
 status: proposed

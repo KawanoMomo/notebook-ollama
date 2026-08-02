@@ -12,6 +12,18 @@ project: NotebookOllama
 area: rag-ux
 tags:
   - spec
+code:
+  - apps/api/routers/chat.py
+  - apps/api/schemas/chat.py
+  - apps/api/schemas/source.py
+  - apps/web/src/routes/settings
+  - core/generation/stream.py
+  - core/ingestion/parsers
+  - core/mcp/tools/ask.py
+  - core/ollama/client.py
+  - core/retrieval/search.py
+  - core/storage/chunks_repo.py
+  - core/storage/vector_store.py
 ---
 
 # RAG運用UX改善(群1) 設計仕様

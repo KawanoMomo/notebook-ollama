@@ -12,6 +12,16 @@ tags:
   - spec
 related:
   - "[[notebook-ollama-design]]"
+code:
+  - apps/api/sse.py
+  - apps/web/src/lib/components/DevPanel.svelte
+  - apps/web/src/routes/settings
+  - core/dev_logs
+  - core/logging.py
+  - core/ollama/client.py
+  - tests/integration
+  - tests/mcp
+  - tests/unit
 ---
 
 # 開発者モード 設計書

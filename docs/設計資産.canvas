@@ -1,6 +1,636 @@
 {
   "nodes": [
     {
+      "id": "f1c6d6d330467373",
+      "type": "group",
+      "x": 0,
+      "y": 900,
+      "width": 1660,
+      "height": 710,
+      "label": "▌ 取込",
+      "color": "2"
+    },
+    {
+      "id": "666aa40ee2aaf928",
+      "type": "group",
+      "x": 0,
+      "y": 1646,
+      "width": 1660,
+      "height": 599,
+      "label": "▌ 検索応答",
+      "color": "5"
+    },
+    {
+      "id": "0deb1b203557fbd6",
+      "type": "group",
+      "x": 0,
+      "y": 2281,
+      "width": 1660,
+      "height": 322,
+      "label": "▌ 要約",
+      "color": "3"
+    },
+    {
+      "id": "a9008eef16eae1f9",
+      "type": "group",
+      "x": 0,
+      "y": 2639,
+      "width": 1660,
+      "height": 211,
+      "label": "▌ 推論基盤",
+      "color": "6"
+    },
+    {
+      "id": "984630583d9766c3",
+      "type": "group",
+      "x": 0,
+      "y": 2886,
+      "width": 1660,
+      "height": 211,
+      "label": "▌ 運用",
+      "color": "4"
+    },
+    {
+      "id": "e5b758305debb52f",
+      "type": "group",
+      "x": 0,
+      "y": 3133,
+      "width": 1660,
+      "height": 308,
+      "label": "▌ 基盤",
+      "color": "1"
+    },
+    {
+      "id": "70eae98ee681ffd2",
+      "type": "group",
+      "x": 20,
+      "y": 944,
+      "width": 292,
+      "height": 549,
+      "label": "chat  (取込)",
+      "color": "2"
+    },
+    {
+      "id": "c1a466554b2410f3",
+      "type": "file",
+      "x": 36,
+      "y": 990,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-05-chat-voice-input-design.md",
+      "color": "2"
+    },
+    {
+      "id": "be2a14683613f47f",
+      "type": "file",
+      "x": 36,
+      "y": 1087,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/chat-voice-input-stateless-stt.md",
+      "color": "3"
+    },
+    {
+      "id": "35d1378c4e056645",
+      "type": "file",
+      "x": 36,
+      "y": 1198,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-20-auto-continuation-design.md",
+      "color": "2"
+    },
+    {
+      "id": "fe18db89d8551034",
+      "type": "file",
+      "x": 36,
+      "y": 1295,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-assistant-prefill-continuation.md",
+      "color": "3"
+    },
+    {
+      "id": "bdcfb3cfb7a19439",
+      "type": "file",
+      "x": 36,
+      "y": 1392,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-truncated-persistence-update-in-place.md",
+      "color": "3"
+    },
+    {
+      "id": "46498aee46816779",
+      "type": "group",
+      "x": 352,
+      "y": 944,
+      "width": 292,
+      "height": 646,
+      "label": "ingestion  (取込)",
+      "color": "2"
+    },
+    {
+      "id": "253860cf71ba3e67",
+      "type": "file",
+      "x": 368,
+      "y": 990,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-20-pdf-table-figure-sidecar-design.md",
+      "color": "2"
+    },
+    {
+      "id": "d45712af01ad1677",
+      "type": "file",
+      "x": 368,
+      "y": 1087,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-chunk-asset-sidecar.md",
+      "color": "3"
+    },
+    {
+      "id": "ebac458638db59cd",
+      "type": "file",
+      "x": 368,
+      "y": 1184,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-table-dual-representation.md",
+      "color": "3"
+    },
+    {
+      "id": "a8f6e60db116aea4",
+      "type": "file",
+      "x": 368,
+      "y": 1295,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-20-vlm-figure-ocr-design.md",
+      "color": "2"
+    },
+    {
+      "id": "4748ad5010aa7832",
+      "type": "file",
+      "x": 368,
+      "y": 1392,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-figure-desc-standalone-chunk.md",
+      "color": "3"
+    },
+    {
+      "id": "31a0adf3e5bcc3c0",
+      "type": "file",
+      "x": 368,
+      "y": 1489,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-vlm-ocr-ollama-only.md",
+      "color": "3"
+    },
+    {
+      "id": "f8ec35de94817341",
+      "type": "group",
+      "x": 684,
+      "y": 944,
+      "width": 292,
+      "height": 438,
+      "label": "presentation  (取込)",
+      "color": "2"
+    },
+    {
+      "id": "9c04dda32204c527",
+      "type": "file",
+      "x": 700,
+      "y": 990,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-06-presentation-mode-design.md",
+      "color": "2"
+    },
+    {
+      "id": "4337c2da9f781807",
+      "type": "file",
+      "x": 700,
+      "y": 1087,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-06-pptx-render-powerpoint-com.md",
+      "color": "3"
+    },
+    {
+      "id": "23d0883f79378c74",
+      "type": "file",
+      "x": 700,
+      "y": 1184,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-06-recording-timeline-markers.md",
+      "color": "3"
+    },
+    {
+      "id": "5e027ac5eb49e7cb",
+      "type": "file",
+      "x": 700,
+      "y": 1281,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-06-source-links-generic-parent-child.md",
+      "color": "3"
+    },
+    {
+      "id": "badea8819af37bf4",
+      "type": "group",
+      "x": 1016,
+      "y": 944,
+      "width": 292,
+      "height": 369,
+      "label": "recording  (取込)",
+      "color": "2"
+    },
+    {
+      "id": "c9f13c7f230d36ec",
+      "type": "file",
+      "x": 1032,
+      "y": 990,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-17-recording-source-design.md",
+      "color": "2"
+    },
+    {
+      "id": "9b18810a76f6ab94",
+      "type": "file",
+      "x": 1032,
+      "y": 1101,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-19-recording-naming-design.md",
+      "color": "2"
+    },
+    {
+      "id": "aea5c202be1970b2",
+      "type": "file",
+      "x": 1032,
+      "y": 1212,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-22-recording-mute-and-rename-design.md",
+      "color": "2"
+    },
+    {
+      "id": "7ab774ec7dd1f6a3",
+      "type": "group",
+      "x": 1348,
+      "y": 944,
+      "width": 292,
+      "height": 147,
+      "label": "youtube  (取込)",
+      "color": "2"
+    },
+    {
+      "id": "ba007ae906332eb6",
+      "type": "file",
+      "x": 1364,
+      "y": 990,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-21-youtube-source-design.md",
+      "color": "2"
+    },
+    {
+      "id": "4571b84c6be5140c",
+      "type": "group",
+      "x": 20,
+      "y": 1690,
+      "width": 292,
+      "height": 147,
+      "label": "prompts  (検索応答)",
+      "color": "5"
+    },
+    {
+      "id": "a17bf82f7bffdec2",
+      "type": "file",
+      "x": 36,
+      "y": 1736,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-26-prompt-injection-design.md",
+      "color": "5"
+    },
+    {
+      "id": "7cd806ce8c6d7b87",
+      "type": "group",
+      "x": 352,
+      "y": 1690,
+      "width": 292,
+      "height": 369,
+      "label": "rag-ux  (検索応答)",
+      "color": "5"
+    },
+    {
+      "id": "a701e8cdabc1381e",
+      "type": "file",
+      "x": 368,
+      "y": 1736,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-19-rag-ux-improvements-design.md",
+      "color": "5"
+    },
+    {
+      "id": "0a34d799dbde009a",
+      "type": "file",
+      "x": 368,
+      "y": 1847,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-25-source-guide-design.md",
+      "color": "5"
+    },
+    {
+      "id": "610bd5dc4e6eefc5",
+      "type": "file",
+      "x": 368,
+      "y": 1958,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-02-job-status-bar-optimistic-ui-design.md",
+      "color": "5"
+    },
+    {
+      "id": "22c17ac471b3a588",
+      "type": "group",
+      "x": 684,
+      "y": 1690,
+      "width": 576,
+      "height": 535,
+      "label": "retrieval  (検索応答)",
+      "color": "5"
+    },
+    {
+      "id": "133cbd3cef505d67",
+      "type": "file",
+      "x": 700,
+      "y": 1736,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-20-visual-embedding-index-design.md",
+      "color": "5"
+    },
+    {
+      "id": "603ca682d2a62875",
+      "type": "file",
+      "x": 700,
+      "y": 1833,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-visual-embedding-ondemand-transformers.md",
+      "color": "3"
+    },
+    {
+      "id": "eee28da3ed3eabd4",
+      "type": "file",
+      "x": 700,
+      "y": 1930,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-visual-index-qdrant-rrf.md",
+      "color": "3"
+    },
+    {
+      "id": "735389d23d0dc1bc",
+      "type": "file",
+      "x": 984,
+      "y": 1736,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-29-pixelrag-tile-index-design.md",
+      "color": "5"
+    },
+    {
+      "id": "5ba5c21ec92937ee",
+      "type": "file",
+      "x": 984,
+      "y": 1833,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-29-partial-success-per-unit.md",
+      "color": "3"
+    },
+    {
+      "id": "7ef79a5665cd13cb",
+      "type": "file",
+      "x": 984,
+      "y": 1930,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-29-pixel-native-explicit-failure.md",
+      "color": "3"
+    },
+    {
+      "id": "5eb6013faba1e403",
+      "type": "file",
+      "x": 984,
+      "y": 2027,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-29-torch-cuda-wheel-index.md",
+      "color": "3"
+    },
+    {
+      "id": "87c7837f043387e1",
+      "type": "file",
+      "x": 984,
+      "y": 2124,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-29-visual-index-unit-collections.md",
+      "color": "3"
+    },
+    {
+      "id": "e1b96efa85fcc814",
+      "type": "group",
+      "x": 20,
+      "y": 2325,
+      "width": 292,
+      "height": 258,
+      "label": "summary  (要約)",
+      "color": "3"
+    },
+    {
+      "id": "d5bdec3d38242fc8",
+      "type": "file",
+      "x": 36,
+      "y": 2371,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-26-meeting-adr-templates.md",
+      "color": "3"
+    },
+    {
+      "id": "1882d0599571dec8",
+      "type": "file",
+      "x": 36,
+      "y": 2482,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-26-summary-prompt-tune.md",
+      "color": "3"
+    },
+    {
+      "id": "54eed46e0490a069",
+      "type": "group",
+      "x": 20,
+      "y": 2683,
+      "width": 292,
+      "height": 147,
+      "label": "accel  (推論基盤)",
+      "color": "6"
+    },
+    {
+      "id": "48f791b3c7a05bb6",
+      "type": "file",
+      "x": 36,
+      "y": 2729,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-28-igpu-npu-acceleration-design.md",
+      "color": "6"
+    },
+    {
+      "id": "2b8c15cf169f8fb4",
+      "type": "group",
+      "x": 352,
+      "y": 2683,
+      "width": 292,
+      "height": 147,
+      "label": "model  (推論基盤)",
+      "color": "6"
+    },
+    {
+      "id": "e512a82d219ecdfd",
+      "type": "file",
+      "x": 368,
+      "y": 2729,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-19-model-selection-design.md",
+      "color": "6"
+    },
+    {
+      "id": "3409898c32d25bd1",
+      "type": "group",
+      "x": 20,
+      "y": 2930,
+      "width": 292,
+      "height": 147,
+      "label": "dev-mode  (運用)",
+      "color": "4"
+    },
+    {
+      "id": "989c9958c3c30860",
+      "type": "file",
+      "x": 36,
+      "y": 2976,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-02-developer-mode-design.md",
+      "color": "4"
+    },
+    {
+      "id": "aad04fc2835112ce",
+      "type": "group",
+      "x": 352,
+      "y": 2930,
+      "width": 292,
+      "height": 147,
+      "label": "feedback  (運用)",
+      "color": "4"
+    },
+    {
+      "id": "afcbb6acbee90280",
+      "type": "file",
+      "x": 368,
+      "y": 2976,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-06-28-crash-report-feedback-hub-design.md",
+      "color": "4"
+    },
+    {
+      "id": "3094401b866a69ba",
+      "type": "group",
+      "x": 684,
+      "y": 2930,
+      "width": 292,
+      "height": 147,
+      "label": "notifications  (運用)",
+      "color": "4"
+    },
+    {
+      "id": "ee55448126581d51",
+      "type": "file",
+      "x": 700,
+      "y": 2976,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/browser-notifications-design.md",
+      "color": "4"
+    },
+    {
+      "id": "16fc06a661ad6244",
+      "type": "group",
+      "x": 20,
+      "y": 3177,
+      "width": 292,
+      "height": 147,
+      "label": "foundation  (基盤)",
+      "color": "1"
+    },
+    {
+      "id": "f673989fb83659a8",
+      "type": "file",
+      "x": 36,
+      "y": 3223,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/notebook-ollama-design.md",
+      "color": "1"
+    },
+    {
+      "id": "41de75aca179bb72",
+      "type": "group",
+      "x": 352,
+      "y": 3177,
+      "width": 292,
+      "height": 244,
+      "label": "platform  (基盤)",
+      "color": "1"
+    },
+    {
+      "id": "98e11bff2639cc10",
+      "type": "file",
+      "x": 368,
+      "y": 3223,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-07-20-beta-feature-flags-design.md",
+      "color": "1"
+    },
+    {
+      "id": "5f0383a70704f46a",
+      "type": "file",
+      "x": 368,
+      "y": 3320,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/draft-2026-07-20-beta-feature-flag-registry.md",
+      "color": "3"
+    },
+    {
       "id": "d98b68bdbc84ba4d",
       "type": "group",
       "x": 300,
@@ -74,7 +704,7 @@
       "type": "group",
       "x": 0,
       "y": 560,
-      "width": 1760,
+      "width": 1660,
       "height": 270,
       "label": "レーンB: core/ モジュール & 機能領域"
     },
@@ -91,7 +721,7 @@
     {
       "id": "ceea60331283ce88",
       "type": "text",
-      "x": 310,
+      "x": 290,
       "y": 610,
       "width": 270,
       "height": 190,
@@ -101,7 +731,7 @@
     {
       "id": "1320c5b3d40feb8a",
       "type": "text",
-      "x": 600,
+      "x": 560,
       "y": 610,
       "width": 270,
       "height": 190,
@@ -111,7 +741,7 @@
     {
       "id": "4ad6b0b08a211597",
       "type": "text",
-      "x": 890,
+      "x": 830,
       "y": 610,
       "width": 270,
       "height": 190,
@@ -121,7 +751,7 @@
     {
       "id": "2c1a2f5e5d9730f4",
       "type": "text",
-      "x": 1180,
+      "x": 1100,
       "y": 610,
       "width": 270,
       "height": 190,
@@ -131,7 +761,7 @@
     {
       "id": "54ec3ec1fea41de2",
       "type": "text",
-      "x": 1470,
+      "x": 1370,
       "y": 610,
       "width": 270,
       "height": 190,
@@ -139,279 +769,211 @@
       "color": "1"
     },
     {
-      "id": "c5763326140518b1",
-      "type": "group",
-      "x": 10,
-      "y": 900,
-      "width": 290,
-      "height": 600,
-      "label": "設計書 — 取込",
-      "color": "2"
-    },
-    {
-      "id": "a36ba8d17fbc0152",
-      "type": "file",
-      "x": 20,
-      "y": 940,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-17-recording-source-design.md",
-      "color": "2"
-    },
-    {
-      "id": "1aac1dce8fafd4e9",
-      "type": "file",
-      "x": 20,
-      "y": 1050,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-19-recording-naming-design.md",
-      "color": "2"
-    },
-    {
-      "id": "a3ded101b0f495db",
-      "type": "file",
-      "x": 20,
-      "y": 1160,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-22-recording-mute-and-rename-design.md",
-      "color": "2"
-    },
-    {
-      "id": "289a05f5e6107842",
-      "type": "file",
-      "x": 20,
-      "y": 1270,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-21-youtube-source-design.md",
-      "color": "2"
-    },
-    {
-      "id": "eb88239963e87310",
-      "type": "file",
-      "x": 20,
-      "y": 1380,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-07-06-presentation-mode-design.md",
-      "color": "2"
-    },
-    {
-      "id": "533943e0f6864f16",
-      "type": "group",
-      "x": 300,
-      "y": 900,
-      "width": 290,
-      "height": 600,
-      "label": "設計書 — 検索応答",
-      "color": "5"
-    },
-    {
-      "id": "ca3e90719e5b2411",
-      "type": "file",
-      "x": 310,
-      "y": 940,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-19-rag-ux-improvements-design.md",
-      "color": "5"
-    },
-    {
-      "id": "21c644724d9ea842",
-      "type": "file",
-      "x": 310,
-      "y": 1050,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-25-source-guide-design.md",
-      "color": "5"
-    },
-    {
-      "id": "d22e7f05a7b935cc",
-      "type": "file",
-      "x": 310,
-      "y": 1160,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-07-02-job-status-bar-optimistic-ui-design.md",
-      "color": "5"
-    },
-    {
-      "id": "09dacd4e129e2237",
-      "type": "file",
-      "x": 310,
-      "y": 1270,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-26-prompt-injection-design.md",
-      "color": "5"
-    },
-    {
-      "id": "50945ed6e43505ce",
-      "type": "file",
-      "x": 310,
-      "y": 1380,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/browser-notifications-design.md",
-      "color": "5"
-    },
-    {
-      "id": "70c1f6610908ac68",
-      "type": "group",
-      "x": 590,
-      "y": 900,
-      "width": 290,
-      "height": 270,
-      "label": "設計書 — 要約",
-      "color": "3"
-    },
-    {
-      "id": "1b4cd389728396fe",
-      "type": "file",
-      "x": 600,
-      "y": 940,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-26-meeting-adr-templates.md",
-      "color": "3"
-    },
-    {
-      "id": "95eb3466a48d8a0c",
-      "type": "file",
-      "x": 600,
-      "y": 1050,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-26-summary-prompt-tune.md",
-      "color": "3"
-    },
-    {
-      "id": "86a559d1a6d611f2",
-      "type": "group",
-      "x": 880,
-      "y": 900,
-      "width": 290,
-      "height": 270,
-      "label": "設計書 — 推論基盤",
-      "color": "6"
-    },
-    {
-      "id": "be79d48e4ab32af1",
-      "type": "file",
-      "x": 890,
-      "y": 940,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-19-model-selection-design.md",
-      "color": "6"
-    },
-    {
-      "id": "d8bf20236a8548c8",
-      "type": "file",
-      "x": 890,
-      "y": 1050,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-28-igpu-npu-acceleration-design.md",
-      "color": "6"
-    },
-    {
-      "id": "e58003d24123fb9b",
-      "type": "group",
-      "x": 1170,
-      "y": 900,
-      "width": 290,
-      "height": 270,
-      "label": "設計書 — 運用",
-      "color": "4"
-    },
-    {
-      "id": "db76161d24fb0c1d",
-      "type": "file",
-      "x": 1180,
-      "y": 940,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-06-28-crash-report-feedback-hub-design.md",
-      "color": "4"
-    },
-    {
-      "id": "8d3cd4a82f9f8edb",
-      "type": "file",
-      "x": 1180,
-      "y": 1050,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/2026-07-02-developer-mode-design.md",
-      "color": "4"
-    },
-    {
-      "id": "69d56aba2ea95780",
-      "type": "group",
-      "x": 1460,
-      "y": 900,
-      "width": 290,
-      "height": 160,
-      "label": "設計書 — 基盤",
-      "color": "1"
-    },
-    {
-      "id": "fad24cddec9d4dd4",
-      "type": "file",
-      "x": 1470,
-      "y": 940,
-      "width": 270,
-      "height": 90,
-      "file": "docs/specs/notebook-ollama-design.md",
-      "color": "1"
-    },
-    {
-      "id": "840614a840b29e7b",
-      "type": "group",
-      "x": 900,
-      "y": 1560,
-      "width": 860,
-      "height": 210,
-      "label": "ADRドラフト (発表モードから起票 / 未採番)",
-      "color": "3"
-    },
-    {
-      "id": "d8eaa17c9e131179",
-      "type": "file",
-      "x": 920,
-      "y": 1610,
-      "width": 265,
-      "height": 120,
-      "file": "docs/adr/drafts/draft-2026-07-06-source-links-generic-parent-child.md",
-      "color": "3"
-    },
-    {
-      "id": "0822ceb3f7bae812",
-      "type": "file",
-      "x": 1205,
-      "y": 1610,
-      "width": 265,
-      "height": 120,
-      "file": "docs/adr/drafts/draft-2026-07-06-recording-timeline-markers.md",
-      "color": "3"
-    },
-    {
-      "id": "2193febf7e297683",
-      "type": "file",
-      "x": 1490,
-      "y": 1610,
-      "width": 265,
-      "height": 120,
-      "file": "docs/adr/drafts/draft-2026-07-06-pptx-render-powerpoint-com.md",
-      "color": "3"
+      "id": "c5c83b5baf183ff2",
+      "type": "text",
+      "x": 0,
+      "y": 3461,
+      "width": 780,
+      "height": 190,
+      "text": "### 凡例\n- 枠 = `area` (括弧内は レーンB の機能クラスタ)。枠の色 = クラスタ色\n- 島 = 1 つの spec + そこから起票された ADR ドラフト(黄)。縦線は「起票」\n- 横線 = 同じ area 内の spec どうしの `related` (シリーズの流れ)\n- area をまたぐ `related` は線を引かない。frontmatter の `related` と\n  Obsidian のグラフビューで辿ること\n- このボードは `scripts/gen_design_canvas.py` で自動生成 (手編集しない)"
     }
   ],
   "edges": [
     {
-      "id": "86fa87b52fc72d9c",
+      "id": "064070629b972e33",
+      "fromNode": "c1a466554b2410f3",
+      "toNode": "be2a14683613f47f",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "12557a9a8b999b0c",
+      "fromNode": "35d1378c4e056645",
+      "toNode": "fe18db89d8551034",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "ede53703d87df13a",
+      "fromNode": "35d1378c4e056645",
+      "toNode": "bdcfb3cfb7a19439",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "066c05b4875a36d3",
+      "fromNode": "253860cf71ba3e67",
+      "toNode": "d45712af01ad1677",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "60004bf25f68865e",
+      "fromNode": "253860cf71ba3e67",
+      "toNode": "ebac458638db59cd",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "6fcae7751bcda3c3",
+      "fromNode": "a8f6e60db116aea4",
+      "toNode": "4748ad5010aa7832",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "46e0df8e80dda55c",
+      "fromNode": "a8f6e60db116aea4",
+      "toNode": "31a0adf3e5bcc3c0",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "ea02cf609492ce47",
+      "fromNode": "9c04dda32204c527",
+      "toNode": "4337c2da9f781807",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "9b4411853ad73f40",
+      "fromNode": "9c04dda32204c527",
+      "toNode": "23d0883f79378c74",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "cc7d21dd7d08b7c1",
+      "fromNode": "9c04dda32204c527",
+      "toNode": "5e027ac5eb49e7cb",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "732614c54bdce39e",
+      "fromNode": "133cbd3cef505d67",
+      "toNode": "603ca682d2a62875",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "eb8e78e3f224cd40",
+      "fromNode": "133cbd3cef505d67",
+      "toNode": "eee28da3ed3eabd4",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "454b3e0369b02e95",
+      "fromNode": "735389d23d0dc1bc",
+      "toNode": "5ba5c21ec92937ee",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "02e4c40eed61bdfd",
+      "fromNode": "735389d23d0dc1bc",
+      "toNode": "7ef79a5665cd13cb",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "9f2d428977dffc40",
+      "fromNode": "735389d23d0dc1bc",
+      "toNode": "5eb6013faba1e403",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "a6710c7ad9c370cb",
+      "fromNode": "735389d23d0dc1bc",
+      "toNode": "87c7837f043387e1",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "c44593774d05d28c",
+      "fromNode": "98e11bff2639cc10",
+      "toNode": "5f0383a70704f46a",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "f4a137f0cf7acfea",
+      "fromNode": "aea5c202be1970b2",
+      "toNode": "c9f13c7f230d36ec",
+      "fromSide": "right",
+      "toSide": "left",
+      "toEnd": "arrow"
+    },
+    {
+      "id": "c4d2f81c11b22a83",
+      "fromNode": "aea5c202be1970b2",
+      "toNode": "9b18810a76f6ab94",
+      "fromSide": "right",
+      "toSide": "left",
+      "toEnd": "arrow"
+    },
+    {
+      "id": "a2202794f618691d",
+      "fromNode": "35d1378c4e056645",
+      "toNode": "c1a466554b2410f3",
+      "fromSide": "right",
+      "toSide": "left",
+      "toEnd": "arrow"
+    },
+    {
+      "id": "30a403c2af8d70ef",
+      "fromNode": "a8f6e60db116aea4",
+      "toNode": "253860cf71ba3e67",
+      "fromSide": "right",
+      "toSide": "left",
+      "toEnd": "arrow"
+    },
+    {
+      "id": "ebf1e52657e1852e",
+      "fromNode": "735389d23d0dc1bc",
+      "toNode": "133cbd3cef505d67",
+      "fromSide": "right",
+      "toSide": "left",
+      "toEnd": "arrow"
+    },
+    {
+      "id": "6edc19714c747ebd",
       "fromNode": "4337cd347f276e62",
       "toNode": "76eb79227920497b",
       "fromSide": "bottom",
@@ -420,7 +982,7 @@
       "label": "HTTP / SSE"
     },
     {
-      "id": "ed0119144de82ba4",
+      "id": "a780e1936e5dabad",
       "fromNode": "76eb79227920497b",
       "toNode": "26c7fa52067fe70c",
       "fromSide": "right",
@@ -429,7 +991,7 @@
       "label": "MCP"
     },
     {
-      "id": "b1ed1fd08bf18082",
+      "id": "9e94d99372b0628a",
       "fromNode": "76eb79227920497b",
       "toNode": "7c0c2ce4da3ffeb1",
       "fromSide": "bottom",
@@ -437,7 +999,7 @@
       "toEnd": "arrow"
     },
     {
-      "id": "4dbecfbad1943272",
+      "id": "b3059df98c49eb84",
       "fromNode": "76eb79227920497b",
       "toNode": "069eebdbc272789a",
       "fromSide": "bottom",
@@ -445,7 +1007,7 @@
       "toEnd": "arrow"
     },
     {
-      "id": "ea38bdc181630f90",
+      "id": "0c7df7680bf2976d",
       "fromNode": "76eb79227920497b",
       "toNode": "46bcd7048768252f",
       "fromSide": "bottom",
@@ -453,185 +1015,13 @@
       "toEnd": "arrow"
     },
     {
-      "id": "1bb39329edd956fe",
+      "id": "1de17ea7c920c186",
       "fromNode": "76eb79227920497b",
       "toNode": "bc6cd15355569ea8",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "core modules"
-    },
-    {
-      "id": "6552b7c19d3465ea",
-      "fromNode": "a36ba8d17fbc0152",
-      "toNode": "33e7508c70da9dee",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "36787081f9f856c9",
-      "fromNode": "1aac1dce8fafd4e9",
-      "toNode": "33e7508c70da9dee",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "fa09c9d4d678f9e7",
-      "fromNode": "a3ded101b0f495db",
-      "toNode": "33e7508c70da9dee",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "2eb79f3d77ae1ec6",
-      "fromNode": "289a05f5e6107842",
-      "toNode": "33e7508c70da9dee",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "6b0191bab5efe1b3",
-      "fromNode": "eb88239963e87310",
-      "toNode": "33e7508c70da9dee",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "ccbf676cc3cb146f",
-      "fromNode": "ca3e90719e5b2411",
-      "toNode": "ceea60331283ce88",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "a528571e12d35abf",
-      "fromNode": "21c644724d9ea842",
-      "toNode": "ceea60331283ce88",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "be8bfd4968080a36",
-      "fromNode": "d22e7f05a7b935cc",
-      "toNode": "ceea60331283ce88",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "b664ba95b506cfa7",
-      "fromNode": "09dacd4e129e2237",
-      "toNode": "ceea60331283ce88",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "7d0e008c6207b872",
-      "fromNode": "50945ed6e43505ce",
-      "toNode": "ceea60331283ce88",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "844d498f68ce5329",
-      "fromNode": "1b4cd389728396fe",
-      "toNode": "1320c5b3d40feb8a",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "30c4142a98edd27b",
-      "fromNode": "95eb3466a48d8a0c",
-      "toNode": "1320c5b3d40feb8a",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "872eff9532ddff89",
-      "fromNode": "be79d48e4ab32af1",
-      "toNode": "4ad6b0b08a211597",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "1f8435ed4ea00259",
-      "fromNode": "d8bf20236a8548c8",
-      "toNode": "4ad6b0b08a211597",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "d5cc26a810b43723",
-      "fromNode": "db76161d24fb0c1d",
-      "toNode": "2c1a2f5e5d9730f4",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "e938666c4d952485",
-      "fromNode": "8d3cd4a82f9f8edb",
-      "toNode": "2c1a2f5e5d9730f4",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "622d94158c7fedf8",
-      "fromNode": "fad24cddec9d4dd4",
-      "toNode": "54ec3ec1fea41de2",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "toEnd": "arrow"
-    },
-    {
-      "id": "6b7af5fa9020c814",
-      "fromNode": "50945ed6e43505ce",
-      "toNode": "4337cd347f276e62",
-      "fromSide": "top",
-      "toSide": "bottom",
-      "toEnd": "arrow",
-      "label": "通知UI"
-    },
-    {
-      "id": "2bb07a4cc13e33cd",
-      "fromNode": "eb88239963e87310",
-      "toNode": "d8eaa17c9e131179",
-      "fromSide": "right",
-      "toSide": "top",
-      "toEnd": "arrow",
-      "label": "起票"
-    },
-    {
-      "id": "c209cce94c00bff7",
-      "fromNode": "eb88239963e87310",
-      "toNode": "0822ceb3f7bae812",
-      "fromSide": "right",
-      "toSide": "top",
-      "toEnd": "arrow",
-      "label": "起票"
-    },
-    {
-      "id": "7bf1b33a8422aa99",
-      "fromNode": "eb88239963e87310",
-      "toNode": "2193febf7e297683",
-      "fromSide": "right",
-      "toSide": "top",
-      "toEnd": "arrow",
-      "label": "起票"
     }
   ]
 }

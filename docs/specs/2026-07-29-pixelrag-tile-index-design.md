@@ -20,6 +20,24 @@ related:
   - "[[2026-07-20-vlm-figure-ocr-design]]"
   - "[[2026-07-20-pdf-table-figure-sidecar-design]]"
   - "[[2026-07-20-beta-feature-flags-design]]"
+code:
+  - apps/api/dependencies.py
+  - apps/api/routers/visual_index.py
+  - core/accel/cuda_dll.py
+  - core/config.py
+  - core/generation/locations.py
+  - core/recording/transcriber.py
+  - core/retrieval/search.py
+  - core/storage/visual_store.py
+  - core/visual
+  - core/visual/encoder.py
+  - core/visual/index_builder.py
+  - core/visual/tiling.py
+  - tests/integration/test_visual_store.py
+  - tests/unit
+  - tests/unit/test_visual_encoder.py
+  - tests/unit/test_visual_index_repo.py
+  - tests/unit/test_visual_watchdog.py
 ---
 
 # PixelRAG式タイル索引と検索戦略の選択 (Stage 4) 設計書

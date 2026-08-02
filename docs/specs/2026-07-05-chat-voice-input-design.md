@@ -14,6 +14,13 @@ tags:
 related:
   - "[[chat-voice-input-stateless-stt]]"
 html: "[[2026-07-05-chat-voice-input-design.html]]"
+code:
+  - apps/api/routers/stt.py
+  - apps/api/schemas/settings.py
+  - apps/web/src/lib/components/ChatInput.svelte
+  - apps/web/src/routes/settings
+  - core/config.py
+  - tests/integration/test_api
 ---
 
 # 設計仕様: チャット音声入力(Notebook Ollama)

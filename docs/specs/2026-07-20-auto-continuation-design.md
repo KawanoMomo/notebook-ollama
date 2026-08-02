@@ -14,6 +14,11 @@ tags:
 related:
   - "[[notebook-ollama-design]]"
   - "[[2026-07-05-chat-voice-input-design]]"
+code:
+  - apps/api/schemas/settings.py
+  - core/config.py
+  - core/generation/stream.py
+  - core/mcp/tools/ask.py
 ---
 
 # 設計仕様: 応答自動継続 (Auto Continuation) — Notebook Ollama

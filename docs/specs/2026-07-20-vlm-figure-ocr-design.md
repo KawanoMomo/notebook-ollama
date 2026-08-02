@@ -19,6 +19,9 @@ related:
   - "[[2026-07-20-visual-embedding-index-design]]"
   - "[[2026-06-19-model-selection-design]]"
   - "[[2026-07-20-beta-feature-flags-design]]"
+code:
+  - core/generation/stream.py
+  - core/ollama
 ---
 
 # VLM図説明・スキャンPDF OCR (Stage 2) 設計書

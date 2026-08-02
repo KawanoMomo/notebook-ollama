@@ -11,6 +11,8 @@ project: NotebookOllama
 area: summary
 tags:
   - spec
+code:
+  - core/summary/summarizer.py
 ---
 
 # 要約プロンプト改善 — 選定根拠

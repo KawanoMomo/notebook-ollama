@@ -12,6 +12,18 @@ project: NotebookOllama
 area: rag-ux
 tags:
   - spec
+code:
+  - apps/api/routers/chat.py
+  - apps/api/routers/sources.py
+  - apps/api/schemas/source.py
+  - apps/web/src/lib/api/sources.ts
+  - apps/web/src/lib/components/ChatInput.svelte
+  - apps/web/src/lib/components/SourceCard.svelte
+  - apps/web/src/lib/components/SourcesPanel.svelte
+  - apps/web/src/lib/stores/currentNotebook.svelte.ts
+  - core/recording/recording_pipeline.py
+  - core/storage/sources_repo.py
+  - core/summary/summarizer.py
 ---
 
 # Source Guide — 設計仕様書

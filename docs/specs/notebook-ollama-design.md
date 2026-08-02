@@ -12,6 +12,13 @@ area: foundation
 tags:
   - spec
 note: 本文表記は「実装プラン待ち」だが実装済みのため approved に補正
+code:
+  - apps/api/routers
+  - core/generation
+  - core/ingestion/parsers
+  - core/mcp/tools
+  - core/retrieval
+  - core/storage
 ---
 
 # Notebook Ollama — 設計仕様書
