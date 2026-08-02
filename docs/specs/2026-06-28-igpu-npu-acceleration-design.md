@@ -468,3 +468,119 @@ Phase 1 では `[project.optional-dependencies]` に `intel = []` / `amd = []` �
 - ドキュメントとして将来の依存意図を main に残せる
 
 実パッケージ(`openvino`, `onnxruntime-directml` 等)の追加は Phase 2 Sprint 7。
+
+---
+
+## Update 2026-08-02 — 外部情報の追従とOllama以外のアプローチの検討
+
+2026-06-28 の当初設計・2026-06-29 addendum が依拠した外部情報を 4 系統(Ollama / Intel / AMD / 代替ランタイム)の Web 調査で再検証した。§1〜§12 および addendum A〜J は歴史的記録として保持し、Phase 2 着手時は本 addendum を **正** として扱う。
+
+### K. 前提が崩れた箇所(設計判断に直結)
+
+**K1. Ollama Vulkan は正式リリース済み(§4.3「将来」は誤りに)**
+
+- v0.12.11 で公式バイナリに搭載(`OLLAMA_VULKAN=1` opt-in)、v0.13.0 以降は **バックエンドがあればデフォルト有効**。experimental の但し書きは公式ドキュメントから外れた([docs.ollama.com/gpu](https://docs.ollama.com/gpu)、[Phoronix](https://www.phoronix.com/news/ollama-0.12.11-Vulkan))。
+- これにより §4.3 の `ollama-vulkan`(将来)は **現実の選択肢に昇格**。Intel iGPU / AMD iGPU の両方をカバーし、URL 差替すら不要(公式 Ollama のまま)。
+- 注意: 弱い iGPU で勝手に有効化され CPU より遅くなる報告あり([#13212](https://github.com/ollama/ollama/issues/13212))。Planner が Vulkan 経路を選ぶ場合も Smoke Test の性能ゲート(R5)は必須。
+- 実測目安: Arc 140V iGPU + Qwen3-8B 4bit でデコード約 13.4 tok/s(OpenVINO 経路比 約1.6倍遅、TTFT は Ollama 有利)。
+- 一方 **SYCL バックエンドの Ollama 本体入りは断念確定**(PR [#11160](https://github.com/ollama/ollama/pull/11160) が 2026-06-08 未マージクローズ)。Ollama の Intel GPU 路線は Vulkan 一本化。
+
+**K2. IPEX-LLM は採用取り下げ(R1 リスクが顕在化)**
+
+- [intel/ipex-llm](https://github.com/intel/ipex-llm) はアーカイブに加え README に **"known security issues"** が明記された。最終安定版 v2.2.0 は 2025-04 で約1年半更新なし。Portable Zip は入手可能だが **新規採用は不可** と判断する。
+- 後継の intel/llm-scaler はデータセンター向け Arc Pro 寄りで、個人向けクライアント GPU の代替になる公式言質なし([llm-scaler#283](https://github.com/intel/llm-scaler/issues/283))。
+- **§4.3 の `ipex-llm-ollama` と addendum A の `scripts/install-intel-runtimes.ps1`(Portable Zip 展開)は Phase 2 スコープから削除する。** Intel iGPU の LLM 経路は K4 の代替表に従う。
+
+**K3. 「bge-m3 は OpenVINO 2026.0 で NPU 対応強化」(§4.4)は出典の裏付けなし(訂正)**
+
+- §4.4 で引いた Phoronix / Optimum Intel 2.0 blog のいずれも bge-m3 / BGE 系に言及していない。2026.0 で NPU 対応が明記された埋め込みモデルは **Qwen3-Embedding-0.6B** 等([OpenVINO 2026.0 blog](https://medium.com/openvino-toolkit/openvino-2026-0-new-models-enhanced-genai-and-smarter-compression-bf846a59cda8))。
+- `openvino-bge-m3-npu` は「対応実績あり」ではなく **未検証・要 PoC** に格下げ。NPU 埋め込みの常用モデル候補としては Qwen3-Embedding-0.6B を併記する(ただしモデル切替=再インデックスの既知制約に注意)。
+
+**K4. bge-m3 NaN bug の現況(§1・§4.4・R4)**
+
+- [#13572](https://github.com/ollama/ollama/issues/13572) は closed だが、マージされた [PR #13599](https://github.com/ollama/ollama/pull/13599) は NaN/Inf バリデーション追加(エラーの明示化)であり **根本修正ではない**。同症状の継続 issue: [#14657](https://github.com/ollama/ollama/issues/14657)(RTX 2080 Ti=開発機と同型で再現)、[#16625](https://github.com/ollama/ollama/issues/16625)。
+- 新たな回避策として **`OLLAMA_FLASH_ATTENTION=false`** が有力(追加バリデーション [PR #14739](https://github.com/ollama/ollama/pull/14739) 作者が根本原因を flash attention 計算と推定)。`num_gpu=0` 一択でなく、GPU を捨てない回避策として検証価値あり(実装時の検証タスクとする)。
+- R4 の「`num_gpu=0` を CUDA でも継続」は当面維持。ただし「#13572 が closed だから直った」という誤読を防ぐため本節を参照先とする。
+
+### L. Ollama 以外のアプローチ(新規検討、ユーザ指示による追加)
+
+LLM/Embedding は Ollama HTTP API を共通契約とする方針(§3.2)は維持しつつ、**OpenAI 互換 API も第二の共通契約として認める**。比較結果:
+
+| 候補 | 対応 HW | API | embedding | Windows 導入 | 継続性 |
+|---|---|---|---|---|---|
+| llama.cpp `llama-server` (Vulkan/SYCL) | Intel/AMD iGPU、NVIDIA | OpenAI 互換 (`/v1/chat/completions`, `/v1/embeddings`, `/v1/rerank`) | bge-m3 GGUF の dense が可 | プリビルド zip(pip 不要) | ggml-org 本体、ほぼ毎日リリース |
+| llama.cpp OpenVINO backend | Intel CPU/GPU/**NPU** | 同上 | **限定的と明記** | 自前ビルドのみ | 2026-04 upstream、experimental |
+| OpenVINO Model Server (OVMS) | Intel CPU/GPU/**NPU** | OpenAI 互換 + embeddings + rerank | あり(要 OpenVINO IR 変換、bge-m3 の名指し実績なし) | ネイティブバイナリ / Docker、2025.4 でサービス化 | Intel 公式、四半期リリース |
+| Microsoft Foundry Local | HW 自動検出(OpenVINO/QNN/DirectML/Vitis AI EP) | OpenAI 互換 | v1.1 で正式対応(カタログの ONNX モデルのみ) | `winget install`、**Win11 24H2 以降** | MS 公式 GA。Intel/AMD NPU の実利用可否は記述に揺れ |
+| AMD Lemonade Server | Ryzen AI 300 NPU + Radeon iGPU の **hybrid 実行** | OpenAI 互換 (:13305) | llamacpp/flm recipe のみ。**NPU(OGA)経路は非対応**、ユーザ pull モデルで 501 の既知不具合([#1745](https://github.com/lemonade-sdk/lemonade/issues/1745)) | .msi / pip、Apache 2.0 | AMD スポンサーのコミュニティ主導(公式製品ではない)。成熟途上 |
+| LM Studio (`llmster` headless) | Vulkan/CUDA/ROCm | OpenAI 互換 (:1234) | あり(GGUF 直) | インストーラ、2025-07 から商用も無償 | GUI 中心思想、常時稼働は不向きの評 |
+| Nexa SDK | Qualcomm/Intel/AMD の **3社 NPU** | OpenAI 互換 | 確証なし | CLI/pip/Docker | 独自路線、要 PoC |
+
+**推薦(Phase 2 の LLM バックエンド構成)**:
+
+- **Intel iGPU**: 第一候補 `llama-server`(Vulkan または SYCL ビルド)。GGUF 資産をそのまま使え、chat + embeddings を単一プロセスの OpenAI 互換で賄える。第二候補は公式 Ollama + Vulkan(URL 差替すら不要で最小変更)。
+- **Intel NPU**: `llama-server` の OpenVINO backend は embedding 非対応・自前ビルドのため見送り。NPU を使うなら **OVMS**(生成=NPU、埋め込み=GPU/CPU の `embeddings_ov`)。代償は OpenVINO IR 変換工程。
+- **AMD Ryzen AI**: 第一候補 **Lemonade Server**(NPU+iGPU hybrid を OpenAI 互換の裏に隠蔽する唯一の選択肢)。embedding は llamacpp recipe(GGUF)に分離。不確実性を嫌うなら公式 Ollama + Vulkan が最小リスク。
+- **AMD iGPU のみ**: 公式 Ollama + Vulkan(780M/890M は ROCm でなく Vulkan が現実解。ROCm は Windows APU 非対応)。
+
+**アーキテクチャへの影響**: `_ClientLike` Protocol(§4.3)に加えて **OpenAI 互換クライアント(`OpenAICompatClient`)を Phase 2 の第一級実装とする**。これにより上表のどのランタイムにも URL + モデル名の設定だけで接続できる。`OVGenAIClient`(OpenVINO GenAI 直叩き)は OVMS がある限り優先度を下げる。
+
+### M. 横断的設計指針: 生成と embedding の非対称構成(最重要)
+
+今回の調査範囲で、**NPU 経路で embedding まで完走できるランタイムは実質存在しない**(Lemonade は明確に非対応、llama.cpp OpenVINO は「限定的」、OVMS も NPU embedding の確証なし)。したがって:
+
+- `BackendPlan` の `llm` と `text_embed` は **独立したエンドポイント設定**とする(現行設計は既にフィールド分離済みなので構造変更不要。「同一 Ollama を共有する」暗黙前提だけを捨てる)。
+- デフォルト構成は「**生成 = NPU/iGPU、埋め込み = iGPU/CPU**」の非対称。どのベンダーに転んでも設計変更が不要になる。
+
+### N. バージョン・HW 表の追従
+
+**Intel**(出典: [OpenVINO releases](https://github.com/openvinotoolkit/openvino/releases)、[optimum-intel PyPI](https://pypi.org/project/optimum-intel/)):
+
+- OpenVINO 最新は **2026.2.1**。2026.2 系の破壊的変更に注意: `openvino.runtime` ネームスペース削除、CPU プラグイン AVX2 必須、NNCF `create_compressed_model()` 削除。
+- 依存指定は `optimum[openvino]>=2.0`(§9)ではなく **`optimum-intel>=2.0`** に変更(extras は非推奨化、OpenVINO/NNCF は同梱)。`OVModelForSpeechSeq2Seq` / `OVModelForFeatureExtraction` のクラス名は現行も有効。
+- **NPU の static shape 制約は緩和方向**: NPU Driver 1.35.0 が dynamic shape 最適化を追加、GenAI の `STATIC_PIPELINE` は必須からトラブルシュート用に後退。§4.1 の「distil-whisper-large-v2 固定」は Phase 2 着手時に large-v3 / large-v3-turbo を再評価する(R2 のリスク度を下げる)。※一次ドキュメント(docs.openvino.ai の NPU GenAI ページ)は実装前に人手確認のこと。
+- `onnxruntime-openvino` 1.24.1 がバンドルする OpenVINO は 2025.4.1 系で、**openvino 2026.x との同一 venv 版ズレに注意**(EP 互換範囲は直近3リリース。要実機検証)。DirectML は **maintenance mode**(新機能開発は Windows ML へ移行)— sherpa-onnx の DML 経路は descope 済(addendum C)だが、将来再検討する場合は Windows ML を先に評価する。
+- HW 表に追加: **Panther Lake / Core Ultra series 3**(Arc Xe3 / NPU 5 / 最大50 TOPS、OpenVINO 2026.1 で公式サポート)、**Wildcat Lake**(廉価帯、NPU 15-17 TOPS)。検出方式 `Core().available_devices` は世代非依存のため Probe のロジック変更は不要。
+
+**AMD**(出典: [Ryzen AI relnotes](https://ryzenai.docs.amd.com/en/latest/relnotes.html)、[Phoronix](https://www.phoronix.com/news/Ryzen-AI-Software-1.8)):
+
+- Ryzen AI Software 最新は **1.8.0**(2026-07-23)。OS 要件(Win11 build 22621.3527 以上)は不変。NPU ドライバ要件 32.0.203.280 以降(production は 32.0.203.376)。
+- whisper.cpp fork の「encoder=NPU / decoder=CPU」構成は不変、1.8.0 で **large-v3-turbo が公式言及**・短尺音声の RTF 改善。ただし `amd-whispercpp-npu` の v1 削除判断(addendum B)は維持(継続性リスクは不変)。
+- HW 表に追加: **Gorgon Point = Ryzen AI 400 シリーズ**(XDNA 2、最大 55-60 TOPS)。ただし **RAI 1.8.0 の対応リスト未収載**のため「HW としては存在、公式ソフトサポート未反映」と書き分ける。NPU の PCI ID は公開資料で未確認(実機確認タスク)。
+- Medusa Point(Zen 6 + XDNA 3、2027 予定)はロードマップ注記に留める。
+
+**共通**:
+
+- CTranslate2 最新は **4.8.1**(CUDA 12.8 / cuDNN 9 / Python 3.13 対応、**cuDNN 8 と Python 3.8 廃止**)。C1 fix の `_register_cuda_dll_dirs()` が探す DLL 名(`cudnn_ops_infer64_8.dll` = cuDNN 8 系)は CTranslate2 更新時に変わるため、アップグレード時は DLL 名の追従を確認する。
+- faster-whisper 最新は 1.2.1(large-v3-turbo / distil-large-v3.5 対応済)。CUDA 以外のバックエンド追加はなし — 「AMD では faster-whisper は加速できない」という §4.1 の構図は不変。
+
+### O. Phase 2 バックエンド表(改訂版)
+
+§4.3 / §4.4 の表を以下に置き換える(STT §4.1 は distil モデル再評価以外は不変、sherpa-onnx は CPU 固定のまま):
+
+**LLM**:
+
+| バックエンド ID | 経路 | 対象 HW | 状態 |
+|---|---|---|---|
+| `ollama-cuda`(現状) | 公式 Ollama | NVIDIA dGPU | 実装済(Phase 1) |
+| `ollama-vulkan` | 公式 Ollama(Vulkan デフォルト有効) | Intel iGPU / AMD iGPU | **昇格**: URL 差替不要、Phase 2 最小コスト経路 |
+| `openai-compat` | `llama-server` / OVMS / Lemonade / LM Studio 等 | 各表参照 | **新設**: `OpenAICompatClient` + endpoint URL + モデル名 |
+| ~~`ipex-llm-ollama`~~ | ~~IPEX-LLM Portable Zip~~ | — | **削除**(K2: セキュリティ問題) |
+| `openvino-genai-server` | `OVGenAIClient` 直叩き | Intel NPU | 優先度低下(OVMS を `openai-compat` で使う方が薄い) |
+
+**Text Embedding**:
+
+| バックエンド ID | 経路 | 対象 HW | 状態 |
+|---|---|---|---|
+| `ollama-bge-m3-cpu`(現状) | Ollama + `num_gpu=0` | 全環境 | 実装済。`OLLAMA_FLASH_ATTENTION=false` の GPU 経路検証タスクを追加(K4) |
+| `openai-compat-embed` | `llama-server /v1/embeddings`(bge-m3 GGUF)等 | Intel/AMD iGPU | **新設** |
+| `openvino-bge-m3-igpu` | Optimum Intel 直叩き | Intel iGPU | 維持(要 PoC) |
+| `openvino-bge-m3-npu` | 同上 device=NPU | Intel NPU | **格下げ**: 未検証・要 PoC(K3)。代替候補 Qwen3-Embedding-0.6B(再インデックス必要) |
+
+### P. Phase 2 着手時の追加検証タスク
+
+1. `OLLAMA_FLASH_ATTENTION=false` で bge-m3 GPU 経路の NaN 再現有無を確認(開発機 RTX 2080 Ti で可能。Phase 2 を待たず実施可)
+2. docs.openvino.ai の NPU GenAI ページを人手確認(static shape 制約の現行仕様確定)
+3. `onnxruntime-openvino` と `openvino` 2026.x の同一 venv 共存確認
+4. Gorgon Point NPU の PCI ID 実機確認(Probe の AMD 判定表更新)
+5. CTranslate2 4.8.x 更新時の cuDNN 9 系 DLL 名追従(C1 fix の回帰確認)
