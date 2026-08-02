@@ -326,3 +326,95 @@ describe('events store — visualIndexOutcome の kind (complete/error/noop)', (
     expect(eventsStore.visualIndexOutcomeFor('page')?.kind).toBe('complete');
   });
 });
+
+// 最終レビュー I4: 部分失敗(半滅)が「完了」としか通知されない。
+// BE は skipped_pages を SSE payload に既に載せているが、FE が読み捨てていた
+// ため、50ページ中47ページが失敗しても「完了しました」と出ていた。
+describe('events store — visualIndexOutcome の skippedPages (最終レビュー I4)', () => {
+  it('skipped_pages > 0 の complete で outcome.skippedPages に件数が入る', () => {
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: '',
+      status: '',
+      type: 'visual_index_complete',
+      unit: 'page',
+      indexed_pages: 3,
+      skipped_pages: 47,
+      indexed_tiles: 0,
+    });
+    expect(eventsStore.visualIndexOutcomeFor('page')?.skippedPages).toBe(47);
+  });
+
+  it('skipped_pages が欠落した payload では skippedPages が 0 になる', () => {
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: '',
+      status: '',
+      type: 'visual_index_complete',
+      unit: 'page',
+      indexed_pages: 3,
+    });
+    expect(eventsStore.visualIndexOutcomeFor('page')?.skippedPages).toBe(0);
+  });
+
+  it('visual_index_error でも skipped_pages を反映する', () => {
+    eventsStore.start('nb1');
+    capturedOnEvent!({
+      source_id: '',
+      status: '',
+      type: 'visual_index_error',
+      unit: 'page',
+      skipped_pages: 50,
+    });
+    expect(eventsStore.visualIndexOutcomeFor('page')?.skippedPages).toBe(50);
+  });
+});
+
+// 最終レビュー M3 の回復: done/total の無条件キャストと ETA 計算の
+// elapsedMs > 0 ガードが Stage 4 の書き換えで失われていた(図解析側 :158
+// 付近は保持されている非対称)。
+describe('events store — visual_index_progress の型ガード (M3 回復)', () => {
+  it('done/total が数値でない payload では 0 扱いになる(例外を投げない)', () => {
+    eventsStore.start('nb1');
+    expect(() => {
+      capturedOnEvent!({
+        source_id: '',
+        status: '',
+        type: 'visual_index_progress',
+        unit: 'page',
+        done: 'not-a-number',
+        total: undefined,
+      });
+    }).not.toThrow();
+    const progress = eventsStore.visualIndexProgressFor('page');
+    expect(progress?.done).toBe(0);
+    expect(progress?.total).toBe(0);
+  });
+
+  it('advanced > 0 でも elapsedMs <= 0 なら ETA を出さない', () => {
+    vi.useFakeTimers();
+    try {
+      eventsStore.start('nb1');
+      capturedOnEvent!({
+        source_id: '',
+        status: '',
+        type: 'visual_index_progress',
+        unit: 'page',
+        done: 0,
+        total: 100,
+      });
+      // 時間を進めずに2点目を送る -> elapsedMs は 0
+      capturedOnEvent!({
+        source_id: '',
+        status: '',
+        type: 'visual_index_progress',
+        unit: 'page',
+        done: 10,
+        total: 100,
+      });
+      expect(eventsStore.visualIndexProgressFor('page')?.etaSeconds).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
