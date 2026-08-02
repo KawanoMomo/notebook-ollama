@@ -282,10 +282,17 @@ class RetrievalService:
             return False, []
         unit = v.unit_getter()
         strategy = v.strategy_getter()
+        # 例外を握るのは「視覚検索の実行そのもの」= エンコーダ呼び出しと Qdrant
+        # 参照だけに限る。ここが落ちるのは外部要因 (モデル未ロード / VRAM /
+        # コレクション消失) なので available=False へ縮退するのが正しい。
+        # これに続くヒットの組み立ては手元のデータを並べ替えるだけの処理で、
+        # そこで例外が出るのはプログラミングエラー。同じ try に入れていると
+        # 「視覚検索が使えない」に丸められ、visual_only が無言でテキストへ
+        # 縮退して原因が見えなくなる (issue #28 M10)。
+        store = v.stores.get(unit)
+        if store is None:
+            return False, []
         try:
-            store = v.stores.get(unit)
-            if store is None:
-                return False, []
             meta = v.meta_lookup(notebook_id, unit)
             if meta is None or meta.embedding_model != v.model_name_getter():
                 return False, []
@@ -298,46 +305,47 @@ class RetrievalService:
                 query=qvec, notebook_id=notebook_id, limit=visual_limit * over,
                 source_ids=source_ids,
             )
-            unit_hits = collapse_to_best_per_page(raw_hits)[:visual_limit]
-            if not unit_hits:
-                # 視覚検索は実行できたが真に0件(spec §7.1: available扱い)
-                return True, []
-
-            fused = rrf_fuse(text_hits=text_results, visual_hits=unit_hits)
-            # テキスト側のscoreをRRFスコアへ書き換え(融合ソートの物差しを揃える)
-            for chunk, rrf_score in fused.ordered_text:
-                chunk.score = rrf_score
-            seen_ids = {c.chunk_id for c in text_results}
-
-            out: list[RetrievedChunk] = []
-            for hit, rrf_score in fused.surviving_pages:
-                title = self._source_title(hit.source_id, title_cache)
-                if strategy == "pixel_native":
-                    # pixel_native は本文を展開しない(spec §7.1)。
-                    out.append(self._pixel_native_chunk(hit, rrf_score, title, unit))
-                    continue
-                chunks = list_text_chunks_for_page(self._conn, hit.source_id, hit.page, 2)
-                if chunks:
-                    for rec in chunks:
-                        if rec.id in seen_ids:
-                            continue
-                        seen_ids.add(rec.id)
-                        out.append(
-                            RetrievedChunk(
-                                chunk_id=rec.id, source_id=hit.source_id,
-                                source_title=title, source_kind="pdf",
-                                page=rec.page, heading_path=rec.heading_path,
-                                ord=rec.ord, text=rec.text,
-                                token_count=rec.token_count, score=rrf_score,
-                                via_visual=True, tile_index=hit.tile_index,
-                            )
-                        )
-                else:
-                    # スキャン未OCRページ/タイル: 本文なし(spec §6)
-                    out.append(self._pixel_native_chunk(hit, rrf_score, title, unit))
-            # ここに到達した時点で視覚検索は正常に実行できている。out が空
-            # (=全ページがテキスト側に吸収された)でも available=True。
-            return True, out
         except Exception:
             log.warning("visual_search_failed", notebook_id=notebook_id, exc_info=True)
             return False, []
+
+        unit_hits = collapse_to_best_per_page(raw_hits)[:visual_limit]
+        if not unit_hits:
+            # 視覚検索は実行できたが真に0件(spec §7.1: available扱い)
+            return True, []
+
+        fused = rrf_fuse(text_hits=text_results, visual_hits=unit_hits)
+        # テキスト側のscoreをRRFスコアへ書き換え(融合ソートの物差しを揃える)
+        for chunk, rrf_score in fused.ordered_text:
+            chunk.score = rrf_score
+        seen_ids = {c.chunk_id for c in text_results}
+
+        out: list[RetrievedChunk] = []
+        for hit, rrf_score in fused.surviving_pages:
+            title = self._source_title(hit.source_id, title_cache)
+            if strategy == "pixel_native":
+                # pixel_native は本文を展開しない(spec §7.1)。
+                out.append(self._pixel_native_chunk(hit, rrf_score, title, unit))
+                continue
+            chunks = list_text_chunks_for_page(self._conn, hit.source_id, hit.page, 2)
+            if chunks:
+                for rec in chunks:
+                    if rec.id in seen_ids:
+                        continue
+                    seen_ids.add(rec.id)
+                    out.append(
+                        RetrievedChunk(
+                            chunk_id=rec.id, source_id=hit.source_id,
+                            source_title=title, source_kind="pdf",
+                            page=rec.page, heading_path=rec.heading_path,
+                            ord=rec.ord, text=rec.text,
+                            token_count=rec.token_count, score=rrf_score,
+                            via_visual=True, tile_index=hit.tile_index,
+                        )
+                    )
+            else:
+                # スキャン未OCRページ/タイル: 本文なし(spec §6)
+                out.append(self._pixel_native_chunk(hit, rrf_score, title, unit))
+        # ここに到達した時点で視覚検索は正常に実行できている。out が空
+        # (=全ページがテキスト側に吸収された)でも available=True。
+        return True, out

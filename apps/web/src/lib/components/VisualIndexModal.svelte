@@ -88,12 +88,20 @@
           </p>
         {/if}
 
-        {#if u.building && progress}
+        {#if u.building}
           <p class="progress">
             <Spinner size={14} />
-            {progress.done} / {progress.total}
-            {#if progress.etaSeconds != null}
-              <span class="eta">{formatEta(progress.etaSeconds)}</span>
+            {#if progress}
+              {progress.done} / {progress.total}
+              {#if progress.etaSeconds != null}
+                <span class="eta">{formatEta(progress.etaSeconds)}</span>
+              {/if}
+            {:else}
+              <!-- 最初の progress イベントが来るまでの区間。ここを無表示にすると
+                   「構築ボタンを押したのに何も起きない」ように見える。タイル索引は
+                   1ページ目でタイル分割+3回の埋め込みを行うため、この無表示区間が
+                   特に長い (issue #28 M2)。Stage 3 は「構築中… 0 / 0」を出していた。 -->
+              準備中…
             {/if}
           </p>
         {/if}

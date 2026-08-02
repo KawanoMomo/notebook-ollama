@@ -457,7 +457,26 @@ Step 8(チャットとの同時常駐確認)の当初手順どおり `uv run --n
 
 ## 実測記録(Task 15b: 実機検証)
 
-隔離環境(一時 `NOTEBOOK_OLLAMA_DATA_DIR` + ポート8766)で11項目すべて実機確認した。結果は**11/11 PASS**(うち2項目は不具合発見を伴う条件付きPASS)。スクリーンショット4枚(`settings-models.png` / `visual-index-modal.png` / `visual-index-modal-armed.png` / `chat-tile-citation.png`)は `.eval/stage4/` に保存した(`.gitignore` 対象・git管理外)。詳細は `.superpowers/sdd/2026-07-29-pixelrag-tile-index/task-15b-report.md` を参照。
+隔離環境(一時 `NOTEBOOK_OLLAMA_DATA_DIR` + ポート8766)で11項目すべて実機確認した。結果は**11/11 PASS**(うち2項目は不具合発見を伴う条件付きPASS)。
+
+証拠のスクリーンショット4枚は `docs/screenshots/` に取り込んで**git管理下に置いた**(2026-08-02):
+
+| 画面 | ファイル |
+|---|---|
+| 設定画面の索引単位・検索戦略セレクト | `docs/screenshots/stage4-settings-models.png` |
+| 視覚インデックスModal(2行構成) | `docs/screenshots/stage4-visual-index-modal.png` |
+| 同上・削除の2段階確認 | `docs/screenshots/stage4-visual-index-modal-armed.png` |
+| チャットのタイル引用(`p.N タイルM`) | `docs/screenshots/stage4-chat-tile-citation.png` |
+
+> [!note] 証拠の置き場所 (issue #28 M12)
+> 当初は `.eval/stage4/` に置いていたが、`.eval/` は `.gitignore` 対象のため
+> **後から「どの画面で PASS したか」を辿れなかった**。`.eval/` は実行時のスクラッチ
+> (作業ツリーを消すと失われる)、`docs/screenshots/` が永続的な置き場所という
+> 使い分けにする。**受入判定の根拠になった画面は `docs/screenshots/` に置くこと。**
+>
+> Stage 4 の作業ツリー削除時に退避した証拠一式(53枚+レポート)は
+> `E: _Git\.archive
+otebook-ollama-eval\pixelrag-stage4\` にある(git管理外)。
 
 ### ⚠️ 重大な運用制約: `recording` extra と CUDA 版 `visual` extra は同一 venv で共存できない
 
