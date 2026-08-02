@@ -69,6 +69,27 @@ frontmatter は英語語彙 (`check_design_index.py` が検査)、本文表記�
 | [016](016-pixel-native-explicit-failure.md) | error-handling | pixel_native は根拠画像なしで黙って劣化させず明示エラーにする | 承認 | 2026-07-30 | 表・図 Stage 4 |
 | [017](017-torch-cuda-wheel-index.md) | external-dep | visual extraのtorchはCUDAホイールインデックスに切替、CPUはフォールバックとして残す | 承認 | 2026-07-30 | 表・図 Stage 4 |
 
+## 「結果」「教訓」が未記入の ADR
+
+ADR の価値は決定そのものより **「決定どおりになったか」** にある。実装後に結果を
+書き戻さないと、次に同じ判断をするときの材料が残らない。以下は実装・マージ済み
+にもかかわらず該当節が `(実装後に記載)` のままのもの。
+
+| ADR | 起票元 | 状態 |
+|---|---|---|
+| [001](001-source-links-generic-parent-child.md) [002](002-recording-timeline-markers.md) [003](003-pptx-render-powerpoint-com.md) | 発表モード (PR #19) | **未記入** — PR #19 の ECN 化と合わせて埋める |
+| [012](012-assistant-prefill-continuation.md) [013](013-truncated-persistence-update-in-place.md) | 自動継続 (PR #23) | **未記入** — PR #23 の ECN 化と合わせて埋める |
+| [005](005-beta-feature-flag-registry.md) [006](006-chunk-asset-sidecar.md) [007](007-table-dual-representation.md) | 表・図 Stage 1 (PR #24) | ✅ 記入済 ([[ECN-001_表・図サイドカー抽出とベータ機能フラグ基盤\|ECN-001]] より) |
+| [008](008-figure-desc-standalone-chunk.md) [009](009-vlm-ocr-ollama-only.md) | 表・図 Stage 2 (PR #25) | ✅ 記入済 ([[ECN-002_VLM図説明とスキャンPDF-OCR\|ECN-002]] より) |
+
+> [!warning] 採番時の反省
+> 2026-08-02 の一括採番では、決定内容だけを見て `approved` を付け、結果節が
+> 空である点を確認しなかった。**次回からは採番の受入条件に「結果節が埋まって
+> いること」を含める。**
+>
+> 結果節を埋める材料は git 履歴にある。ECN 抽出 (`/ecn-from-git`) を先に回すと
+> 検証済みの事実が手に入り、そこから書き戻せる。**ECN → ADR の順が効率的。**
+
 ## 判断が覆った経緯
 
 後続の測定や実装で前提が変わった ADR は**破棄せず残し**、覆した ADR への
