@@ -232,13 +232,13 @@ class TestAccelDIWiring:
 class TestDegradeOnPhase2Plan:
     """Sprint 3 / Task 3.4 — degrade-to-CPU when Planner picks a Phase 2 plan.
 
-    On hosts where the Planner routes to a Phase-2-only plan (e.g. Intel
-    Lunar Lake: ``openvino-whisper-npu`` + ``ipex-llm-ollama`` +
-    ``openvino-bge-m3-igpu``), the Phase 1 Factory cannot build the chosen
-    ids. The lifespan must NOT crash — instead it warns and degrades to a
-    CPU-only plan that is guaranteed Phase 1 implementable
-    (``faster-whisper-cpu`` + ``sherpa-onnx-cpu`` + ``ollama-cuda`` +
-    ``ollama-bge-m3-cpu``).
+    On hosts where the Planner routes to a plan containing Phase-2-only ids
+    (e.g. Intel Lunar Lake: ``openvino-whisper-npu`` +
+    ``openvino-bge-m3-igpu``; the LLM id ``ollama-vulkan`` itself is
+    Phase 1.5 implementable), the Factory cannot build the chosen ids. The
+    lifespan must NOT crash — instead it warns and degrades to a CPU-only
+    plan that is guaranteed implementable (``faster-whisper-cpu`` +
+    ``sherpa-onnx-cpu`` + ``ollama-cuda`` + ``ollama-bge-m3-cpu``).
 
     This test pins the degrade behaviour (vs alternative: raise startup
     error) and the warning-banner contract so a future refactor cannot
@@ -253,9 +253,9 @@ class TestDegradeOnPhase2Plan:
         # the Planner picks:
         #   STT          = openvino-whisper-npu   (NPU + iGPU rule)
         #   DIARIZE      = sherpa-onnx-cpu        (cpu-only always)
-        #   LLM          = ipex-llm-ollama        (iGPU rule)
+        #   LLM          = ollama-vulkan          (iGPU rule, addendum K1)
         #   TEXT_EMBED   = openvino-bge-m3-igpu   (NPU contention → iGPU)
-        # — 3 of the 4 are Phase 2, so is_phase1_implementable is False.
+        # — STT / TEXT_EMBED are Phase 2, so is_phase1_implementable is False.
         lunar_lake = HwProfile(
             vendor="intel",
             cpu_brand="Intel Core Ultra 7 268V (Lunar Lake)",
@@ -301,7 +301,7 @@ class TestDegradeOnPhase2Plan:
         # Pre-degrade Phase 2 ids appear in the warning payload — pinned so
         # a future refactor cannot silently drop them.
         assert record["stt_id"] == "openvino-whisper-npu"
-        assert record["llm_id"] == "ipex-llm-ollama"
+        assert record["llm_id"] == "ollama-vulkan"
         assert record["text_embed_id"] == "openvino-bge-m3-igpu"
         # ``action="degrade_to_cpu_plan"`` is the locked behaviour (alt:
         # raise startup error). Test docs the choice + the bridge to

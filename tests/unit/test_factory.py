@@ -7,13 +7,13 @@ Coverage:
   ``device`` / ``compute_type``.
 * ``build_transcriber`` raises ``NotImplementedError("Phase 2 ...")`` for
   every Phase 2 STT id (``openvino-whisper-igpu`` / ``openvino-whisper-npu`` /
-  ``amd-whispercpp-dml``).
+  ``amd-whispercpp-vulkan``).
 * ``build_diarizer`` for ``sherpa-onnx-cpu`` constructs the existing
   ``SherpaDiarizer`` with the audio-config-resolved model paths.
-* ``build_llm_gateway`` for ``ollama-cuda`` constructs an ``OllamaGateway``
-  with an ``OllamaClient`` pinned to ``ollama_cfg.endpoint``.
-* ``build_llm_gateway`` raises ``NotImplementedError("Phase 2 ...")`` for
-  every Phase 2 LLM id (``ollama-directml`` / ``ipex-llm-ollama``).
+* ``build_llm_gateway`` for ``ollama-cuda`` / ``ollama-vulkan`` constructs an
+  ``OllamaGateway`` with an ``OllamaClient`` pinned to ``ollama_cfg.endpoint``;
+  ``openai-compat`` wraps an ``OpenAICompatClient`` at
+  ``openai_compat_endpoint`` (Phase 1.5, addendum L).
 * ``build_text_embedder`` for ``ollama-bge-m3-cpu`` returns a wrapper bound
   to ``ollama_cfg.embedding_model`` and forwards ``embed(text)`` to the
   underlying gateway with the right model name.
@@ -207,7 +207,7 @@ def test_build_transcriber_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         "openvino-whisper-igpu",
         "openvino-whisper-npu",
-        "amd-whispercpp-dml",
+        "amd-whispercpp-vulkan",
     ],
 )
 def test_build_transcriber_phase2_raises(stt_id: str) -> None:
@@ -220,7 +220,7 @@ def test_build_transcriber_phase2_raises(stt_id: str) -> None:
     """
     # Build a profile compatible with the Phase 2 id so BackendPlan
     # validation passes — the plan is *valid*, but not yet implementable.
-    if stt_id == "amd-whispercpp-dml":
+    if stt_id == "amd-whispercpp-vulkan":
         profile = HwProfile(
             vendor="amd",
             cpu_brand="AMD Ryzen 9 8945HX",
@@ -326,62 +326,56 @@ def test_build_llm_ollama_cuda() -> None:
     assert getattr(client, "_chat_read_timeout", None) == 88.0
 
 
-@pytest.mark.parametrize(
-    "llm_id",
-    [
-        "ollama-directml",
-        "ipex-llm-ollama",
-    ],
-)
-def test_build_llm_phase2_raises(llm_id: str) -> None:
-    """Every Phase 2 LLM id raises ``NotImplementedError`` with /Phase 2/."""
-    if llm_id == "ollama-directml":
-        profile = HwProfile(
-            vendor="amd",
-            cpu_brand="AMD Ryzen 9 8945HX",
-            dgpu=None,
-            igpu=None,
-            npu="hawk_point",
-            vram_mb=None,
-            ryzen_ai_gen=1,
-            openvino_devices=(),
-            has_directml=True,
-            has_cuda=False,
-            cuda_device_count=0,
-        )
-        stt_id = "amd-whispercpp-dml"
-        text_embed_id = "ollama-bge-m3-cpu"
-    else:  # ipex-llm-ollama → Intel iGPU
-        profile = HwProfile(
-            vendor="intel",
-            cpu_brand="Intel Core Ultra 7 155H",
-            dgpu=None,
-            igpu="Intel iGPU",
-            npu=None,
-            vram_mb=None,
-            ryzen_ai_gen=None,
-            openvino_devices=("CPU", "GPU"),
-            has_directml=False,
-            has_cuda=False,
-            cuda_device_count=0,
-        )
-        stt_id = "openvino-whisper-igpu"
-        text_embed_id = "openvino-bge-m3-igpu"
+def test_build_llm_ollama_vulkan_shares_cuda_builder() -> None:
+    """``ollama-vulkan`` builds the same official-Ollama gateway as cuda.
 
-    plan = BackendPlan(
-        stt_id=stt_id,
-        diarize_id="sherpa-onnx-cpu",
-        llm_id=llm_id,
-        text_embed_id=text_embed_id,
-        hw_profile=profile,
-        reason=f"Phase 2 llm_id={llm_id} on {profile.vendor} host",
+    Addendum K1: the Vulkan backend lives inside the Ollama server process —
+    from this app's side the id only changes diagnostics, not wiring.
+    """
+    ollama_cfg = OllamaSettings(endpoint="http://localhost:11434")
+    plan = _cpu_plan(llm_id="ollama-vulkan")
+
+    gateway = BackendFactory().build_llm_gateway(plan, ollama_cfg)
+
+    from core.ollama.client import OllamaClient
+
+    assert isinstance(gateway, OllamaGateway)
+    assert isinstance(gateway._client, OllamaClient)
+    assert gateway._client._endpoint == "http://localhost:11434"
+
+
+def test_build_llm_openai_compat_wraps_openai_client() -> None:
+    """``openai-compat`` → ``OllamaGateway`` over ``OpenAICompatClient`` at
+    ``openai_compat_endpoint`` (addendum L)."""
+    ollama_cfg = OllamaSettings(
+        openai_compat_endpoint="http://localhost:8080",
+        openai_compat_api_key="sk-test",
+        request_timeout_seconds=99.0,
+        chat_read_timeout_seconds=88.0,
     )
-    ollama_cfg = OllamaSettings()
+    plan = _cpu_plan(llm_id="openai-compat")
 
-    with pytest.raises(NotImplementedError) as exc_info:
+    gateway = BackendFactory().build_llm_gateway(plan, ollama_cfg)
+
+    from core.ollama.openai_compat import OpenAICompatClient
+
+    assert isinstance(gateway, OllamaGateway)
+    client = gateway._client
+    assert isinstance(client, OpenAICompatClient)
+    assert client._endpoint == "http://localhost:8080"
+    assert client._api_key == "sk-test"
+    assert client._timeout == 99.0
+    assert client._chat_read_timeout == 88.0
+
+
+def test_build_llm_openai_compat_without_endpoint_raises() -> None:
+    """Empty ``openai_compat_endpoint`` fails fast at build time with a
+    remediation-grade message, not at first request."""
+    ollama_cfg = OllamaSettings()  # openai_compat_endpoint = ""
+    plan = _cpu_plan(llm_id="openai-compat")
+
+    with pytest.raises(ValueError, match="openai_compat_endpoint"):
         BackendFactory().build_llm_gateway(plan, ollama_cfg)
-    assert "Phase 2" in str(exc_info.value)
-    assert llm_id in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -457,10 +451,10 @@ def test_build_text_embedder_phase2_raises(text_embed_id: str) -> None:
             cuda_device_count=0,
         )
         # Planner-coherent pairing: NPU iGPU host pushes STT to openvino-npu and
-        # LLM to ipex-llm-ollama. BackendPlan validation only checks ids are in
+        # LLM to ollama-vulkan. BackendPlan validation only checks ids are in
         # BACKEND_IDS, but using the realistic combo keeps the test honest.
         stt_id = "openvino-whisper-npu"
-        llm_id = "ipex-llm-ollama"
+        llm_id = "ollama-vulkan"
     else:  # openvino-bge-m3-igpu — iGPU-only Intel host
         profile = HwProfile(
             vendor="intel",
@@ -476,7 +470,7 @@ def test_build_text_embedder_phase2_raises(text_embed_id: str) -> None:
             cuda_device_count=0,
         )
         stt_id = "openvino-whisper-igpu"
-        llm_id = "ipex-llm-ollama"
+        llm_id = "ollama-vulkan"
 
     plan = BackendPlan(
         stt_id=stt_id,
@@ -533,3 +527,63 @@ def test_build_text_embedder_gateway_reuse(pass_gateway: bool) -> None:
         # Without an explicit gateway, each call builds its OWN — the two
         # embedders are not bound to the same gateway instance.
         assert embedder.gateway is not embedder2.gateway
+
+
+# ---------------------------------------------------------------------------
+# build_text_embedder — openai-compat-embed (Phase 1.5, addendum M)
+# ---------------------------------------------------------------------------
+
+
+def test_build_text_embedder_openai_compat_uses_embed_endpoint() -> None:
+    """``openai-compat-embed`` builds a DEDICATED gateway at the embed
+    endpoint — the passed-in Ollama gateway is deliberately NOT reused
+    (different transport), and ``embedding_options`` (num_gpu=0, an
+    Ollama-specific NaN workaround) must not leak into the OpenAI path."""
+    from core.ollama.openai_compat import OpenAICompatClient
+
+    ollama_cfg = OllamaSettings(
+        embedding_model="bge-m3",
+        openai_compat_endpoint="http://localhost:8080",
+        openai_compat_embed_endpoint="http://localhost:9090",
+    )
+    factory = BackendFactory()
+    plan = _cpu_plan(text_embed_id="openai-compat-embed")
+    shared_ollama_gateway = factory._build_ollama_gateway(ollama_cfg)
+
+    embedder = factory.build_text_embedder(
+        plan, ollama_cfg, gateway=shared_ollama_gateway
+    )
+
+    assert isinstance(embedder, _OllamaTextEmbedder)
+    assert embedder.model == "bge-m3"
+    assert embedder.gateway is not shared_ollama_gateway
+    client = embedder.gateway._client
+    assert isinstance(client, OpenAICompatClient)
+    assert client._endpoint == "http://localhost:9090"
+    # num_gpu=0 は Ollama 固有の回避策 — OpenAI 経路の gateway には渡らない。
+    assert embedder.gateway._embedding_options is None
+
+
+def test_build_text_embedder_openai_compat_falls_back_to_llm_endpoint() -> None:
+    """Empty ``openai_compat_embed_endpoint`` falls back to
+    ``openai_compat_endpoint`` (single-server setups)."""
+    from core.ollama.openai_compat import OpenAICompatClient
+
+    ollama_cfg = OllamaSettings(
+        openai_compat_endpoint="http://localhost:8080",
+    )
+    plan = _cpu_plan(text_embed_id="openai-compat-embed")
+
+    embedder = BackendFactory().build_text_embedder(plan, ollama_cfg)
+
+    client = embedder.gateway._client
+    assert isinstance(client, OpenAICompatClient)
+    assert client._endpoint == "http://localhost:8080"
+
+
+def test_build_text_embedder_openai_compat_without_endpoint_raises() -> None:
+    ollama_cfg = OllamaSettings()  # both endpoints empty
+    plan = _cpu_plan(text_embed_id="openai-compat-embed")
+
+    with pytest.raises(ValueError, match="openai_compat_embed_endpoint"):
+        BackendFactory().build_text_embedder(plan, ollama_cfg)

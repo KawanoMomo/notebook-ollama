@@ -185,11 +185,15 @@ def test_planner_picks_cpu_only_on_blank_hw() -> None:
 def test_planner_intel_npu_picks_openvino_whisper_npu(
     name: str, hw: HwProfile
 ) -> None:
-    """Intel iGPU + NPU hosts route STT to ``openvino-whisper-npu``."""
+    """Intel iGPU + NPU hosts route STT to ``openvino-whisper-npu``.
+
+    LLM routes to ``ollama-vulkan`` (addendum K1/K2: ipex-llm-ollama dropped
+    for security issues; official Ollama Vulkan backend covers Intel iGPU).
+    """
     del name
     plan = BackendPlanner().plan(hw)
     assert plan.stt_id == "openvino-whisper-npu"
-    assert plan.llm_id == "ipex-llm-ollama"
+    assert plan.llm_id == "ollama-vulkan"
 
 
 def test_planner_intel_igpu_only_picks_openvino_whisper_igpu() -> None:
@@ -202,7 +206,7 @@ def test_planner_intel_igpu_only_picks_openvino_whisper_igpu() -> None:
     )
     plan = BackendPlanner().plan(hw)
     assert plan.stt_id == "openvino-whisper-igpu"
-    assert plan.llm_id == "ipex-llm-ollama"
+    assert plan.llm_id == "ollama-vulkan"
     assert plan.text_embed_id == "openvino-bge-m3-igpu"
 
 
@@ -260,10 +264,12 @@ def test_planner_npu_contention_degrades_to_cpu_when_no_igpu() -> None:
     ],
 )
 def test_planner_amd_npu_never_picked_for_stt(chip: str, gen: int) -> None:
-    """All 4 Ryzen AI chip families route STT to ``amd-whispercpp-dml``.
+    """All 4 Ryzen AI chip families route STT to ``amd-whispercpp-vulkan``.
 
     User decision (captured in ``BACKEND_IDS``): ``amd-whispercpp-npu`` is
-    permanently dropped. AMD hosts go through the DirectML path for STT.
+    permanently dropped. Addendum 2026-08-02: the AMD STT path rides Vulkan
+    (whisper.cpp has no DirectML backend) and the LLM path is the official
+    Ollama Vulkan backend (ROCm does not support Windows APUs).
     """
     hw = _profile(
         vendor="amd",
@@ -274,9 +280,9 @@ def test_planner_amd_npu_never_picked_for_stt(chip: str, gen: int) -> None:
     )
     plan = BackendPlanner().plan(hw)
 
-    assert plan.stt_id == "amd-whispercpp-dml"
+    assert plan.stt_id == "amd-whispercpp-vulkan"
     assert plan.stt_id != "amd-whispercpp-npu"
-    assert plan.llm_id == "ollama-directml"
+    assert plan.llm_id == "ollama-vulkan"
 
 
 def test_planner_amd_without_directml_falls_back_to_cpu() -> None:
@@ -364,3 +370,83 @@ def test_planner_npu_contention_reason_explains_degrade() -> None:
     """When NPU contention triggers, the reason string says so."""
     plan = BackendPlanner().plan(_INTEL_METEOR)
     assert "NPU contention" in plan.reason
+
+
+# ---------------------------------------------------------------------------
+# openai-compat is never auto-selected (addendum L)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name,hw", _ALL_HW_PROFILES)
+def test_planner_never_auto_selects_openai_compat(name: str, hw: HwProfile) -> None:
+    """``openai-compat`` / ``openai-compat-embed`` require an explicit user
+    override — automatic detection cannot know an OpenAI-compatible server
+    exists, let alone its URL."""
+    del name
+    plan = BackendPlanner().plan(hw)
+    assert plan.llm_id != "openai-compat"
+    assert plan.text_embed_id != "openai-compat-embed"
+
+
+# ---------------------------------------------------------------------------
+# User overrides (spec §5.1 step 5 / addendum M — Phase 1.5)
+# ---------------------------------------------------------------------------
+
+
+def test_override_auto_everywhere_matches_pure_auto_plan() -> None:
+    """All-"auto" overrides (the addendum-H default) must be a no-op."""
+    from core.accel.planner import BackendOverrides
+
+    auto_plan = BackendPlanner().plan(_CUDA_PROFILE)
+    ov_plan = BackendPlanner().plan(_CUDA_PROFILE, BackendOverrides())
+    assert ov_plan.stt_id == auto_plan.stt_id
+    assert ov_plan.diarize_id == auto_plan.diarize_id
+    assert ov_plan.llm_id == auto_plan.llm_id
+    assert ov_plan.text_embed_id == auto_plan.text_embed_id
+
+
+def test_override_forces_openai_compat_llm() -> None:
+    """runtime_backend="openai-compat" wins over the CUDA auto-pick."""
+    from core.accel.planner import BackendOverrides
+
+    plan = BackendPlanner().plan(
+        _CUDA_PROFILE, BackendOverrides(llm="openai-compat")
+    )
+    assert plan.llm_id == "openai-compat"
+    assert "user override" in plan.reason
+    # 他ロールは auto のまま
+    assert plan.stt_id == "faster-whisper-cuda"
+    assert plan.text_embed_id == "ollama-bge-m3-cpu"
+
+
+def test_override_forces_openai_compat_embed_independently() -> None:
+    """text_embed_backend="openai-compat-embed" leaves the LLM on Ollama —
+    the asymmetric wiring of addendum M(生成と埋め込みの独立エンドポイント)."""
+    from core.accel.planner import BackendOverrides
+
+    plan = BackendPlanner().plan(
+        _CUDA_PROFILE, BackendOverrides(text_embed="openai-compat-embed")
+    )
+    assert plan.llm_id == "ollama-cuda"
+    assert plan.text_embed_id == "openai-compat-embed"
+
+
+def test_override_forces_cpu_stt_on_cuda_host() -> None:
+    """transcriber_backend="faster-whisper-cpu" downgrades STT by choice."""
+    from core.accel.planner import BackendOverrides
+
+    plan = BackendPlanner().plan(
+        _CUDA_PROFILE, BackendOverrides(stt="faster-whisper-cpu")
+    )
+    assert plan.stt_id == "faster-whisper-cpu"
+
+
+def test_override_invalid_id_raises_value_error() -> None:
+    """An unknown forced id is rejected by BackendPlan validation — the
+    planner never emits a silently-wrong plan."""
+    from core.accel.planner import BackendOverrides
+
+    with pytest.raises(ValueError, match="unknown backend id"):
+        BackendPlanner().plan(
+            _CUDA_PROFILE, BackendOverrides(llm="ipex-llm-ollama")
+        )

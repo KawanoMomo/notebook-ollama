@@ -35,10 +35,18 @@ class OllamaSettingsSchema(BaseModel):
     default_model: str
     embedding_model: str
     embedding_dim: int | None = None
-    # Phase 1 acceleration backend selection. Default "auto" preserves
-    # existing behavior (BackendPlanner picks ollama-cuda on RTX 2080 Ti).
-    runtime_backend: Literal["auto", "ollama-cuda"] = "auto"
-    text_embed_backend: Literal["auto", "ollama-bge-m3-cpu"] = "auto"
+    # Acceleration backend selection (Phase 1.5 — spec addendum 2026-08-02).
+    # Default "auto" preserves existing behavior (BackendPlanner picks
+    # ollama-cuda on RTX 2080 Ti). Mirrors core.config.OllamaSettings.
+    runtime_backend: Literal[
+        "auto", "ollama-cuda", "ollama-vulkan", "openai-compat"
+    ] = "auto"
+    text_embed_backend: Literal[
+        "auto", "ollama-bge-m3-cpu", "openai-compat-embed"
+    ] = "auto"
+    # OpenAI互換サーバーの診断表示用(api_key は返さない)。
+    openai_compat_endpoint: str = ""
+    openai_compat_embed_endpoint: str = ""
     request_timeout_seconds: float = 600.0
     chat_read_timeout_seconds: float = 600.0
     vision_model: str = ""

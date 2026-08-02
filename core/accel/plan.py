@@ -29,13 +29,23 @@ from core.accel.backend_ids import BACKEND_IDS
 from core.accel.profile import HwProfile
 
 # Subset of ``BACKEND_IDS`` that ``core.accel.factory.BackendFactory`` can
-# build in Phase 1. Everything else is "Planner picked something Phase 2
+# build today. Everything else is "Planner picked something Phase 2
 # hasn't shipped" — surfaced via ``is_phase1_implementable``.
+#
+# Phase 1.5 (addendum 2026-08-02) additions:
+#
+# * ``ollama-vulkan`` — same builder as ``ollama-cuda``: the Vulkan backend
+#   lives inside the official Ollama server process, so from this app's side
+#   it is just the configured Ollama endpoint. Buildable everywhere.
+# * ``openai-compat`` / ``openai-compat-embed`` — an ``OllamaGateway``
+#   wrapping ``OpenAICompatClient`` at ``ollama.openai_compat_endpoint``.
+#   Buildable once the endpoint is configured (empty endpoint raises a
+#   clear ``ValueError`` at build time).
 PHASE1_IMPLEMENTABLE_IDS: Final[dict[str, frozenset[str]]] = {
     "STT": frozenset({"faster-whisper-cuda", "faster-whisper-cpu"}),
     "DIARIZE": frozenset({"sherpa-onnx-cpu"}),
-    "LLM": frozenset({"ollama-cuda"}),
-    "TEXT_EMBED": frozenset({"ollama-bge-m3-cpu"}),
+    "LLM": frozenset({"ollama-cuda", "ollama-vulkan", "openai-compat"}),
+    "TEXT_EMBED": frozenset({"ollama-bge-m3-cpu", "openai-compat-embed"}),
 }
 
 

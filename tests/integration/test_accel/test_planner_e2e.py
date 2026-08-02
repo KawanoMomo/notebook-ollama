@@ -240,8 +240,9 @@ def test_phase1_not_implementable_on_intel_lunar_lake() -> None:
 
     This is the *contract proof*: the planner is allowed to pick ids that
     the Factory hasn't implemented yet (because Planner is pure data,
-    Factory is the gate). On a real Intel Lunar Lake box Phase 1 has nothing
-    to build for STT/LLM/TEXT_EMBED — the test verifies that
+    Factory is the gate). On a real Intel Lunar Lake box the Factory has
+    nothing to build for STT/TEXT_EMBED (LLM rides ollama-vulkan since
+    Phase 1.5) — the test verifies that
     ``is_phase1_implementable`` honestly says so, rather than silently
     pretending the plan is buildable.
 
@@ -264,7 +265,10 @@ def test_phase1_not_implementable_on_intel_lunar_lake() -> None:
     # BACKEND_IDS without Factory builders is that the Planner is honest
     # about the right choice; the Factory is the gate that signals "not yet".
     assert plan.stt_id == "openvino-whisper-npu"
-    assert plan.llm_id == "ipex-llm-ollama"
+    # Addendum K1/K2 (Phase 1.5): the Intel iGPU LLM rule now routes to the
+    # official Ollama Vulkan backend — which IS implementable. The plan as a
+    # whole still fails the gate because of the openvino-* STT / embed ids.
+    assert plan.llm_id == "ollama-vulkan"
     # NPU contention degrades text embed off the NPU; openvino-bge-m3-igpu
     # is also Phase 2.
     assert plan.text_embed_id == "openvino-bge-m3-igpu"

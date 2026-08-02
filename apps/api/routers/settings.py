@@ -56,6 +56,8 @@ async def get_settings(request: Request) -> AppSettingsSchema:
             embedding_dim=request.app.state.ctx.vector_store.collection_dim(),
             runtime_backend=cfg.ollama.runtime_backend,
             text_embed_backend=cfg.ollama.text_embed_backend,
+            openai_compat_endpoint=cfg.ollama.openai_compat_endpoint,
+            openai_compat_embed_endpoint=cfg.ollama.openai_compat_embed_endpoint,
             request_timeout_seconds=cfg.ollama.request_timeout_seconds,
             chat_read_timeout_seconds=cfg.ollama.chat_read_timeout_seconds,
             vision_model=cfg.ollama.vision_model,

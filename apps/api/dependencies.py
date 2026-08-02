@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from apps.api.sse import SseBroker
 from core.accel.factory import BackendFactory
 from core.accel.plan import BackendPlan, is_phase1_implementable
-from core.accel.planner import BackendPlanner
+from core.accel.planner import BackendOverrides, BackendPlanner
 from core.accel.probe import HardwareProbe
 from core.accel.profile import HwProfile
 from core.adr.adr_job import AdrDeps, AdrJob
@@ -72,7 +72,9 @@ def _resolve_embedding_dim(config: AppConfig) -> int:
 
 
 def _degrade_to_cpu_plan(
-    planner: BackendPlanner, original_hw: HwProfile
+    planner: BackendPlanner,
+    original_hw: HwProfile,
+    overrides: BackendOverrides | None = None,
 ) -> BackendPlan:
     """Re-run the planner against a stripped-down CPU-only ``HwProfile``.
 
@@ -84,6 +86,13 @@ def _degrade_to_cpu_plan(
     implementable (``faster-whisper-cpu`` + ``sherpa-onnx-cpu`` +
     ``ollama-cuda`` + ``ollama-bge-m3-cpu`` — Ollama auto-degrades to CPU on
     GPU-less hosts).
+
+    ``overrides`` is carried through (Phase 1.5): config-sourced overrides
+    are Literal-restricted to implementable ids, so honouring them here
+    cannot re-introduce an unbuildable plan — and dropping them would
+    silently discard an explicit user choice (e.g. a forced
+    ``openai-compat`` LLM on an Intel host whose STT id triggered the
+    degrade).
     """
     cpu_hw = HwProfile(
         vendor="unknown",
@@ -98,7 +107,7 @@ def _degrade_to_cpu_plan(
         has_cuda=False,
         cuda_device_count=0,
     )
-    return planner.plan(cpu_hw)
+    return planner.plan(cpu_hw, overrides)
 
 
 class AppContext:
@@ -289,7 +298,18 @@ def build_context(config: AppConfig) -> AppContext:
     # ollama-cuda / ollama-bge-m3-cpu) — end users see identical behaviour.
     hw_profile = HardwareProbe().run()
     planner = BackendPlanner()
-    backend_plan = planner.plan(hw_profile)
+    # Phase 1.5 (addendum 2026-08-02): user overrides now flow into the
+    # planner. All fields default to "auto" (addendum H) so existing
+    # settings.json files keep the exact pre-override behaviour. A non-auto
+    # value (e.g. runtime_backend="openai-compat") wins over every automatic
+    # rule; id validity is enforced by BackendPlan.__post_init__.
+    overrides = BackendOverrides(
+        stt=config.audio.transcriber_backend,
+        diarize=config.audio.diarizer_backend,
+        llm=config.ollama.runtime_backend,
+        text_embed=config.ollama.text_embed_backend,
+    )
+    backend_plan = planner.plan(hw_profile, overrides)
     if not is_phase1_implementable(backend_plan):
         # Phase 1 only ships CUDA + CPU builders. When the Planner picks a
         # Phase 2 id (e.g. ``openvino-whisper-igpu`` on an Intel Meteor Lake
@@ -306,7 +326,7 @@ def build_context(config: AppConfig) -> AppContext:
             reason=backend_plan.reason,
             action="degrade_to_cpu_plan",
         )
-        backend_plan = _degrade_to_cpu_plan(planner, hw_profile)
+        backend_plan = _degrade_to_cpu_plan(planner, hw_profile, overrides)
     backend_factory = BackendFactory()
 
     # Build the LLM gateway through the Factory so the construction path is

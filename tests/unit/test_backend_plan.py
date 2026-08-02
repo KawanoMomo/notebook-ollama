@@ -50,7 +50,7 @@ def _openvino_plan() -> BackendPlan:
     return BackendPlan(
         stt_id="openvino-whisper-igpu",
         diarize_id="sherpa-onnx-cpu",
-        llm_id="ipex-llm-ollama",
+        llm_id="ollama-vulkan",
         text_embed_id="openvino-bge-m3-igpu",
         hw_profile=_STUB_PROFILE,
         reason="Intel iGPU detected -> openvino-whisper-igpu (Phase 2)",
@@ -150,3 +150,50 @@ def test_valid_plan_preserves_fields() -> None:
     assert plan.text_embed_id == "ollama-bge-m3-cpu"
     assert plan.hw_profile is _CUDA_PROFILE
     assert "faster-whisper-cuda" in plan.reason
+
+
+# ---------------------------------------------------------------------------
+# Phase 1.5 (addendum 2026-08-02)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "dropped_llm_id",
+    ["ipex-llm-ollama", "ollama-directml"],
+)
+def test_dropped_llm_ids_rejected_by_plan_constructor(dropped_llm_id: str) -> None:
+    """Addendum K1/K2: dropped LLM ids cannot re-enter through the constructor."""
+    with pytest.raises(ValueError, match="unknown backend id"):
+        BackendPlan(
+            stt_id="faster-whisper-cuda",
+            diarize_id="sherpa-onnx-cpu",
+            llm_id=dropped_llm_id,
+            text_embed_id="ollama-bge-m3-cpu",
+            hw_profile=_CUDA_PROFILE,
+            reason="dropped llm id",
+        )
+
+
+@pytest.mark.parametrize(
+    ("llm_id", "text_embed_id"),
+    [
+        ("ollama-vulkan", "ollama-bge-m3-cpu"),
+        ("openai-compat", "ollama-bge-m3-cpu"),
+        ("openai-compat", "openai-compat-embed"),
+        ("ollama-cuda", "openai-compat-embed"),
+    ],
+)
+def test_phase15_llm_and_embed_ids_are_implementable(
+    llm_id: str, text_embed_id: str
+) -> None:
+    """ollama-vulkan / openai-compat / openai-compat-embed are buildable today
+    (Phase 1.5), so ``is_phase1_implementable`` must accept them."""
+    plan = BackendPlan(
+        stt_id="faster-whisper-cpu",
+        diarize_id="sherpa-onnx-cpu",
+        llm_id=llm_id,
+        text_embed_id=text_embed_id,
+        hw_profile=_STUB_PROFILE,
+        reason="phase 1.5 combination",
+    )
+    assert is_phase1_implementable(plan) is True

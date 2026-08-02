@@ -26,13 +26,29 @@ class OllamaSettings(BaseModel):
     # multilingual inputs (esp. Japanese) under bge-m3. num_gpu=0 forces CPU
     # inference for embeddings. Set to None or {} to use Ollama defaults.
     embedding_options: dict[str, int] = Field(default_factory=lambda: {"num_gpu": 0})
-    # Acceleration backend selection (Phase 1: CUDA-only baseline).
+    # Acceleration backend selection (Phase 1.5 — spec addendum 2026-08-02).
     # "auto" -> BackendPlanner picks "ollama-cuda" on RTX 2080 Ti, preserving
-    # existing behavior. Phase 2 will widen the Literal to include
-    # ipex-llm-ollama / ollama-vulkan / openvino-genai-server.
-    runtime_backend: Literal["auto", "ollama-cuda"] = "auto"
-    # Phase 2 will widen to include ollama-bge-m3-gpu / openvino-bge-m3-{igpu,npu}.
-    text_embed_backend: Literal["auto", "ollama-bge-m3-cpu"] = "auto"
+    # existing behavior. "ollama-vulkan" is the official Ollama with its
+    # Vulkan backend (Intel/AMD iGPU); "openai-compat" points the gateway at
+    # openai_compat_endpoint (llama-server / OVMS / Lemonade / LM Studio 等)。
+    # ipex-llm-ollama は addendum K2(security issues)で不採用。
+    runtime_backend: Literal[
+        "auto", "ollama-cuda", "ollama-vulkan", "openai-compat"
+    ] = "auto"
+    # "openai-compat-embed" -> /v1/embeddings at openai_compat_embed_endpoint
+    # (未設定なら openai_compat_endpoint)。生成と埋め込みを別サーバーに
+    # 分離できる(addendum M: 非対称構成)。Phase 2 で openvino-bge-m3-{igpu,npu}。
+    text_embed_backend: Literal[
+        "auto", "ollama-bge-m3-cpu", "openai-compat-embed"
+    ] = "auto"
+    # OpenAI互換サーバーのベース URL(例 "http://localhost:8080")。
+    # runtime_backend="openai-compat" のとき必須。空 = 未設定。
+    openai_compat_endpoint: str = ""
+    # 埋め込み専用の OpenAI互換サーバー URL。空なら openai_compat_endpoint を
+    # 流用する(addendum M: 生成=NPU/iGPU・埋め込み=iGPU/CPU の非対称構成用)。
+    openai_compat_embed_endpoint: str = ""
+    # llama-server --api-key 等での運用時のみ設定。空ならヘッダを送らない。
+    openai_compat_api_key: str = ""
     # 視覚モデル(Stage 2)。空文字列 = 未設定(describe段・OCR経路はスキップ)。
     vision_model: str = ""
     # 取込時に図を自動でVLM解析するか(既定ON)。OFFでも「図を解析」で手動実行可能。

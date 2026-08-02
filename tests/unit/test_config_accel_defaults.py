@@ -50,18 +50,35 @@ def test_phase_1_allowed_ollama_backend_values():
     OllamaSettings(text_embed_backend="ollama-bge-m3-cpu")
 
 
+def test_phase_15_allowed_ollama_backend_values():
+    """Phase 1.5 (addendum 2026-08-02): vulkan + openai-compat are valid."""
+    OllamaSettings(runtime_backend="ollama-vulkan")
+    OllamaSettings(runtime_backend="openai-compat")
+    OllamaSettings(text_embed_backend="openai-compat-embed")
+
+
+def test_openai_compat_fields_default_empty():
+    ollama = OllamaSettings()
+    assert ollama.openai_compat_endpoint == ""
+    assert ollama.openai_compat_embed_endpoint == ""
+    assert ollama.openai_compat_api_key == ""
+
+
 def test_new_field_validation_rejects_bogus_transcriber_backend():
     with pytest.raises(ValidationError):
         AudioSettings(transcriber_backend="bogus")
 
 
 def test_new_field_validation_rejects_phase_2_only_ids_for_phase_1_literal():
-    """Phase 2 ids must NOT be accepted by the Phase 1 Literal — otherwise the
-    BackendFactory silent-fail guard never triggers."""
+    """Phase 2 ids must NOT be accepted by the current Literal — otherwise the
+    BackendFactory silent-fail guard never triggers. Dropped ids
+    (ipex-llm-ollama — addendum K2) must be rejected too."""
     with pytest.raises(ValidationError):
         AudioSettings(transcriber_backend="openvino-whisper-igpu")
     with pytest.raises(ValidationError):
         OllamaSettings(runtime_backend="ipex-llm-ollama")
+    with pytest.raises(ValidationError):
+        OllamaSettings(runtime_backend="ollama-directml")
     with pytest.raises(ValidationError):
         OllamaSettings(text_embed_backend="openvino-bge-m3-npu")
 

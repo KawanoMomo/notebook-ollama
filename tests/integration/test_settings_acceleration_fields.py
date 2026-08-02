@@ -98,6 +98,63 @@ def test_settings_round_trip_explicit_backend_values(memory_data_dir):
     assert config.ollama.text_embed_backend == "ollama-bge-m3-cpu"
 
 
+def test_settings_round_trip_openai_compat_values(memory_data_dir):
+    """Phase 1.5 (addendum 2026-08-02): openai-compat backend + endpoints
+    persist through settings.json -> apply_overrides."""
+    (memory_data_dir / "settings.json").write_text(
+        json.dumps(
+            {
+                "ollama": {
+                    "default_model": "qwen2.5:14b",
+                    "embedding_model": "bge-m3",
+                    "embedding_dim": 1024,
+                    "runtime_backend": "openai-compat",
+                    "text_embed_backend": "openai-compat-embed",
+                    "openai_compat_endpoint": "http://localhost:8080",
+                    "openai_compat_embed_endpoint": "http://localhost:9090",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = AppConfig(data_dir=memory_data_dir)
+    apply_overrides(config)
+    assert config.ollama.runtime_backend == "openai-compat"
+    assert config.ollama.text_embed_backend == "openai-compat-embed"
+    assert config.ollama.openai_compat_endpoint == "http://localhost:8080"
+    assert config.ollama.openai_compat_embed_endpoint == "http://localhost:9090"
+
+
+def test_get_api_exposes_openai_compat_endpoints(memory_data_dir):
+    """GET /api/settings surfaces the new diagnostic fields (api_key は返さない)。
+
+    runtime_backend=openai-compat まで立てて lifespan(build_context)が
+    OpenAICompatClient gateway を実際に構築できることも同時に検証する。"""
+    (memory_data_dir / "settings.json").write_text(
+        json.dumps(
+            {
+                "ollama": {
+                    "default_model": "qwen2.5:14b",
+                    "embedding_model": "bge-m3",
+                    "embedding_dim": 1024,
+                    "runtime_backend": "openai-compat",
+                    "openai_compat_endpoint": "http://localhost:8080",
+                    "openai_compat_api_key": "sk-secret",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with TestClient(create_app()) as client:
+        body = client.get("/api/settings").json()
+        assert body["ollama"]["runtime_backend"] == "openai-compat"
+        assert body["ollama"]["openai_compat_endpoint"] == "http://localhost:8080"
+        assert body["ollama"]["openai_compat_embed_endpoint"] == ""
+        # 秘匿値は GET 応答に含めない
+        assert "sk-secret" not in json.dumps(body)
+
+
 def test_settings_round_trip_via_get_api_reflects_persisted_backend_values(
     memory_data_dir,
 ):

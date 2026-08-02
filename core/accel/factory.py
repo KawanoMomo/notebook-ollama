@@ -14,20 +14,26 @@ the Planner pure / table-testable across every HW profile, and pushes the
 "can we actually build this?" decision into one tiny module that is trivial
 to grep and audit.
 
-Phase 1 implementable ids (mirrored in
-``core.accel.plan.PHASE1_IMPLEMENTABLE_IDS``):
+Implementable ids (mirrored in
+``core.accel.plan.PHASE1_IMPLEMENTABLE_IDS``; Phase 1.5 = spec addendum
+2026-08-02):
 
 * STT:         ``faster-whisper-cuda``, ``faster-whisper-cpu``
 * DIARIZE:     ``sherpa-onnx-cpu``
 * LLM:         ``ollama-cuda`` (also serves the CPU-only host — Ollama
-               auto-degrades when no GPU is visible)
-* TEXT_EMBED:  ``ollama-bge-m3-cpu`` (Ollama #13572 NaN workaround pins
-               CUDA hosts to CPU embed in Phase 1)
+               auto-degrades when no GPU is visible), ``ollama-vulkan``
+               (same builder — the Vulkan backend lives in the Ollama
+               server), ``openai-compat`` (``OpenAICompatClient`` at
+               ``openai_compat_endpoint``)
+* TEXT_EMBED:  ``ollama-bge-m3-cpu`` (Ollama NaN workaround pins CUDA
+               hosts to CPU embed; #13572 closed without root fix),
+               ``openai-compat-embed`` (independent embed endpoint —
+               addendum M asymmetric wiring)
 
 Phase 2 ids (``openvino-whisper-igpu`` / ``openvino-whisper-npu`` /
-``amd-whispercpp-dml`` / ``ollama-directml`` / ``ipex-llm-ollama`` /
-``openvino-bge-m3-igpu`` / ``openvino-bge-m3-npu``) all raise
-``NotImplementedError`` whose message contains the substring ``"Phase 2"``.
+``amd-whispercpp-vulkan`` / ``openvino-bge-m3-igpu`` /
+``openvino-bge-m3-npu``) all raise ``NotImplementedError`` whose message
+contains the substring ``"Phase 2"``.
 
 INVARIANT (verified by ``test_factory.py``): builders do NOT modify any
 constructor signature of the existing concrete classes (``Transcriber``,
@@ -210,21 +216,37 @@ class BackendFactory:
     def build_llm_gateway(
         self, plan: BackendPlan, ollama_cfg: OllamaSettings
     ) -> OllamaGateway:
-        """Build the LLM gateway (Ollama HTTP).
+        """Build the LLM gateway (Ollama HTTP or OpenAI-compatible HTTP).
 
-        Phase 1 only routes through ``ollama-cuda`` — which also serves the
-        CPU-only host (Ollama auto-degrades to CPU when no GPU is visible,
-        so the same id covers both). Phase 2 ``ollama-directml`` and
-        ``ipex-llm-ollama`` ids raise ``NotImplementedError``.
+        * ``ollama-cuda`` / ``ollama-vulkan`` → official Ollama at
+          ``ollama_cfg.endpoint``. The two ids share one builder because the
+          Vulkan backend lives inside the Ollama *server* process (addendum
+          K1: default-enabled since v0.13) — from this app's side the only
+          difference is which accelerator the server picked, surfaced by the
+          id for diagnostics. ``ollama-cuda`` also serves the CPU-only host
+          (Ollama auto-degrades when no GPU is visible).
+        * ``openai-compat`` → ``OllamaGateway`` wrapping an
+          ``OpenAICompatClient`` at ``ollama_cfg.openai_compat_endpoint``
+          (addendum L). The endpoint must be configured — an empty string
+          raises ``ValueError`` with a clear message instead of producing a
+          gateway that can only fail at request time.
 
-        The returned ``OllamaGateway`` wraps a freshly-constructed
-        ``OllamaClient`` at ``ollama_cfg.endpoint`` with the configured
-        request / chat-read timeouts and ``embedding_options`` carried
-        through unchanged.
+        Phase 2 ids raise ``NotImplementedError``.
         """
         lid = plan.llm_id
-        if lid == "ollama-cuda":
+        if lid in ("ollama-cuda", "ollama-vulkan"):
             return self._build_ollama_gateway(ollama_cfg)
+        if lid == "openai-compat":
+            endpoint = ollama_cfg.openai_compat_endpoint
+            if not endpoint:
+                raise ValueError(
+                    "runtime_backend='openai-compat' requires "
+                    "ollama.openai_compat_endpoint to be set in settings.json "
+                    "(e.g. \"http://localhost:8080\" for llama-server)"
+                )
+            return self._build_openai_compat_gateway(
+                ollama_cfg, endpoint, with_embedding_options=False
+            )
         raise _phase2_not_implemented("LLM", lid)
 
     # ------------------------------------------------------------------
@@ -263,6 +285,27 @@ class BackendFactory:
             if gateway is None:
                 gateway = self._build_ollama_gateway(ollama_cfg)
             return _OllamaTextEmbedder(gateway, ollama_cfg.embedding_model)
+        if tid == "openai-compat-embed":
+            # Addendum M(非対称構成): 埋め込みは生成と独立したエンドポイント。
+            # 専用 URL(openai_compat_embed_endpoint)が無ければ LLM 側の
+            # openai_compat_endpoint を流用する。渡された ``gateway``(Ollama
+            # 用)は再利用しない — 経路が違うので必ず専用 gateway を建てる。
+            # embedding_options(num_gpu=0)は Ollama 固有の NaN 回避であり、
+            # OpenAI 互換 API には対応概念が無いため引き渡さない。
+            endpoint = (
+                ollama_cfg.openai_compat_embed_endpoint
+                or ollama_cfg.openai_compat_endpoint
+            )
+            if not endpoint:
+                raise ValueError(
+                    "text_embed_backend='openai-compat-embed' requires "
+                    "ollama.openai_compat_embed_endpoint (or "
+                    "ollama.openai_compat_endpoint) to be set in settings.json"
+                )
+            embed_gateway = self._build_openai_compat_gateway(
+                ollama_cfg, endpoint, with_embedding_options=False
+            )
+            return _OllamaTextEmbedder(embed_gateway, ollama_cfg.embedding_model)
         raise _phase2_not_implemented("TEXT_EMBED", tid)
 
     # ------------------------------------------------------------------
@@ -285,6 +328,41 @@ class BackendFactory:
         return OllamaGateway(
             client=client,
             embedding_options=ollama_cfg.embedding_options or None,
+        )
+
+    def _build_openai_compat_gateway(
+        self,
+        ollama_cfg: OllamaSettings,
+        endpoint: str,
+        *,
+        with_embedding_options: bool,
+    ) -> OllamaGateway:
+        """Construct an ``OllamaGateway`` over an ``OpenAICompatClient``.
+
+        The gateway layer (chat/embed serialization locks, generate helper)
+        is transport-agnostic — only the ``_ClientLike`` implementation
+        changes (addendum L). Timeouts reuse the same Ollama settings so a
+        slow local server gets the same generous budget.
+
+        ``with_embedding_options`` is accepted for signature clarity but is
+        always ``False`` today: ``embedding_options`` (``num_gpu=0``) is the
+        Ollama-specific NaN workaround and has no OpenAI-API counterpart.
+        """
+        from core.ollama.openai_compat import OpenAICompatClient
+
+        client = OpenAICompatClient(
+            endpoint=endpoint,
+            api_key=ollama_cfg.openai_compat_api_key,
+            timeout=ollama_cfg.request_timeout_seconds,
+            chat_read_timeout=ollama_cfg.chat_read_timeout_seconds,
+        )
+        return OllamaGateway(
+            client=client,
+            embedding_options=(
+                (ollama_cfg.embedding_options or None)
+                if with_embedding_options
+                else None
+            ),
         )
 
 

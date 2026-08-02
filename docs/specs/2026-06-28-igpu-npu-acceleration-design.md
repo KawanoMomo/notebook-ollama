@@ -579,8 +579,33 @@ LLM/Embedding は Ollama HTTP API を共通契約とする方針(§3.2)は維持
 
 ### P. Phase 2 着手時の追加検証タスク
 
-1. `OLLAMA_FLASH_ATTENTION=false` で bge-m3 GPU 経路の NaN 再現有無を確認(開発機 RTX 2080 Ti で可能。Phase 2 を待たず実施可)
+1. `OLLAMA_FLASH_ATTENTION=false` で bge-m3 GPU 経路の NaN 再現有無を確認(開発機 RTX 2080 Ti で可能。Phase 2 を待たず実施可。ただし Ollama サーバーの再起動が必要なため、開発機の Ollama を占有できるタイミングで実施する)
 2. docs.openvino.ai の NPU GenAI ページを人手確認(static shape 制約の現行仕様確定)
 3. `onnxruntime-openvino` と `openvino` 2026.x の同一 venv 共存確認
 4. Gorgon Point NPU の PCI ID 実機確認(Probe の AMD 判定表更新)
 5. CTranslate2 4.8.x 更新時の cuDNN 9 系 DLL 名追従(C1 fix の回帰確認)
+
+### Q. Phase 1.5 実装記録(2026-08-02)
+
+本 addendum のうち、開発機(NVIDIA のみ)で実装・自動テスト可能な範囲を **Phase 1.5** としてコードに反映した。BE 全テスト 1490 件 PASS(新規 41 件)。既存 NVIDIA ユーザー(全設定 "auto")の挙動はゼロ変更。
+
+**実装内容**:
+
+| 項目 | 反映先 |
+|---|---|
+| K1: `ollama-vulkan` 昇格(Intel/AMD iGPU の auto 選択先、builder は `ollama-cuda` と共通) | `core/accel/backend_ids.py` / `planner.py` / `plan.py` / `factory.py` |
+| K2: `ipex-llm-ollama` 削除 + `ollama-directml` 削除(Ollama に DML バックエンドは存在しない)。再導入ガード(import 時 sentinel) | `backend_ids.py` `_DROPPED_LLM_IDS` |
+| L: `OpenAICompatClient` 新設(`_ClientLike` 準拠、SSE / ThinkingChunk / done_reason / Ollama vision 形式→content-parts 変換 / AppError 同コード正規化) | `core/ollama/openai_compat.py`(新規) |
+| L: `openai-compat` / `openai-compat-embed` バックエンド(**auto 選択なし、user override のみ**) | `planner.py` / `factory.py` / `core/config.py` |
+| M: 生成と embedding の独立エンドポイント(`openai_compat_embed_endpoint`、空なら `openai_compat_endpoint` に fallback) | `core/config.py` / `factory.py` |
+| override 適用: `BackendPlanner.plan(hw, BackendOverrides)`(§5.1 step 5 の実装。degrade 経路でも override 保持) | `planner.py` / `apps/api/dependencies.py` |
+| STT id `amd-whispercpp-dml` → `amd-whispercpp-vulkan` 改名(whisper.cpp に DML バックエンドは無い。Phase 2 未実装 ID のままの改名) | `backend_ids.py` / `planner.py` |
+| 設定 API: `runtime_backend` / `text_embed_backend` の Literal 拡張、`openai_compat_*` フィールド追加(GET 応答に api_key は含めない) | `core/config.py` / `apps/api/schemas/settings.py` / `routers/settings.py` |
+
+**設計判断(Phase 1.5 固有)**:
+
+- `openai-compat` 指定で endpoint 未設定の場合は **起動時に ValueError で明示停止**(remediation 付きメッセージ)。§6.1「LLM は黙って切替えない」に従い、静かなフォールバックはしない。設定手段が settings.json 手編集のみである現状と対称。
+- `openai-compat-embed` は LLM 側 gateway を再利用せず**専用 gateway を建てる**(経路が異なるため)。`embedding_options`(`num_gpu=0`)は Ollama 固有の NaN 回避であり OpenAI 経路には渡さない。
+- Ollama options → OpenAI パラメータは最小マッピング(`num_predict`→`max_tokens`、`temperature`、`top_p`)。対応概念の無い option は dev ログに警告して破棄。
+
+**Phase 1.5 で実装していないもの**: override 操作 UI(Phase 2 Sprint 7)、OpenAI 互換サーバーの導入スクリプト、P 節の検証タスク(P1 は Ollama 再起動を要するため保留)、`openvino-*` / `amd-whispercpp-vulkan` の実 builder(Phase 2、実機待ち)。
