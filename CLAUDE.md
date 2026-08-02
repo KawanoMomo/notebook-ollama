@@ -59,6 +59,39 @@ Local personal NotebookLM clone over Ollama with MCP exposure.
   `gen_code_map.py` が実在するパスだけを抽出して frontmatter に落とす
   (= 次回から Grep 不要になる。実装したらパスを本文に書く習慣をつける)
 
+### Obsidian スキル / CLI の使い分け
+
+Claude 側に Obsidian 用スキルが入っている。**ファイル形式を書くときは必ず該当スキルを使う**
+(構文ミスで Obsidian が読めないファイルを作らないため)。
+
+| 用途 | 使うもの |
+|---|---|
+| `.md` を書く (wikilink / callout / frontmatter) | skill `obsidian:obsidian-markdown` |
+| `.base` を書く (ビュー / フィルタ / 数式) | skill `obsidian:obsidian-bases` |
+| `.canvas` を書く | skill `obsidian:json-canvas` (このリポジトリでは生成スクリプト経由) |
+| vault の検索・検証・スクリーンショット | skill `obsidian:obsidian-cli` |
+| Web ページを取り込む | skill `obsidian:defuddle` (`defuddle parse <url> --md`) |
+
+**CLI での検証** (Obsidian 起動中のみ。`vault=` の指定を忘れると親の `00_Git` vault を
+見てしまうので必ず付ける):
+
+```bash
+obsidian vault="10_NotebookOllama" unresolved          # リンク切れ (最重要)
+obsidian vault="10_NotebookOllama" orphans             # 被リンクの無いノート
+obsidian vault="10_NotebookOllama" backlinks file="notebook-ollama-design"
+obsidian vault="10_NotebookOllama" search:context query="RRF" limit=10
+obsidian vault="10_NotebookOllama" base:query file="設計資産" view="ADR台帳"
+obsidian vault="10_NotebookOllama" command id="graph:open"
+obsidian vault="10_NotebookOllama" dev:screenshot path=docs/screenshots/graph.png
+```
+`search:context` は Obsidian の索引を使うため、除外設定済みのノイズ(node_modules 等)を
+踏まずに済む。**vault 内の文章を探すときは Grep よりこちらが速い**。
+
+### vault の除外設定
+`.obsidian/app.json` の `userIgnoreFilters` で `node_modules` / `__pycache__` / `dist` /
+`data` などを除外している(これが無いと 18,000 ファイルがグラフに出て索引が使い物に
+ならない)。ビルド生成物のディレクトリを増やしたら、この除外リストにも追加する。
+
 ### 索引の再生成 (doc を追加・変更したら必ず実行)
 ```
 uv run python scripts/gen_code_map.py       # 本文のパス → code: と docs/実装マップ.md
