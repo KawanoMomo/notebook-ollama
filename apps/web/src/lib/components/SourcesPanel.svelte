@@ -267,7 +267,18 @@
       lastSeenOutcomeAt = { ...lastSeenOutcomeAt, [unit]: outcome.at };
       const label = unit === 'tile' ? 'タイル索引' : 'ページ索引';
       if (outcome.kind === 'complete') {
-        pushToast(`${label}の構築が完了しました`, 'success');
+        if (outcome.skippedPages > 0) {
+          // 部分失敗(半滅): 1件でも索引できれば「完了」の見た目になるが、
+          // 失敗ページ数を隠すと利用者が気付けない(最終レビュー I4)。
+          // ToastLevel は 'info' | 'success' | 'error' の3値しかないため、
+          // 警告寄りの文言で 'info' を使う。
+          pushToast(
+            `${label}の構築が完了しました(${outcome.skippedPages}件のページをスキップしました)`,
+            'info',
+          );
+        } else {
+          pushToast(`${label}の構築が完了しました`, 'success');
+        }
       } else if (outcome.kind === 'noop') {
         // target_sources == 0: 未索引の対象が無かった。タイル格子等の
         // パラメータを変えても既に索引済みのソースは再構築対象にならない

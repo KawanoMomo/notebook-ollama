@@ -28,6 +28,10 @@ export interface VisualIndexOutcome {
   // SSE イベントは同一 {kind} でも別の発生を区別できないため、発生時刻を
   // change-detection のキーとして使う(購読側 $effect が「新しい完了/失敗」を検知する)。
   at: number;
+  // 部分失敗(半滅)の件数。kind:"complete" でも1件以上あれば「完了」の
+  // 見た目の裏でスキップされたページがあることを示す(最終レビュー I4)。
+  // ペイロードに無ければ 0。
+  skippedPages: number;
 }
 
 export interface EventsStore {
@@ -95,14 +99,15 @@ export function createEventsStore(): EventsStore {
         // 通常のソース状態パッチに入る前に分岐して処理する。
         if (ev.type === "visual_index_progress") {
           const unit = (ev.unit as VisualIndexUnit) ?? "page";
-          const done = ev.done as number;
-          const total = ev.total as number;
+          const done = typeof ev.done === "number" ? ev.done : 0;
+          const total = typeof ev.total === "number" ? ev.total : 0;
           const base = visualBaselines.get(unit);
           let etaSeconds: number | null = null;
           if (base) {
             const advanced = done - base.done;
-            if (advanced > 0) {
-              etaSeconds = Math.round(((total - done) * ((Date.now() - base.at) / advanced)) / 1000);
+            const elapsedMs = Date.now() - base.at;
+            if (advanced > 0 && elapsedMs > 0) {
+              etaSeconds = Math.round(((total - done) * (elapsedMs / advanced)) / 1000);
             }
           } else {
             visualBaselines.set(unit, { at: Date.now(), done });
@@ -128,8 +133,10 @@ export function createEventsStore(): EventsStore {
               : ev.type === "visual_index_noop"
                 ? "noop"
                 : "error";
+          const skippedPages =
+            typeof ev.skipped_pages === "number" ? ev.skipped_pages : 0;
           const nextOutcome = new Map(visualIndexOutcome);
-          nextOutcome.set(unit, { kind, at: Date.now() });
+          nextOutcome.set(unit, { kind, at: Date.now(), skippedPages });
           visualIndexOutcome = nextOutcome;
           return;
         }
