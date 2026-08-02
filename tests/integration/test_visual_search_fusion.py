@@ -316,6 +316,23 @@ async def test_pixel_native_returns_empty_when_visual_unavailable(tmp_path):
     assert hits == []
 
 
+async def test_visual_only_respects_source_ids_scope(tmp_path):
+    """最終レビュー I5: visual_only は全結果が視覚ヒットなので、source_ids で
+    絞ったチャットの「ソースを選択」が視覚検索にも効かないと100%無視される。
+    """
+    conn, nb, src, vs, ps = _setup(tmp_path)
+    src2 = create_source(conn, notebook_id=nb.id, kind="pdf", title="Doc2", content_hash="h2")
+    _add_text_chunks_sqlite_only(conn, nb, src, page=3, ids=["p3c1"])
+    _add_text_chunks_sqlite_only(conn, nb, src2, page=5, ids=["p5c1"])
+    _add_visual_page(ps, nb, src, page=3, vec=[1.0, 0.0, 0.0, 0.0])
+    _add_visual_page(ps, nb, src2, page=5, vec=[1.0, 0.0, 0.0, 0.0])
+    upsert_meta(conn, VisualIndexMeta(notebook_id=nb.id, embedding_model="vm", built_at="t"))
+    svc = _svc(conn, vs, ps, strategy="visual_only")
+    hits = await svc.search(notebook_id=nb.id, query="q", limit=5, source_ids=[src.id])
+    assert all(h.source_id == src.id for h in hits)
+    assert "p5c1" not in [h.chunk_id for h in hits]
+
+
 async def test_visual_only_does_not_fall_back_when_visual_is_healthy_but_empty(tmp_path):
     """視覚索引が健全で今回のクエリに0件だった場合、テキストを混ぜない。
 

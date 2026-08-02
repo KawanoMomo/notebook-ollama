@@ -108,15 +108,30 @@ class VisualUnitStore:
         ]
         self._client.upsert(collection_name=self._collection, points=points)
 
-    def search(self, *, query: list[float], notebook_id: str, limit: int) -> list[UnitHit]:
+    def search(
+        self,
+        *,
+        query: list[float],
+        notebook_id: str,
+        limit: int,
+        source_ids: list[str] | None = None,
+    ) -> list[UnitHit]:
         if not self._exists():
             return []
+        must: list[qm.Condition] = [
+            qm.FieldCondition(key="notebook_id", match=qm.MatchValue(value=notebook_id))
+        ]
+        if source_ids:
+            # チャットのソース選択を視覚検索にも効かせる。これが無いと
+            # visual_only / pixel_native は全結果が視覚ヒットなので、
+            # UI で絞ったソース選択が完全に無視される(最終レビュー I5)。
+            must.append(
+                qm.FieldCondition(key="source_id", match=qm.MatchAny(any=source_ids))
+            )
         result = self._client.query_points(
             collection_name=self._collection,
             query=query,
-            query_filter=qm.Filter(
-                must=[qm.FieldCondition(key="notebook_id", match=qm.MatchValue(value=notebook_id))]
-            ),
+            query_filter=qm.Filter(must=must),
             limit=limit,
         )
         hits: list[UnitHit] = []
