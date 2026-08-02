@@ -70,11 +70,7 @@ tags:
 ## 🧭 ADR（採番済み）
 
 台帳は [[README|docs/adr/README.md]]、カテゴリ定義は [[categories]]。
-未採番のドラフトは `docs/adr/drafts/` に置く（**現在2件**）。採番・正式登録は承認後に `/adr` で行います。
-
-> [!question] 提案中の設計判断（未採番ドラフト）
-> - [[draft-2026-08-02-openai-compat-second-contract|LLM/Embeddingの第二共通契約としてOpenAI互換APIを採用]] — アーキテクチャ/外部連携（iGPU/NPU Phase 1.5起票）
-> - [[draft-2026-08-02-llm-backend-vulkan-promotion|iGPUのLLM経路をOllama Vulkanに一本化しIPEX-LLM/DirectML系idを廃止]] — アーキテクチャ/バックエンド選定（iGPU/NPU Phase 1.5起票）
+未採番のドラフトは `docs/adr/drafts/` に置く（**現在0件**）。採番・正式登録は承認後に `/adr` で行います。
 
 > [!note] 発表モード / 音声入力 / ベータ基盤
 > - [[001-source-links-generic-parent-child|ADR-001 ソース間結合は汎用親子リンク基盤(source_links)]] — `data-model`
@@ -100,6 +96,10 @@ tags:
 > [!note] 応答の自動継続
 > - [[012-assistant-prefill-continuation|ADR-012 打ち切り継続は assistant prefill(末尾assistantメッセージ再送)]] — `architecture`
 > - [[013-truncated-persistence-update-in-place|ADR-013 truncatedはmessagesカラム永続化+手動継続は最終assistantメッセージ追記更新]] — `data-model`
+
+> [!note] iGPU/NPU 対応（Phase 1.5）
+> - [[018-openai-compat-second-contract|ADR-018 LLM/Embeddingの第二共通契約としてOpenAI互換APIを採用]] — `architecture`
+> - [[019-llm-backend-vulkan-promotion|ADR-019 iGPUのLLM経路をOllama Vulkanに一本化しIPEX-LLM/DirectML系idを廃止]] — `external-dep`
 
 ## 📋 ECN（変更通知）
 

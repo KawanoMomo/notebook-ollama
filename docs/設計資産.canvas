@@ -501,23 +501,23 @@
       "color": "6"
     },
     {
-      "id": "e7915b71b7c78108",
+      "id": "b9f0ae3754f47fde",
       "type": "file",
       "x": 36,
       "y": 2826,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-08-02-llm-backend-vulkan-promotion.md",
+      "file": "docs/adr/018-openai-compat-second-contract.md",
       "color": "3"
     },
     {
-      "id": "ed868caa4164d568",
+      "id": "0efc99b32df63087",
       "type": "file",
       "x": 36,
       "y": 2923,
       "width": 260,
       "height": 85,
-      "file": "docs/adr/drafts/draft-2026-08-02-openai-compat-second-contract.md",
+      "file": "docs/adr/019-llm-backend-vulkan-promotion.md",
       "color": "3"
     },
     {
@@ -964,18 +964,18 @@
       "label": "起票"
     },
     {
-      "id": "b1f0b0f87a34d47f",
+      "id": "88cba895835f155f",
       "fromNode": "48f791b3c7a05bb6",
-      "toNode": "e7915b71b7c78108",
+      "toNode": "b9f0ae3754f47fde",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
       "label": "起票"
     },
     {
-      "id": "eebb3a6f7f925cda",
+      "id": "9a9669d893f0acdf",
       "fromNode": "48f791b3c7a05bb6",
-      "toNode": "ed868caa4164d568",
+      "toNode": "0efc99b32df63087",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",

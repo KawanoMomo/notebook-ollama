@@ -68,6 +68,8 @@ frontmatter は英語語彙 (`check_design_index.py` が検査)、本文表記�
 | [015](015-partial-success-per-unit.md) | error-handling | 視覚索引構築の部分成功は単位ごとの独立性を意味する | 承認 | 2026-07-30 | 表・図 Stage 4 |
 | [016](016-pixel-native-explicit-failure.md) | error-handling | pixel_native は根拠画像なしで黙って劣化させず明示エラーにする | 承認 | 2026-07-30 | 表・図 Stage 4 |
 | [017](017-torch-cuda-wheel-index.md) | external-dep | visual extraのtorchはCUDAホイールインデックスに切替、CPUはフォールバックとして残す | 承認 | 2026-07-30 | 表・図 Stage 4 |
+| [018](018-openai-compat-second-contract.md) | architecture | LLM/Embedding の第二共通契約として OpenAI 互換 API を採用する | 承認 | 2026-08-02 | iGPU/NPU Phase 1.5 |
+| [019](019-llm-backend-vulkan-promotion.md) | external-dep | iGPU の LLM 経路を Ollama Vulkan に一本化し IPEX-LLM/DirectML 系 id を廃止する | 承認 | 2026-08-02 | iGPU/NPU Phase 1.5 |
 
 ## 「結果」「教訓」が未記入の ADR
 

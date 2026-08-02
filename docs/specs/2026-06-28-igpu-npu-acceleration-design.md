@@ -13,6 +13,8 @@ tags:
   - spec
 related:
   - "[[2026-06-19-model-selection-design]]"
+  - "[[018-openai-compat-second-contract]]"
+  - "[[019-llm-backend-vulkan-promotion]]"
 code:
   - apps/api/dependencies.py
   - apps/api/main.py
@@ -635,7 +637,7 @@ LLM/Embedding は Ollama HTTP API を共通契約とする方針(§3.2)は維持
 - `PUT /api/settings/ollama` と再インデックス保存が ollama セクションを固定キーで再構築して手編集フィールド(`runtime_backend` / `openai_compat_*` 等)を消すバグを、既存キーへのマージ更新に修正
 - Planner: NPU contention 判定を STT override 適用後の最終 STT id で行うよう修正
 - vision capability probe を best-effort 化(取得失敗はチャットを巻き込まず vision なし扱い)
-- ADR ドラフト 2 件を起票: `draft-2026-08-02-openai-compat-second-contract` / `draft-2026-08-02-llm-backend-vulkan-promotion`
+- ADR ドラフト 2 件を起票(2026-08-02 に承認・採番済み: [[018-openai-compat-second-contract|ADR-018]] / [[019-llm-backend-vulkan-promotion|ADR-019]])
 
 **既知制限(Phase 1.5、openai-compat 運用時)**:
 
