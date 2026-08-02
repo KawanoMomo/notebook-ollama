@@ -19,6 +19,13 @@ related:
   - "[[2026-06-19-model-selection-design]]"
   - "[[2026-07-02-job-status-bar-optimistic-ui-design]]"
   - "[[2026-07-20-beta-feature-flags-design]]"
+code:
+  - core/generation/stream.py
+  - core/ingestion/types.py
+  - core/retrieval/budgeter.py
+  - core/storage/migrations.py
+  - tests/integration
+  - tests/unit
 ---
 
 # PDF表・図サイドカー抽出 (Stage 1) 設計書

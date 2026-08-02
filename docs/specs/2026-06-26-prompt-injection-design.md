@@ -12,6 +12,22 @@ project: NotebookOllama
 area: prompts
 tags:
   - spec
+code:
+  - apps/api/main.py
+  - apps/api/routers/prompts.py
+  - apps/api/schemas/prompts.py
+  - apps/web/src/lib/api/prompts.ts
+  - apps/web/src/lib/components/ChatInput.svelte
+  - apps/web/src/lib/components/PromptToolbar.svelte
+  - apps/web/src/lib/components/settings/DropdownPromptEditModal.svelte
+  - apps/web/src/lib/components/settings/FixedSlotCard.svelte
+  - apps/web/src/lib/components/settings/PromptsSection.svelte
+  - apps/web/src/lib/stores/prompts.svelte.ts
+  - apps/web/src/routes/settings
+  - apps/web/tests/unit/PromptToolbar.test.ts
+  - apps/web/tests/unit/promptsStore.test.ts
+  - core/settings_store.py
+  - tests/unit/test_prompts_store.py
 ---
 
 # Prompt Injection — 設計仕様書

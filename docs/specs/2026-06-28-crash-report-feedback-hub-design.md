@@ -14,6 +14,16 @@ tags:
   - spec
 related:
   - "[[notebook-ollama-design]]"
+code:
+  - apps/api/routers
+  - apps/api/routers/crash.py
+  - core/crash_reporter
+  - core/crash_reporter/fingerprint.py
+  - core/exceptions.py
+  - core/feedback_hub
+  - core/settings_store.py
+  - tests/integration/crash_reporter
+  - tests/unit/crash_reporter
 ---
 
 # クラッシュレポート & お知らせ/フィードバックハブ — 設計仕様

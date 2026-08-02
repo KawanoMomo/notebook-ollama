@@ -11,6 +11,23 @@ project: NotebookOllama
 area: model
 tags:
   - spec
+code:
+  - apps/api/dependencies.py
+  - apps/api/routers/chat.py
+  - apps/api/routers/models.py
+  - apps/api/routers/settings.py
+  - apps/api/schemas
+  - apps/api/schemas/settings.py
+  - apps/web/src/lib/api/settings.ts
+  - apps/web/src/lib/api/types.ts
+  - apps/web/src/lib/stores/settings.svelte.ts
+  - core/config.py
+  - core/ollama/gateway.py
+  - core/ollama/models_info.py
+  - core/settings_store.py
+  - core/storage/chunks_repo.py
+  - core/storage/notebooks_repo.py
+  - core/storage/vector_store.py
 ---
 
 # Ollama モデル選択(LLM / 埋め込み)切替 設計仕様

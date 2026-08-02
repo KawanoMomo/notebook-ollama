@@ -11,6 +11,14 @@ project: NotebookOllama
 area: recording
 tags:
   - spec
+code:
+  - apps/web/src/routes/settings
+  - core/generation/citations.py
+  - core/generation/locations.py
+  - core/recording
+  - core/retrieval/search.py
+  - core/storage/chunks_repo.py
+  - core/storage/vector_store.py
 ---
 
 # 設計仕様: 録音ソース機能(Notebook Ollama)
