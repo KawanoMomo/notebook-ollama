@@ -598,7 +598,7 @@ LLM/Embedding は Ollama HTTP API を共通契約とする方針(§3.2)は維持
 
 ### P. Phase 2 着手時の追加検証タスク
 
-1. `OLLAMA_FLASH_ATTENTION=false` で bge-m3 GPU 経路の NaN 再現有無を確認(開発機 RTX 2080 Ti で可能。Phase 2 を待たず実施可。ただし Ollama サーバーの再起動が必要なため、開発機の Ollama を占有できるタイミングで実施する)
+1. ~~`OLLAMA_FLASH_ATTENTION=false` で bge-m3 GPU 経路の NaN 再現有無を確認~~ **実施済み(2026-08-02)**: Ollama 0.32.1 + 14ケース×3構成(FA=true GPU / FA=false GPU / CPU)で **NaN 再現せず**。GPU化の便益は約3.8倍だが、負の再現結果のみでは安全ピンを外す根拠に不足のため **R4(num_gpu=0)は維持**。切替判断は実ノートブック再埋め込みのカナリア運用を条件とする。詳細: `docs/eval/2026-08-02-p1-flash-attention-nan/report.md`
 2. docs.openvino.ai の NPU GenAI ページを人手確認(static shape 制約の現行仕様確定)
 3. `onnxruntime-openvino` と `openvino` 2026.x の同一 venv 共存確認
 4. Gorgon Point NPU の PCI ID 実機確認(Probe の AMD 判定表更新)
