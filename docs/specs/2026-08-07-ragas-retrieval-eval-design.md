@@ -5,7 +5,7 @@ summary: "設定スイープで検索段の精度を定量比較するオフラ�
 aliases:
   - Ragas評価基盤
   - 検索精度評価
-status: draft
+status: review
 date: 2026-08-07
 project: NotebookOllama
 area: evaluation
@@ -15,8 +15,10 @@ tags:
   - retrieval
 code:
   - core/config.py
+  - core/eval
   - core/ingestion
   - core/retrieval
+  - scripts/eval
 ---
 
 # Ragas による検索精度オフライン評価基盤 — 設計仕様書
