@@ -31,7 +31,14 @@ def _mean(values: list[float]) -> float:
 
 
 def _aggregate(scores: list[QuestionScore]) -> dict[str, float]:
-    """None を含む指標は集計から落とす (Ragas 未導入時)。"""
+    """None を含む指標は集計から落とす (Ragas 未導入時)。
+
+    None を「0点」ではなく「標本から除外」として扱う。ただしこれは、Ragas が
+    一部の設問だけで失敗した場合に**列の標本数が条件ごとに変わる**ことを意味
+    する (条件Aは20問平均、条件Bは17問平均、といった不等な比較になりうる)。
+    0 で埋めると失敗が悪スコアに化けてもっと誤解を招くため、この挙動を採るが、
+    Ragas 失敗が散発するときの条件間比較は等質でないことを前提に読むこと。
+    """
     out: dict[str, float] = {}
     for key, _label in _METRIC_ORDER:
         values = [

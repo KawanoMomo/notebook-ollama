@@ -125,6 +125,14 @@ async def _amain(argv: list[str] | None = None) -> int:
 
     harness = _EvalHarness(config=config, notebook_id=spec.notebook_id)
 
+    # 視覚索引の実在確認は DB 接続が要るのでハーネス構築後、かつ長時間実行を
+    # 始める確認プロンプトの手前で行う。
+    message = _check_visual_index_built(config, spec=spec, harness=harness)
+    if message is not None:
+        print(f"\nエラー: {message}", file=sys.stderr)
+        harness.close()
+        return 2
+
     if not args.yes and not _confirm(f"{len(conditions) - len(done)} 条件を実行しますか"):
         print("中止しました")
         harness.close()
@@ -237,14 +245,60 @@ def _check_visual_axes(config, *, spec, args) -> str | None:
     )
 
 
+def _check_visual_index_built(config, *, spec, harness) -> str | None:
+    """スイープする index_unit の視覚索引が実在するか確かめる。
+
+    `core/retrieval/search.py` は索引が無い / 埋め込みモデルが食い違うとき
+    `available=False` へ**無言で**縮退する。その結果 hybrid_rrf はテキスト
+    検索の数値、visual_only は全0.0 の数値を出し、どちらも失敗扱いにならない。
+    「page は tile よりずっと悪い」というもっともらしい誤読が残るので、
+    README の注意書きではなくコード側のガードにする。
+    """
+    if not [k for k in _VISUAL_AXES if k in spec.axes]:
+        return None
+
+    units = spec.axes.get("index_unit") or [spec.baseline.get("index_unit")]
+    expected = config.visual.embedding_model
+
+    problems = []
+    for unit in units:
+        if unit is None:
+            continue
+        meta = harness.visual_meta(str(unit))
+        if meta is None:
+            problems.append(
+                f"  - index_unit={unit}: 視覚索引が構築されていません。"
+                f"(notebook_id={spec.notebook_id})"
+            )
+        elif meta.embedding_model != expected:
+            problems.append(
+                f"  - index_unit={unit}: 索引の埋め込みモデルが "
+                f"{meta.embedding_model!r} で、設定の {expected!r} と違います。"
+            )
+    if not problems:
+        return None
+
+    return (
+        "視覚索引が揃っていないまま視覚系の軸を振ろうとしています。\n"
+        "このまま実行すると該当条件は無言でテキスト検索または全0.0に縮退し、"
+        "失敗として記録されないまま誤った比較表が出ます。\n"
+        + "\n".join(problems)
+        + "\n該当する index_unit の索引を構築してから再実行してください。"
+    )
+
+
 def _render(results_path, conditions, spec, *, use_ragas: bool) -> str:
     import json
 
-    rows = [
-        json.loads(line)
-        for line in results_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    rows = []
+    for line in results_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            # 中断時に最終行が途中で切れることがある (runner と同じ扱い)。
+            continue
     markers = {r["condition_id"]: r for r in rows if r["type"] == "condition"}
 
     summaries = []
@@ -392,6 +446,12 @@ class _EvalHarness:
                 max_images_getter=lambda: int(current.get("max_images", base.max_images)),
             ),
         )
+
+    def visual_meta(self, unit: str):
+        """視覚索引のメタ情報 (未構築なら None)。実在確認ガード用。"""
+        from core.storage.visual_index_repo import get_meta
+
+        return get_meta(self._conn, self._notebook_id, unit)
 
     async def search(self, *, condition, item) -> list[str]:
         self._current.clear()

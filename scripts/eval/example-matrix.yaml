@@ -1,7 +1,9 @@
 # 検索精度スイープの定義例。
 # 実行: uv run --no-sync python scripts/eval/run_sweep.py --matrix scripts/eval/example-matrix.yaml
 #
-# axes に書いたキーは baseline にも必ず存在すること。
+# axes に書いたキーは baseline にも必ず存在し、値リストには baseline の値を
+# 含めること (含めないと baseline 条件が測定されず、比較表の差分が消える)。
+# baseline には top_k が必須。
 # tile_rows / tile_cols / tile_overlap / embedding_model を axes に入れると
 # 索引の再構築が必要になり、現状の CLI は実行を拒否する。
 name: search-params
