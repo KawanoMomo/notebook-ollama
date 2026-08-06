@@ -129,12 +129,20 @@ def _ragas_scores(
     None を返して自前指標だけで続行する (スイープ全体を落とさない)。
     """
     import asyncio
+    import warnings
 
     from ragas.dataset_schema import SingleTurnSample
-    from ragas.metrics import (
-        NonLLMContextPrecisionWithReference,
-        NonLLMContextRecall,
-    )
+
+    # ragas.metrics からの import は v1.0 で削除予定の DeprecationWarning を出すが、
+    # 代替の ragas.metrics.collections には NonLLM 系 (judge LLM 不使用版) が
+    # 存在しない (LLM ベースの ContextRecall/ContextPrecision のみ)。他に選択肢が
+    # ないため、この import 一箇所に限定して警告を握りつぶす。
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from ragas.metrics import (
+            NonLLMContextPrecisionWithReference,
+            NonLLMContextRecall,
+        )
 
     sample = SingleTurnSample(
         retrieved_contexts=list(retrieved),
