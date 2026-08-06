@@ -167,6 +167,27 @@ async def test_score_question_with_ragas_works_inside_running_event_loop():
 
 
 @pytest.mark.skipif(not ragas_available(), reason="ragas 未導入 (eval extra)")
+def test_score_question_with_ragas_scores_empty_retrieval_as_zero():
+    """1件も引けなかった条件は欠測ではなく 0 点。
+
+    Ragas の NonLLM メトリクスは空の retrieved_contexts に対して
+    `max() iterable argument is empty` で落ちるため、放置すると最も成績の
+    悪い条件だけが主指標の平均から抜け、壊れた設定が良く見える方向に効く。
+    自前指標 (recall_at_k / mrr) の空入力時の扱いとも揃える。
+    """
+    score = score_question(
+        id="q001",
+        kind="table",
+        retrieved=[],
+        reference=["送信 FIFO は 16 段"],
+        use_ragas=True,
+    )
+
+    assert score.context_recall == 0.0
+    assert score.context_precision == 0.0
+
+
+@pytest.mark.skipif(not ragas_available(), reason="ragas 未導入 (eval extra)")
 def test_score_question_with_ragas_scores_complete_miss():
     """完全不一致なら Ragas の両指標とも 0 になる。"""
     score = score_question(
