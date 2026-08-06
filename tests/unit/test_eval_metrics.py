@@ -124,7 +124,13 @@ def test_ragas_available_returns_bool():
 
 
 @pytest.mark.skipif(not ragas_available(), reason="ragas 未導入 (eval extra)")
-def test_score_question_with_ragas_fills_ragas_metrics():
+def test_score_question_with_ragas_scores_perfect_hit():
+    """完全一致なら Ragas の両指標とも満点になる。
+
+    値域だけを見る表明では「常に 0.0 を返す」「別のメトリクスに
+    差し替わった」といった回帰を検出できないため、実測値で固定する。
+    precision は内部の正規化で厳密な 1.0 にならないので近似比較にする。
+    """
     score = score_question(
         id="q001",
         kind="table",
@@ -133,7 +139,20 @@ def test_score_question_with_ragas_fills_ragas_metrics():
         use_ragas=True,
     )
 
-    assert score.context_recall is not None
-    assert score.context_precision is not None
-    assert 0.0 <= score.context_recall <= 1.0
-    assert 0.0 <= score.context_precision <= 1.0
+    assert score.context_recall == pytest.approx(1.0)
+    assert score.context_precision == pytest.approx(1.0, abs=1e-6)
+
+
+@pytest.mark.skipif(not ragas_available(), reason="ragas 未導入 (eval extra)")
+def test_score_question_with_ragas_scores_complete_miss():
+    """完全不一致なら Ragas の両指標とも 0 になる。"""
+    score = score_question(
+        id="q001",
+        kind="table",
+        retrieved=["電源電圧は 3.3V"],
+        reference=["送信 FIFO は 16 段"],
+        use_ragas=True,
+    )
+
+    assert score.context_recall == pytest.approx(0.0)
+    assert score.context_precision == pytest.approx(0.0)
