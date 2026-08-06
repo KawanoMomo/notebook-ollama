@@ -1,0 +1,21 @@
+# 検索精度スイープの定義例。
+# 実行: uv run --no-sync python scripts/eval/run_sweep.py --matrix scripts/eval/example-matrix.yaml
+#
+# axes に書いたキーは baseline にも必ず存在すること。
+# tile_rows / tile_cols / tile_overlap / embedding_model を axes に入れると
+# 索引の再構築が必要になり、現状の CLI は実行を拒否する。
+name: search-params
+corpus: data/eval/corpus/sample.pdf
+golden: data/eval/golden.jsonl
+notebook_id: eval-notebook
+baseline:
+  top_k: 8
+  search_strategy: hybrid_rrf
+  index_unit: tile
+  tile_rows: 3
+  tile_cols: 1
+  tile_overlap: 0.1
+axes:
+  top_k: [5, 8, 12]
+  search_strategy: [hybrid_rrf, visual_only]
+  index_unit: [page, tile]
