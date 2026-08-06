@@ -72,3 +72,68 @@ def test_mrr_uses_earliest_hit_among_multiple_references():
 def test_mrr_empty_inputs_are_zero():
     assert mrr([], ["A の本文"]) == 0.0
     assert mrr(["A の本文"], []) == 0.0
+
+
+from core.eval.metrics import QuestionScore, ragas_available, score_question
+
+
+def test_score_question_without_ragas_fills_own_metrics():
+    score = score_question(
+        id="q001",
+        kind="table",
+        retrieved=["A の本文", "無関係"],
+        reference=["A の本文"],
+        use_ragas=False,
+    )
+
+    assert isinstance(score, QuestionScore)
+    assert score.id == "q001"
+    assert score.kind == "table"
+    assert score.recall_at_k == pytest.approx(1.0)
+    assert score.mrr == pytest.approx(1.0)
+
+
+def test_score_question_without_ragas_leaves_ragas_metrics_none():
+    score = score_question(
+        id="q001",
+        kind="text",
+        retrieved=["A の本文"],
+        reference=["A の本文"],
+        use_ragas=False,
+    )
+
+    assert score.context_recall is None
+    assert score.context_precision is None
+
+
+def test_score_question_miss_scores_zero():
+    score = score_question(
+        id="q001",
+        kind="figure",
+        retrieved=["まったく別の文章"],
+        reference=["A の本文"],
+        use_ragas=False,
+    )
+
+    assert score.recall_at_k == 0.0
+    assert score.mrr == 0.0
+
+
+def test_ragas_available_returns_bool():
+    assert isinstance(ragas_available(), bool)
+
+
+@pytest.mark.skipif(not ragas_available(), reason="ragas 未導入 (eval extra)")
+def test_score_question_with_ragas_fills_ragas_metrics():
+    score = score_question(
+        id="q001",
+        kind="table",
+        retrieved=["送信 FIFO は 16 段"],
+        reference=["送信 FIFO は 16 段"],
+        use_ragas=True,
+    )
+
+    assert score.context_recall is not None
+    assert score.context_precision is not None
+    assert 0.0 <= score.context_recall <= 1.0
+    assert 0.0 <= score.context_precision <= 1.0
