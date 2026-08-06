@@ -115,6 +115,19 @@ uv run --no-sync python scripts/eval/run_sweep.py \
   実測で約95秒/ページ(CPU 安全プロファイル)かかるため、無自覚な長時間実行を
   防ぐためのガード。これらを比較したい場合は、値ごとに索引を手動構築して
   baseline を差し替え、別々のスイープとして実行する
+- `axes` の各値リストには **baseline の値を必ず含める**こと。含めないと baseline
+  条件が測定されず、比較表から差分列が丸ごと消える(CLI が exit 2 で停止する)。
+  `baseline` には `top_k` が必須
+- `search_strategy: pixel_native` は件数上限に `top_k` ではなく `max_images` を
+  使う(`core/retrieval/search.py`)。そのため `search_strategy: [hybrid_rrf,
+  pixel_native]` × `top_k: [5, 8, 12]` のようなスイープでは、pixel_native 側の
+  3条件が**まったく同じ設定の測定**になる。条件IDは異なるので表からは重複と
+  分からない。pixel_native の件数を振りたい場合は `max_images` を軸にすること
+- 視覚系の軸(`search_strategy` / `index_unit`)を振るスイープでは、対象の
+  `index_unit` の視覚索引が実在し、その埋め込みモデルが設定と一致することを
+  CLI が確認する(不一致・未構築なら exit 2)。この確認が無いと、索引の無い
+  条件が無言でテキスト検索や全0.0に縮退し、失敗として記録されないまま
+  もっともらしい比較表が出る
 - 中断しても `results.jsonl` に完了済み条件が残るので、同じコマンドで再開できる
 - 実行前ガードはすべて exit 2 で停止する: 本番 data_dir、視覚検索の無効、
   再インデックス要。`--dry-run` はこれらのガードの手前で終了するため、条件の

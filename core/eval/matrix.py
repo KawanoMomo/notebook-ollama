@@ -21,6 +21,11 @@ REINDEX_KEYS = frozenset({"embedding_model", "tile_rows", "tile_cols", "tile_ove
 
 _REQUIRED_SPEC_KEYS = ("name", "corpus", "golden", "notebook_id", "baseline")
 
+# baseline に必ず要るキー。CLI が検索の limit として毎条件で読むため、
+# 欠けていると全条件が KeyError で「失敗」し、失敗表だけの report が
+# exit 0 で出てしまう (静かに無意味な成果物が残る)。
+_REQUIRED_BASELINE_KEYS = ("top_k",)
+
 
 class MatrixError(Exception):
     """マトリクス定義が不正。"""
@@ -58,18 +63,27 @@ def load_sweep(path: Path) -> SweepSpec:
         if key not in raw:
             raise MatrixError(f"{path}: 必須キーが無い: {key}")
 
+    baseline = dict(raw["baseline"] or {})
+    for key in _REQUIRED_BASELINE_KEYS:
+        if key not in baseline:
+            raise MatrixError(f"{path}: baseline に必須キーが無い: {key}")
+
     return SweepSpec(
         name=str(raw["name"]),
         corpus=str(raw["corpus"]),
         golden=str(raw["golden"]),
         notebook_id=str(raw["notebook_id"]),
-        baseline=dict(raw["baseline"]),
+        baseline=baseline,
         axes={k: list(v) for k, v in (raw.get("axes") or {}).items()},
     )
 
 
 def expand(spec: SweepSpec) -> list[Condition]:
     """軸の直積を展開する。先頭は必ず baseline 条件。"""
+    for key in _REQUIRED_BASELINE_KEYS:
+        if key not in spec.baseline:
+            raise MatrixError(f"baseline に必須キーが無い: {key}")
+
     for key, values in spec.axes.items():
         if key not in spec.baseline:
             raise MatrixError(
@@ -94,6 +108,19 @@ def expand(spec: SweepSpec) -> list[Condition]:
         )
 
     baseline_id = condition_id(spec.baseline)
+    if all(c.id != baseline_id for c in conditions):
+        # baseline 条件が展開結果に無いと report の差分列が全て消え、
+        # 「baseline 条件: <どこにも無いハッシュ>」という表が黙って出る。
+        # ここで落とす (自動追加はしない。未測定の行を表に混ぜないため)。
+        offenders = ", ".join(
+            f"{k}={spec.baseline[k]!r} (値: {spec.axes[k]!r})"
+            for k in sorted(spec.axes)
+            if spec.baseline[k] not in spec.axes[k]
+        )
+        raise MatrixError(
+            "baseline 条件が展開結果に含まれない。各軸の値リストに baseline の値を"
+            f"含めること: {offenders}"
+        )
     conditions.sort(key=lambda c: (c.id != baseline_id,))
     return conditions
 

@@ -55,7 +55,7 @@ def test_expand_produces_cartesian_product():
 
 
 def test_expand_fills_unswept_keys_from_baseline():
-    conditions = expand(_spec({"top_k": [5]}))
+    conditions = expand(_spec({"top_k": [5, 8]}))
 
     assert conditions[0].overrides["tile_rows"] == 3
     assert conditions[0].overrides["search_strategy"] == "hybrid_rrf"
@@ -85,8 +85,44 @@ def test_expand_rejects_empty_axis():
         expand(_spec({"top_k": []}))
 
 
+def test_expand_rejects_axis_whose_values_omit_the_baseline_value():
+    # baseline が条件に含まれないと report の差分列が丸ごと消える (静かな誤読)。
+    with pytest.raises(MatrixError, match="top_k"):
+        expand(_spec({"top_k": [5, 12]}))
+
+
+def test_expand_rejects_baseline_without_top_k():
+    spec = SweepSpec(
+        name="s",
+        corpus="c",
+        golden="g",
+        notebook_id="n",
+        baseline={"search_strategy": "hybrid_rrf"},
+        axes={},
+    )
+    with pytest.raises(MatrixError, match="top_k"):
+        expand(spec)
+
+
+def test_load_sweep_rejects_baseline_without_top_k(tmp_path):
+    path = tmp_path / "matrix.yaml"
+    path.write_text(
+        "name: s\n"
+        "corpus: c\n"
+        "golden: g\n"
+        "notebook_id: n\n"
+        "baseline: {search_strategy: hybrid_rrf}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MatrixError, match="top_k"):
+        load_sweep(path)
+
+
 def test_search_time_axes_do_not_require_reindex():
-    conditions = expand(_spec({"top_k": [5, 8], "search_strategy": ["visual_only"]}))
+    conditions = expand(
+        _spec({"top_k": [5, 8], "search_strategy": ["hybrid_rrf", "visual_only"]})
+    )
 
     assert all(not c.requires_reindex for c in conditions)
 
