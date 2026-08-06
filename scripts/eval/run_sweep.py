@@ -52,6 +52,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="確認プロンプトを出さない",
     )
     p.add_argument(
+        "--allow-production-data-dir",
+        action="store_true",
+        help="本番 data_dir での実行を許可する (既定は停止。通常は使わない)",
+    )
+    p.add_argument(
         "--no-ragas",
         action="store_true",
         help="Ragas を使わず自前指標だけで採点する",
@@ -96,6 +101,17 @@ async def _amain(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    # 設定の解決はここで行う。以降のガードは「本番データを1バイトも触らない」
+    # ことが前提なので、AppConfig を読むだけ (ensure_dirs / migrate はしない)。
+    config = _load_eval_config()
+    print(f"data_dir: {config.data_dir}")
+
+    for check in (_check_data_dir, _check_visual_axes):
+        message = check(config, spec=spec, args=args)
+        if message is not None:
+            print(f"\nエラー: {message}", file=sys.stderr)
+            return 2
+
     golden = goldenset.load_golden(Path(spec.golden))
     print(f"golden set: {len(golden)} 問")
 
@@ -107,9 +123,7 @@ async def _amain(argv: list[str] | None = None) -> int:
     if done:
         print(f"再開: {len(done)} 件の条件は実行済みのためスキップします")
 
-    harness = _EvalHarness(notebook_id=spec.notebook_id)
-    # data_dir は本番と分離しているか目視できるよう、確認前に必ず出す。
-    print(f"data_dir: {harness.data_dir}")
+    harness = _EvalHarness(config=config, notebook_id=spec.notebook_id)
 
     if not args.yes and not _confirm(f"{len(conditions) - len(done)} 条件を実行しますか"):
         print("中止しました")
@@ -133,6 +147,94 @@ async def _amain(argv: list[str] | None = None) -> int:
     (out_dir / "report.md").write_text(md, encoding="utf-8")
     print(f"\n完了: {out_dir / 'report.md'}")
     return 0
+
+
+def _load_eval_config():
+    """main.py の lifespan と同じ順序で設定を解決する (ディスクは触らない)。"""
+    from core.config import AppConfig
+    from core.settings_store import apply_overrides
+
+    config = AppConfig()
+    apply_overrides(config)
+    return config
+
+
+def _default_data_dir() -> Path:
+    """環境変数が未指定のときに AppConfig が使う data_dir (= 本番)。
+
+    リテラルを書き写すと core/config.py の変更で静かにズレるため、
+    pydantic のフィールド定義から default_factory を引く。
+    """
+    from core.config import AppConfig
+
+    factory = AppConfig.model_fields["data_dir"].default_factory
+    return Path(factory())
+
+
+def _check_data_dir(config, *, spec, args) -> str | None:
+    """本番 data_dir への実行を止める (spec Global Constraints)。
+
+    評価は `ensure_dirs()` / `migrate()` / `ensure_collection()` を走らせる=
+    書き込みを伴う。README の記載と実行時の print だけでは「環境変数を設定
+    し忘れた」場合を防げないので、コード側で既定を「停止」にする。
+    """
+    if args.allow_production_data_dir:
+        return None
+    if Path(config.data_dir).resolve() != _default_data_dir().resolve():
+        return None
+    return (
+        f"本番の data_dir ({config.data_dir}) で評価を実行しようとしています。\n"
+        "評価は本番データに触れてはいけません (索引の作成・マイグレーションが走ります)。\n"
+        "専用の data_dir を環境変数で指定してください:\n"
+        "    NOTEBOOK_OLLAMA_DATA_DIR=./data/eval/workdir uv run --no-sync python "
+        "scripts/eval/run_sweep.py --matrix <path>\n"
+        "(PowerShell: $env:NOTEBOOK_OLLAMA_DATA_DIR = './data/eval/workdir')\n"
+        "本当に本番 data_dir で走らせる場合のみ --allow-production-data-dir を付けること。"
+    )
+
+
+# 視覚検索が無効だと結果に差が出ない軸。
+_VISUAL_AXES = ("search_strategy", "index_unit")
+
+
+def _check_visual_axes(config, *, spec, args) -> str | None:
+    """視覚検索が無効なまま視覚系の軸を振るのを止める。
+
+    `enabled` getter が常に False を返す状態では全条件が同一スコアになる。
+    警告だけだと --yes 併用で長時間走り切って無意味な report.md が出る。
+    """
+    from core.feature_service import FeatureService
+    from core.visual.encoder import visual_extra_available
+
+    swept = [k for k in _VISUAL_AXES if k in spec.axes]
+    if not swept:
+        return None
+
+    reasons = []
+    if not FeatureService(config.data_dir).is_enabled("table-figure-rag"):
+        reasons.append(
+            "  - ベータ機能 'table-figure-rag' が OFF です。\n"
+            "    設定画面、または data_dir の settings.json の "
+            "features.table-figure-rag を true にしてください。"
+        )
+    if not visual_extra_available():
+        reasons.append(
+            "  - visual extra が未導入です (視覚エンコーダを構築できません)。\n"
+            "    uv sync --extra eval --extra pdf --extra visual を実行してください "
+            "(recording extra とは共存不可)。"
+        )
+    if not config.visual.search_enabled:
+        reasons.append(
+            "  - 設定 visual.search_enabled が false です。true にしてください。"
+        )
+    if not reasons:
+        return None
+
+    return (
+        f"軸 {swept} は視覚検索の設定ですが、視覚検索が無効化されています。\n"
+        "このまま実行すると全条件が同じテキスト検索になり、条件差の出ない結果になります。\n"
+        + "\n".join(reasons)
+    )
 
 
 def _render(results_path, conditions, spec, *, use_ragas: bool) -> str:
@@ -190,26 +292,21 @@ class _EvalHarness:
     差し替えるだけで条件を切り替えられる。
     """
 
-    def __init__(self, *, notebook_id: str) -> None:
-        from core.config import AppConfig
+    def __init__(self, *, config, notebook_id: str) -> None:
         from core.feature_service import FeatureService
         from core.ollama.client import OllamaClient
         from core.ollama.gateway import OllamaGateway
         from core.retrieval.search import RetrievalService, VisualSearchDeps
-        from core.settings_store import apply_overrides
         from core.storage.database import connect, migrate
         from core.storage.vector_store import VectorStore
         from core.storage.visual_index_repo import get_meta as visual_get_meta
         from core.storage.visual_store import VisualUnitStore
         from core.visual.encoder import TransformersVisualEncoder, visual_extra_available
 
-        # main.py の lifespan と同じ順序: 環境変数で AppConfig を作り、
-        # settings.json の上書きを適用する。
-        config = AppConfig()
-        apply_overrides(config)
+        # config は解決済み (_load_eval_config)。data_dir ガードを通過した後に
+        # 呼ばれる前提なので、ここで初めてディスクへ書き込んでよい。
         config.ensure_dirs()
         self._notebook_id = notebook_id
-        self.data_dir = config.data_dir
         self._current: dict[str, Any] = {}
 
         self._conn = connect(config.metadata_db_path)
