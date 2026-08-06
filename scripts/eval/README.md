@@ -46,7 +46,57 @@ data_dir で走らせる場合だけ `--allow-production-data-dir` を付ける�
 ```
 
 `kind` は `text` / `table` / `figure` のいずれか(種別ごとに指標を分解する)。
-生成を自動化するスクリプトはまだ無く、現状は手で書き起こす。
+
+`scripts/eval/build_goldenset.py` が生成を半自動化する。
+
+```bash
+uv run --no-sync python scripts/eval/build_goldenset.py \
+    --notebook-id <取り込み済みノートブックID> \
+    --count 20 \
+    --out data/eval/golden.jsonl
+```
+
+動作:
+
+1. 対象ノートブックの取り込み済みチャンクを SQLite から読み出し、`--count`
+   件(最低8件)をランダムにサンプリングする(`--seed` で再現可能)
+2. **既定は Ragas 経路**。`ragas.testset.TestsetGenerator.from_langchain` に、
+   ローカル Ollama を langchain-community の `ChatOllama` /
+   `OllamaEmbeddings` でラップして渡し、サンプルしたチャンクから質問を
+   生成させる。LLM は設定の `ollama.default_model`(`--llm-model` で上書き)、
+   埋め込みは `ollama.embedding_model` を使う
+3. 候補を1件ずつ端末に出し、`[y/N/q]` で採否を取る。採用したものだけ `kind`
+   を入力して golden set に入る
+4. `--out` に JSONL を書き出す。`q` や Ctrl-C で打ち切っても、そこまでの
+   採用分は保存される。`--resume` を付けると既存ファイルの後ろに追記する
+   (id は通し番号で振り直される)
+
+**人手レビューを飛ばす経路は用意していない**(`--auto-accept` 等は無い)。
+golden set は以降のすべての測定の土台なので、ローカルLLMが作った「正解」を
+無検証で取り込むと、以降の数値が静かに間違い続ける。
+
+### Ragas 経路の実測と限界
+
+この環境(ragas 0.4.3 / Ollama)で `generate_with_chunks` は動作する。ただし:
+
+- **遅い**。ナレッジグラフ構築(SummaryExtractor 等)が支配的で、実測で
+  数十秒/チャンク。`--count 40` は1時間規模になりうる
+- **質は当たり外れがある**。日本語コーパスに対して英語の質問が出る、本文を
+  ほぼ言い換えただけの質問が出る、といった候補が混ざる。だから採否レビューが
+  要る(そこで落とせばよい)
+
+Ragas を使いたくない場合は `--manual` を付ける。質問生成を行わず、サンプル
+したチャンク本文を提示して質問を人が書く半手動モードになる。品質ゲートである
+人手レビューは同じように通るので、失うのは下書きの手間だけ。
+
+```bash
+uv run --no-sync python scripts/eval/build_goldenset.py \
+    --notebook-id <id> --count 20 --out data/eval/golden.jsonl --manual
+```
+
+この CLI も `run_sweep.py` と同じ data_dir ガードを通る。
+`NOTEBOOK_OLLAMA_DATA_DIR` が未設定だと本番 data_dir を指すため停止する
+(exit 2)。
 
 5. スイープを実行する
 
