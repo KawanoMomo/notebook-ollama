@@ -601,9 +601,29 @@
       "color": "4"
     },
     {
-      "id": "16fc06a661ad6244",
+      "id": "f83601ee799564c1",
       "type": "group",
       "x": 20,
+      "y": 3371,
+      "width": 292,
+      "height": 147,
+      "label": "evaluation  (基盤)",
+      "color": "1"
+    },
+    {
+      "id": "7bc921cbe9a949be",
+      "type": "file",
+      "x": 36,
+      "y": 3417,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-08-07-ragas-retrieval-eval-design.md",
+      "color": "1"
+    },
+    {
+      "id": "16fc06a661ad6244",
+      "type": "group",
+      "x": 352,
       "y": 3371,
       "width": 292,
       "height": 147,
@@ -613,7 +633,7 @@
     {
       "id": "f673989fb83659a8",
       "type": "file",
-      "x": 36,
+      "x": 368,
       "y": 3417,
       "width": 260,
       "height": 85,
@@ -623,7 +643,7 @@
     {
       "id": "41de75aca179bb72",
       "type": "group",
-      "x": 352,
+      "x": 684,
       "y": 3371,
       "width": 292,
       "height": 466,
@@ -633,7 +653,7 @@
     {
       "id": "98e11bff2639cc10",
       "type": "file",
-      "x": 368,
+      "x": 700,
       "y": 3417,
       "width": 260,
       "height": 85,
@@ -643,7 +663,7 @@
     {
       "id": "25186bee4e961802",
       "type": "file",
-      "x": 368,
+      "x": 700,
       "y": 3514,
       "width": 260,
       "height": 85,
@@ -653,7 +673,7 @@
     {
       "id": "4b4a1004d71db252",
       "type": "file",
-      "x": 368,
+      "x": 700,
       "y": 3625,
       "width": 260,
       "height": 85,
@@ -663,7 +683,7 @@
     {
       "id": "519d1b2f3b0b2638",
       "type": "file",
-      "x": 368,
+      "x": 700,
       "y": 3736,
       "width": 260,
       "height": 85,

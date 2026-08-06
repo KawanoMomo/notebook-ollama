@@ -49,6 +49,9 @@ tags:
 > - [[2026-07-20-visual-embedding-index-design|視覚埋め込み第2インデックス (Stage 3)]] ✅
 > - [[2026-07-29-pixelrag-tile-index-design|PixelRAG式タイル索引と検索戦略の選択 (Stage 4)]] ✅
 
+> [!abstract] 評価 (evaluation)
+> - [[2026-08-07-ragas-retrieval-eval-design|Ragas 検索精度オフライン評価基盤]] ✏️
+
 > [!abstract] 要約 (summary)
 > - [[2026-06-26-meeting-adr-templates|議事録テンプレ + ADR 抽出機能]] ✅
 > - [[2026-06-26-summary-prompt-tune|要約プロンプト改善 — 選定根拠]] ✅
