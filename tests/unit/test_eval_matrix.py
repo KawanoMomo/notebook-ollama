@@ -22,6 +22,7 @@ def _spec(axes):
         name="s",
         corpus="data/eval/corpus/sample.pdf",
         golden="data/eval/golden.jsonl",
+        notebook_id="eval-notebook",
         baseline=dict(BASELINE),
         axes=axes,
     )
@@ -123,6 +124,7 @@ def test_load_sweep_reads_yaml(tmp_path):
         "name: tile-and-strategy\n"
         "corpus: data/eval/corpus/sample.pdf\n"
         "golden: data/eval/golden.jsonl\n"
+        "notebook_id: eval-notebook\n"
         "baseline: {tile_rows: 3, search_strategy: hybrid_rrf, top_k: 8}\n"
         "axes:\n"
         "  tile_rows: [1, 3, 5]\n"
@@ -133,6 +135,7 @@ def test_load_sweep_reads_yaml(tmp_path):
     spec = load_sweep(path)
 
     assert spec.name == "tile-and-strategy"
+    assert spec.notebook_id == "eval-notebook"
     assert spec.baseline["top_k"] == 8
     assert spec.axes["tile_rows"] == [1, 3, 5]
 

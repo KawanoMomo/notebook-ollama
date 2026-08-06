@@ -19,7 +19,7 @@ import yaml
 # 切替に再構築を要さない (core/config.py VisualSettings の実装コメント)。
 REINDEX_KEYS = frozenset({"embedding_model", "tile_rows", "tile_cols", "tile_overlap"})
 
-_REQUIRED_SPEC_KEYS = ("name", "corpus", "golden", "baseline")
+_REQUIRED_SPEC_KEYS = ("name", "corpus", "golden", "notebook_id", "baseline")
 
 
 class MatrixError(Exception):
@@ -38,6 +38,9 @@ class SweepSpec:
     name: str
     corpus: str
     golden: str
+    # 検索対象のノートブックID。コーパスを取り込んだ先を指す (CLI が
+    # RetrievalService.search へそのまま渡す)。
+    notebook_id: str
     baseline: dict[str, Any]
     axes: dict[str, list[Any]]
 
@@ -59,6 +62,7 @@ def load_sweep(path: Path) -> SweepSpec:
         name=str(raw["name"]),
         corpus=str(raw["corpus"]),
         golden=str(raw["golden"]),
+        notebook_id=str(raw["notebook_id"]),
         baseline=dict(raw["baseline"]),
         axes={k: list(v) for k, v in (raw.get("axes") or {}).items()},
     )
