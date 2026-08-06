@@ -79,6 +79,10 @@ visual = [
     "sentence-transformers>=3.3",
     "pillow>=10.0",
 ]
+# 検索精度のオフライン評価 (spec: 2026-08-07-ragas-retrieval-eval-design.md)。
+# 開発者向け実験ツール専用で、本番インストールには含めない。Ragas は
+# メトリクス計算にのみ使い、フレームワーク全体には乗らない。
+eval = ["ragas>=0.2"]
 
 [dependency-groups]
 dev = [
