@@ -128,6 +128,18 @@ def _ragas_scores(
     完結する。バージョン差でシグネチャが変わる可能性があるため、失敗しても
     None を返して自前指標だけで続行する (スイープ全体を落とさない)。
     """
+    # 検索が1件も引けなかった場合。Ragas の NonLLM メトリクスは空の
+    # retrieved_contexts に対して `max() iterable argument is empty` で落ちるが、
+    # これは「値が定義されていない」のではなく単に未定義入力でクラッシュして
+    # いるだけ。1件も引けていない = 正解を1件も含んでいない のだから、
+    # context recall も precision も 0.0 が正しい (他の解釈はない)。
+    # 例外に任せると None (欠測) になり、最も成績の悪い条件だけが主指標の平均から
+    # 抜けて壊れた設定が良く見える。自前指標 recall_at_k / mrr が空入力で 0.0 を
+    # 返すのとも揃える (同一モジュール内で扱いを割らない)。
+    # reference が空のケースは golden set 読み込み時に GoldenSetError で弾かれる。
+    if not retrieved:
+        return 0.0, 0.0
+
     import asyncio
     import concurrent.futures
     import warnings
