@@ -129,6 +129,7 @@ def _ragas_scores(
     None を返して自前指標だけで続行する (スイープ全体を落とさない)。
     """
     import asyncio
+    import concurrent.futures
     import warnings
 
     from ragas.dataset_schema import SingleTurnSample
@@ -157,7 +158,19 @@ def _ragas_scores(
         return float(recall), float(precision)
 
     try:
-        return asyncio.run(_run())
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # 同期文脈。素直に自前のループを立てて回す。
+            return asyncio.run(_run())
+        # すでにイベントループの中。CLI の `_render` は async な `_amain` から
+        # 同期呼び出しされるため、この経路が実運用の既定になる。ここで
+        # asyncio.run() を呼ぶと RuntimeError になり、下の except が握って
+        # 主指標が丸ごと欠測する (レポートの ctx recall 列が全条件 `—`)。
+        # 呼び出し側を async 化すると同期の呼び出し元が壊れるので、
+        # ワーカースレッド上で新しいループを立てて完了を待つ。
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(lambda: asyncio.run(_run())).result()
     except Exception as exc:  # noqa: BLE001 — Ragas の例外型に依存しない
         log.warning("ragas_metric_failed", error=str(exc))
         return None, None

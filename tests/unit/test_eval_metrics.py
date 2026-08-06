@@ -144,6 +144,29 @@ def test_score_question_with_ragas_scores_perfect_hit():
 
 
 @pytest.mark.skipif(not ragas_available(), reason="ragas 未導入 (eval extra)")
+async def test_score_question_with_ragas_works_inside_running_event_loop():
+    """async 文脈から呼んでも Ragas 指標が欠測にならない。
+
+    CLI の `_render` は async な `_amain` の中から同期呼び出しされる。
+    `asyncio.run()` を素で呼ぶと `RuntimeError: asyncio.run() cannot be called
+    from a running event loop` になり、広域 except が握って両指標が None に
+    なる = レポートの主指標2列が全条件 `—` のまま完走してしまう。
+    同期文脈からしか呼ばないテストではこの欠陥を捕まえられない。
+    """
+    score = score_question(
+        id="q001",
+        kind="table",
+        retrieved=["送信 FIFO は 16 段"],
+        reference=["送信 FIFO は 16 段"],
+        use_ragas=True,
+    )
+
+    assert score.context_recall is not None
+    assert score.context_precision is not None
+    assert score.context_recall == pytest.approx(1.0)
+
+
+@pytest.mark.skipif(not ragas_available(), reason="ragas 未導入 (eval extra)")
 def test_score_question_with_ragas_scores_complete_miss():
     """完全不一致なら Ragas の両指標とも 0 になる。"""
     score = score_question(
