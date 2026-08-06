@@ -42,8 +42,14 @@ Ragas は `core/eval/metrics.py` の内部でのみ import し、non-LLM メト�
 ## 影響
 
 - `ragas` は `eval` extra に隔離され、本番インストールには含まれない
-- Ragas API の変更を吸収する箇所は `core/eval/metrics.py:_ragas_scores` の1箇所のみ
+- **採点経路**の Ragas 依存は `core/eval/metrics.py:_ragas_scores` の1箇所に閉じている
 - 将来 faithfulness 等の生成段メトリクスへ拡張する場合、同じ関数に追加する
+- **golden set 生成は別経路**で、`scripts/eval/build_goldenset.py` の
+  `_generate_with_ragas` が `ragas.testset.TestsetGenerator` に依存している。
+  Ragas のバージョンを上げる際に確認すべき箇所は実際には2箇所(採点/生成)ある。
+  ただし両者は互いに独立しており、生成側の API が壊れても採点側は無傷で動く
+  (逆も同様)。生成側が使えなくても `build_goldenset.py --manual` で運用を継続
+  できる点は、「メトリクス層に限定した」設計判断の価値をむしろ補強する
 - **実装で判明した副次効果**: ragas 0.4.3 は import 時に
   `langchain_community.chat_models.vertexai` を無条件 import するが、
   langchain-community はこのモジュールを 0.4.x で削除済みで、ragas 側は
