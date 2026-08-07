@@ -106,10 +106,19 @@
   let resolvedSourceId = $derived.by(() => {
     if (selectedSourceId) return selectedSourceId;
     if (!selectedChunkId) return null;
-    const latest = [...conversationStore.messages]
-      .reverse()
-      .find((m) => m.role === 'assistant');
-    return latest?.citations.find((c) => c.chunk_id === selectedChunkId)?.source_id ?? null;
+    // クリックされた引用そのものが source_id を持っているならそれを使う。
+    // 「最新のアシスタントメッセージ」だけを見ると、直近の回答が引用ゼロだったり
+    // 過去メッセージのバッジを押したときに解決できず、出典パネルが開かない。
+    if (selectedCitation?.citation.chunk_id === selectedChunkId) {
+      return selectedCitation.citation.source_id;
+    }
+    // 出典カード経由など selectedCitation が無い場合は、会話全体から後方一致で探す。
+    for (const m of [...conversationStore.messages].reverse()) {
+      if (m.role !== 'assistant') continue;
+      const hit = m.citations.find((c) => c.chunk_id === selectedChunkId);
+      if (hit) return hit.source_id;
+    }
+    return null;
   });
 
   $effect(() => {
