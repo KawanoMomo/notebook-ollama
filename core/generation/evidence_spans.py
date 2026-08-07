@@ -29,8 +29,8 @@ _SENTENCE_BOUNDARY_RE = re.compile(r"(?m)[。．!?！？\n]|^\s*[-*・]\s*")
 # 検証は tests/unit/test_evidence_spans_code_regions.py と、対になる FE 側の
 # apps/web/tests/unit/citationCodeRegions.test.ts (実際に markdown-it へ通す)。
 _BLOCKQUOTE_PREFIX_RE = re.compile(r"^ {0,3}(?:> ?)+")
-_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
-_FENCE_CLOSE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
+# 行頭空白を除いた本体に当てる。インデントの許容は桁数(indent - eff)で判定する。
+_FENCE_BODY_RE = re.compile(r"^(`{3,}|~{3,})(.*)$")
 _LIST_MARKER_RE = re.compile(r"^([-*+]|\d{1,9}[.)])([ \t]*)")
 _ATX_HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|$)")
 _THEMATIC_BREAK_RE = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
@@ -89,16 +89,43 @@ def _code_line_flags(lines: list[str]) -> list[bool]:
         is_blank = not rest.strip()
 
         if fence_char is not None:
-            flags[i] = True
-            closing = _FENCE_CLOSE_RE.match(body[fence_container:])
-            if closing and closing.group(1)[0] == fence_char and len(closing.group(1)) >= fence_len:
+            # 空行は「フェンスの内容」であってコンテナ継続の判定を受けない。
+            # ここで閉じてしまうと、本来の閉じフェンスが新しい開きと誤認され、
+            # 以降の本文までコード扱いになる(両方向のズレ)。
+            if not is_blank and indent < fence_container:
+                # コンテナより浅い行が来たらコンテナが閉じ、フェンスも閉じる。
+                # この行自身が新しいフェンスの開きになりうるので、下の通常処理へ流す。
                 fence_char = None
                 fence_len = 0
                 in_paragraph = False
-            continue
+                while list_indents and list_indents[-1] > indent:
+                    list_indents.pop()
+            else:
+                flags[i] = True
+                closing = _FENCE_BODY_RE.match(rest)
+                if (
+                    closing
+                    and closing.group(1)[0] == fence_char
+                    and len(closing.group(1)) >= fence_len
+                    and indent - fence_container <= 3  # 相対4桁以上の ``` は閉じでなく内容
+                    and not closing.group(2).strip()  # 閉じフェンスに info string は付かない
+                ):
+                    fence_char = None
+                    fence_len = 0
+                    in_paragraph = False
+                continue
 
-        container = list_indents[-1] if list_indents else 0
-        threshold = container + _INDENT_CODE_WIDTH
+        # この行のインデントで実際に効いているコンテナ content indent。
+        # スタックの top をそのまま使うと、リストを抜けた列0の行にまでネストの
+        # インデントが適用され、フェンスを取り逃がす(= 直後のコードが本文として
+        # 数えられ、さらに後続の本文がコード扱いになる両方向のズレ)。
+        eff = 0
+        for _v in list_indents:
+            if _v <= indent:
+                eff = _v
+            else:
+                break
+        threshold = eff + _INDENT_CODE_WIDTH
         if in_indent_code:
             if is_blank or indent >= threshold:
                 flags[i] = True
@@ -110,15 +137,22 @@ def _code_line_flags(lines: list[str]) -> list[bool]:
             continue
 
         # フェンスの許容インデントは「行頭から 0-3 桁」ではなく
-        # 「リストコンテナの content indent から 0-3 桁」。番号付きリスト
+        # 「効いているコンテナの content indent から 0-3 桁」。番号付きリスト
         # (content indent 3) 配下の4スペースフェンスは LLM 回答の頻出形状で、
         # 絶対桁で判定すると markdown-it と食い違う。
-        opening = _FENCE_OPEN_RE.match(body[container:])
-        if opening and (opening.group(1)[0] == "~" or "`" not in opening.group(2)):
+        # 桁数で比較する(文字数スライスにするとタブが1文字=4桁でズレる)。
+        opening = _FENCE_BODY_RE.match(rest)
+        if (
+            opening
+            and indent - eff <= 3
+            and (opening.group(1)[0] == "~" or "`" not in opening.group(2))
+        ):
             # フェンスは段落を中断できる。閉じられなければ文書末までコード。
             fence_char = opening.group(1)[0]
             fence_len = len(opening.group(1))
-            fence_container = container
+            fence_container = eff
+            while list_indents and list_indents[-1] > eff:
+                list_indents.pop()
             flags[i] = True
             in_paragraph = False
             continue

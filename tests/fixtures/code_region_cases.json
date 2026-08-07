@@ -384,6 +384,86 @@
         1,
         3
       ]
+    },
+    {
+      "name": "list_then_col0_fence_blank",
+      "why": "リスト直後の列0フェンス(fence判定が有効コンテナで行われること)",
+      "markdown": "- a[^1]\n\n```\ncode[^2]\n```\nend[^3]\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "col0_tilde_after_list",
+      "why": "同上のチルダ版(インラインコードの偶然救済が効かない)",
+      "markdown": "- a[^1]\n\n~~~\ncode[^2]\n~~~\nend[^3]\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "nested_list_fence_between_levels",
+      "why": "ネスト2段の間のインデントのフェンスは外側リスト基準",
+      "markdown": "- a[^1]\n    - b[^2]\n\n    ```\n    code[^3]\n    ```\n\nend[^4]\n",
+      "expected": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "name": "fence_close_col0_in_list",
+      "why": "リスト内フェンスを列0の```が閉じ、同じ行が新フェンスの開きになる(close→reopen)",
+      "markdown": "- a[^1]\n\n  ```\n  code[^2]\n```\nmid[^3]\n```\nend[^4]\n",
+      "expected": [
+        1,
+        4
+      ]
+    },
+    {
+      "name": "list_tab_tilde_fence",
+      "why": "タブ(1文字=4桁)インデントのフェンス。桁数判定の回帰ガード",
+      "markdown": "- a[^1]\n\n\t~~~\n\tcode[^2]\n\t~~~\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "list_tab_fence_blank_inside",
+      "why": "タブインデント+内部空行。桁数判定の回帰ガード",
+      "markdown": "- a[^1]\n\n\t```\n\tcode[^2]\n\n\tmore[^3]\n\t```\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "list2sp_fence_blank_inside",
+      "why": "フェンス内の空行はフェンスを閉じない(インデントコード救済が効かない2スペース版)",
+      "markdown": "- a[^1]\n\n  ```\n  x[^2]\n\n  y[^3]\n  ```\nend[^4]\n",
+      "expected": [
+        1,
+        4
+      ]
+    },
+    {
+      "name": "fence_blank_then_close",
+      "why": "空行の直後に来る正規の閉じフェンス",
+      "markdown": "- a[^1]\n\n  ```\n  x[^2]\n\n  ```\nend[^3]\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "fence_open_rel0_close_deeper",
+      "why": "コンテナ相対4桁以上の```は閉じではなく内容",
+      "markdown": "- a[^1]\n\n  ```\n  code[^2]\n      ```\n  x[^3]\n  ```\nend[^4]\n",
+      "expected": [
+        1,
+        4
+      ]
     }
   ]
 }
