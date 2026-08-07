@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from typing import Any
 
 _CITATION_RE = re.compile(r"\[\^(\d+)\]")
 _FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
@@ -202,3 +203,37 @@ def resolve_lexical_span(claim: str, chunk_text: str) -> tuple[int, int] | None:
     lo = min(p[1] for p in window)
     hi = max(p[1] for p in window) + NGRAM - 1
     return nt.origin[lo], nt.origin[min(hi, len(nt.origin) - 1)] + 1
+
+
+def attach_evidence_spans(
+    *,
+    answer: str,
+    citations: list[dict[str, Any]],
+    chunk_texts: dict[str, str],
+) -> list[dict[str, Any]]:
+    """各 citation に spans を付けた新しいリストを返す(引数は変更しない)。"""
+    occurrences = iter_claim_occurrences(answer)
+    spans_by_n: dict[int, list[dict[str, Any]]] = {}
+    for occ in occurrences:
+        citation = next((c for c in citations if c.get("n") == occ.n), None)
+        if citation is None:
+            continue
+        text = chunk_texts.get(citation.get("chunk_id", ""))
+        if not text:
+            continue
+        found = resolve_lexical_span(occ.claim, text)
+        if found is None:
+            continue
+        start, end = found
+        bucket = spans_by_n.setdefault(occ.n, [])
+        bucket.append(
+            {
+                "answer_occurrence": occ.answer_occurrence,
+                "ordinal": len(bucket) + 1,
+                "start": start,
+                "end": end,
+                "quote": text[start:end],
+                "method": "lexical",
+            }
+        )
+    return [{**c, "spans": spans_by_n.get(c.get("n"), [])} for c in citations]
