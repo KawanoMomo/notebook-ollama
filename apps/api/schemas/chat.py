@@ -16,6 +16,17 @@ class EvidenceSpan(BaseModel):
     method: Literal["lexical", "embedding", "quote"]
 
 
+class ResolveSpansRequest(BaseModel):
+    """第2段(埋め込み)の解決要求。どの [^n] 出現に対する解決かを指定する。"""
+
+    answer_occurrence: int
+
+
+class ResolveSpansResponse(BaseModel):
+    spans: list[EvidenceSpan] = []
+    method: str = "embedding"
+
+
 class MessageInput(BaseModel):
     content: str = Field(min_length=1)
     source_ids: list[str] | None = None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -8,15 +9,25 @@ from fastapi import APIRouter, HTTPException, Request, status
 from sse_starlette.event import ServerSentEvent
 from sse_starlette.sse import EventSourceResponse
 
-from apps.api.schemas.chat import ContinueInput, Conversation, Message, MessageInput
+from apps.api.schemas.chat import (
+    ContinueInput,
+    Conversation,
+    Message,
+    MessageInput,
+    ResolveSpansRequest,
+    ResolveSpansResponse,
+)
 from core.exceptions import AppError, ErrorCode
+from core.generation.evidence_spans import iter_claim_occurrences
 from core.generation.stream import strip_truncation_note
-from core.generation.stream_registry import mark_running
+from core.generation.stream_registry import is_stream_running, mark_running
 from core.logging import get_logger
 from core.ollama.client import OllamaClient
 from core.ollama.models_info import parse_context_window
 from core.retrieval.budgeter import HistoryTurn
+from core.retrieval.span_scorer import SpanCache, score_spans
 from core.storage import (
+    chunks_repo,
     conversations_repo,
     messages_repo,
     notebooks_repo,
@@ -396,3 +407,87 @@ async def continue_message(
             )
 
     return EventSourceResponse(event_gen(), ping=20, ping_message_factory=_ping_event)
+
+
+# 第2段(埋め込み類似)の遅延解決。バッジ押下時にのみ呼ばれる。
+# router 本体は /api/notebooks/{notebook_id}/conversations 配下なので、
+# message_id だけで引ける独立ルータを別に立てる(main.py で include)。
+messages_router = APIRouter(prefix="/api/messages", tags=["chat"])
+
+_SPAN_CACHE = SpanCache()
+SPAN_RESOLVE_TIMEOUT_SEC = 15
+# 主張文がこれより短いと埋め込みでは意味を掴めないため、この回答を生んだ
+# user メッセージ(=質問文)にフォールバックする。
+_MIN_CLAIM_CHARS_FOR_EMBEDDING = 20
+
+
+def _previous_user_message_content(conn, message) -> str | None:
+    """当該 assistant メッセージの直前の user メッセージ本文を返す。"""
+    msgs = messages_repo.list_messages(conn, conversation_id=message.conversation_id)
+    prior: str | None = None
+    for m in msgs:
+        if m.id == message.id:
+            return prior
+        if m.role == "user":
+            prior = m.content
+    return None
+
+
+@messages_router.post(
+    "/{message_id}/citations/{n}/spans", response_model=ResolveSpansResponse
+)
+async def resolve_spans(
+    request: Request, message_id: str, n: int, body: ResolveSpansRequest
+) -> ResolveSpansResponse:
+    ctx = request.app.state.ctx
+    conn = ctx.conn
+    message = messages_repo.get_message(conn, message_id)
+    if message is None:
+        raise HTTPException(status_code=404, detail="message not found")
+    if is_stream_running(message.conversation_id):
+        # 生成中は VRAM を取り合うため実行しない(翻訳と同じ扱い)
+        raise HTTPException(status_code=409, detail="generation in progress")
+
+    citation = next((c for c in message.citations if c.get("n") == n), None)
+    if citation is None:
+        return ResolveSpansResponse(spans=[])
+
+    occurrence = next(
+        (
+            o
+            for o in iter_claim_occurrences(message.content)
+            if o.n == n and o.answer_occurrence == body.answer_occurrence
+        ),
+        None,
+    )
+    if occurrence is None:
+        return ResolveSpansResponse(spans=[])
+
+    claim = occurrence.claim
+    if len(claim) < _MIN_CLAIM_CHARS_FOR_EMBEDDING:
+        # 主張文が短すぎる場合のみ、この回答を生んだ user メッセージにフォールバックする
+        claim = _previous_user_message_content(conn, message) or claim
+
+    chunk_id = citation.get("chunk_id") or ""
+    chunks = chunks_repo.get_chunks_by_ids(conn, [chunk_id]) if chunk_id else []
+    if not chunks:
+        return ResolveSpansResponse(spans=[])
+
+    try:
+        spans = await asyncio.wait_for(
+            score_spans(
+                claim=claim,
+                chunk_text=chunks[0].text,
+                chunk_id=chunk_id,
+                gateway=ctx.ollama_gateway,
+                model=ctx.config.ollama.embedding_model,
+                cache=_SPAN_CACHE,
+            ),
+            timeout=SPAN_RESOLVE_TIMEOUT_SEC,
+        )
+    except TimeoutError:
+        return ResolveSpansResponse(spans=[])
+
+    return ResolveSpansResponse(
+        spans=[{**s, "answer_occurrence": body.answer_occurrence} for s in spans]
+    )
