@@ -7,32 +7,197 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
 _CITATION_RE = re.compile(r"\[\^(\d+)\]")
-_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
-_INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
-# markdown-it は 4スペース/タブ始まりの行もコードブロックにする。FE と計数の基準面を
-# 揃えるため、BE 側でもこれをマスクする(揃えないと answer_occurrence が全域でズレる)。
-_INDENT_CODE_RE = re.compile(r"(?m)^(?: {4}|\t).*$")
 # 文末とみなす区切り。箇条書き先頭記号も文境界として扱う。
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?m)[。．!?！？\n]|^\s*[-*・]\s*")
+
+# --- コード領域の判定 (CommonMark 準拠の部分集合) ---------------------------
+#
+# FE (markdown-it) と BE で「コード領域」の判定がズレると answer_occurrence が
+# その後ろ全域でズレ、別の主張の根拠を自信満々に表示する誤帰属になる。素朴な
+# 「4スペース始まりの行はコード」では次が全部ズレる:
+#   - 入れ子箇条書き ("- a\n    - b") はコードではない
+#   - 段落の遅延継続行 (空行なしの4スペース行) もコードではない
+#     (インデントコードは段落を中断できない)
+#   - 入れ子の番号付きリストも同様
+# 逆に ``` だけを見ると ~~~ フェンス・未閉フェンス・改行をまたぐコードスパンを
+# 取りこぼす。そこで行単位のブロック走査で CommonMark に寄せる。
+# 検証は tests/unit/test_evidence_spans_code_regions.py と、対になる FE 側の
+# apps/web/tests/unit/citationCodeRegions.test.ts (実際に markdown-it へ通す)。
+_BLOCKQUOTE_PREFIX_RE = re.compile(r"^ {0,3}(?:> ?)+")
+_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_FENCE_CLOSE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
+_LIST_MARKER_RE = re.compile(r"^([-*+]|\d{1,9}[.)])([ \t]*)")
+_ATX_HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|$)")
+_THEMATIC_BREAK_RE = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
+# 段落境界 (空行)。コードスパンはここを越えられない。
+_PARA_BREAK_RE = re.compile(r"\n[ \t]*\n")
+# インデントコードとみなす追加インデント幅。
+_INDENT_CODE_WIDTH = 4
 
 # 主張文がこれより短ければ直前2文まで遡る。日本語の1文(「レベル2では成果物が
 # 管理される」= 15文字)を安易に前文と繋げないため、20 ではなく 12 とする。
 MIN_CLAIM_CHARS = 12
 
 
+def _indent_width(line: str) -> tuple[int, int]:
+    """行頭の空白を桁数で数える。戻り値は (桁数, 先頭非空白の文字位置)。
+
+    タブは CommonMark と同じく次の4桁境界まで進む。
+    """
+    col = 0
+    idx = 0
+    for ch in line:
+        if ch == " ":
+            col += 1
+        elif ch == "\t":
+            col += 4 - (col % 4)
+        else:
+            break
+        idx += 1
+    return col, idx
+
+
+def _code_line_flags(lines: list[str]) -> list[bool]:
+    """各行が「コードブロックの一部か」を返す(フェンス/インデントコード)。
+
+    リストのネスト段数を content indent のスタックで持ち、「その時点の
+    コンテナ基準で +4 桁以上」かつ「段落の途中でない」行だけをインデント
+    コードとみなす。引用ブロックは先頭の `>` を剥がしてから同じ規則を当てる。
+    """
+    flags = [False] * len(lines)
+    fence_char: str | None = None
+    fence_len = 0
+    in_indent_code = False
+    in_paragraph = False
+    list_indents: list[int] = []
+
+    for i, raw in enumerate(lines):
+        body = raw.rstrip("\r")
+        quote = _BLOCKQUOTE_PREFIX_RE.match(body)
+        if quote:
+            body = body[quote.end() :]
+        indent, marker_at = _indent_width(body)
+        rest = body[marker_at:]
+        is_blank = not rest.strip()
+
+        if fence_char is not None:
+            flags[i] = True
+            closing = _FENCE_CLOSE_RE.match(body)
+            if closing and closing.group(1)[0] == fence_char and len(closing.group(1)) >= fence_len:
+                fence_char = None
+                fence_len = 0
+                in_paragraph = False
+            continue
+
+        threshold = (list_indents[-1] if list_indents else 0) + _INDENT_CODE_WIDTH
+        if in_indent_code:
+            if is_blank or indent >= threshold:
+                flags[i] = True
+                continue
+            in_indent_code = False
+
+        if is_blank:
+            in_paragraph = False
+            continue
+
+        opening = _FENCE_OPEN_RE.match(body)
+        if opening and (opening.group(1)[0] == "~" or "`" not in opening.group(2)):
+            # フェンスは段落を中断できる。閉じられなければ文書末までコード。
+            fence_char = opening.group(1)[0]
+            fence_len = len(opening.group(1))
+            flags[i] = True
+            in_paragraph = False
+            continue
+
+        if not in_paragraph and indent >= threshold:
+            flags[i] = True
+            in_indent_code = True
+            continue
+
+        is_break = bool(_THEMATIC_BREAK_RE.match(body))
+        marker = None if is_break else _LIST_MARKER_RE.match(rest)
+        if marker is not None:
+            while list_indents and indent < list_indents[-1]:
+                list_indents.pop()
+            spaces = len(marker.group(2))
+            # マーカー直後が行末、または空白5桁以上のときの content indent は +1。
+            after = rest[marker.end() :]
+            if not after.strip() or spaces == 0 or spaces > 4:
+                spaces = 1
+            list_indents.append(indent + len(marker.group(1)) + spaces)
+            in_paragraph = True
+            continue
+
+        if not in_paragraph:
+            # 空行を挟んで戻ってきた非インデント行はリストを閉じる
+            # (段落の途中なら lazy continuation なので閉じない)。
+            while list_indents and indent < list_indents[-1]:
+                list_indents.pop()
+        in_paragraph = not (is_break or _ATX_HEADING_RE.match(body))
+    return flags
+
+
+def _mask_block_code(text: str) -> str:
+    lines = text.split("\n")
+    flags = _code_line_flags(lines)
+    out = [
+        "".join(" " if ch != "\r" else ch for ch in line) if flag else line
+        for line, flag in zip(lines, flags, strict=True)
+    ]
+    return "\n".join(out)
+
+
+def _mask_inline_code(text: str) -> str:
+    """コードスパンをマスクする。
+
+    開始バッククォート列と「同じ長さ」の列で閉じる(CommonMark)。改行はまたげるが
+    空行(段落境界)は越えられない。閉じられない列はただの文字として残す。
+    """
+    breaks = {m.start() for m in _PARA_BREAK_RE.finditer(text)}
+    chars = list(text)
+    n = len(chars)
+    i = 0
+    while i < n:
+        if chars[i] != "`":
+            i += 1
+            continue
+        j = i
+        while j < n and chars[j] == "`":
+            j += 1
+        run = j - i
+        k = j
+        close = -1
+        while k < n:
+            if chars[k] == "`":
+                m = k
+                while m < n and chars[m] == "`":
+                    m += 1
+                if m - k == run:
+                    close = k
+                    break
+                k = m
+                continue
+            if k in breaks:
+                break
+            k += 1
+        if close < 0:
+            i = j
+            continue
+        for p in range(i, close + run):
+            if chars[p] not in ("\n", "\r"):
+                chars[p] = " "
+        i = close + run
+    return "".join(chars)
+
+
 def mask_code_regions(text: str) -> str:
     """コード領域の中身を同じ長さの空白へ置換する。オフセットは保存される。"""
-
-    def blank(m: re.Match[str]) -> str:
-        return " " * len(m.group(0))
-
-    masked = _FENCE_RE.sub(blank, text)
-    masked = _INDENT_CODE_RE.sub(blank, masked)
-    return _INLINE_CODE_RE.sub(blank, masked)
+    return _mask_inline_code(_mask_block_code(text))
 
 
 @dataclass(frozen=True)
@@ -135,34 +300,64 @@ LATIN_MIN_COVERAGE = 0.40
 LATIN_MIN_RUN = 15
 CJK_MAIN_THRESHOLD = 0.3
 
+# 最悪ケースの上限。PDF の表を抽出したチャンクは空白も句読点も無い日本語が延々と
+# 続くことがあり、chunker が分割できずに数万文字の1チャンクになる。そこへ逐語で
+# 引き写した回答が来ると一致ペアが百万単位になり、照合が秒単位〜分単位に膨れる。
+# 呼び出し側 (stream.py / ask.py) はスレッドへ逃がすが、GIL を握る純 CPU なので
+# 長時間の占有はイベントループの進行も鈍らせる。上限で最悪ケース自体を潰す。
+# この機能は「当たらないなら黙る」方針なので、上限を超えたら偽陰性側に倒す。
+MAX_CHUNK_CHARS = 20_000
+MAX_MATCH_PAIRS = 50_000
 
-def _match_positions(claim: str, chunk: str) -> list[tuple[int, int]]:
-    """(claim 内の開始位置, chunk 内の開始位置) の一致 n-gram 一覧。"""
+
+def _match_positions(claim: str, chunk: str) -> list[tuple[int, int]] | None:
+    """(claim 内の開始位置, chunk 内の開始位置) の一致 n-gram 一覧。
+
+    MAX_MATCH_PAIRS を超えたら None を返す(=このチャンクでは特定を諦める)。
+    """
     pairs: list[tuple[int, int]] = []
     for ci in range(len(claim) - NGRAM + 1):
         gram = claim[ci : ci + NGRAM]
         pos = chunk.find(gram)
         while pos != -1:
             pairs.append((ci, pos))
+            if len(pairs) > MAX_MATCH_PAIRS:
+                return None
             pos = chunk.find(gram, pos + 1)
     return pairs
 
 
 def _best_window(pairs: list[tuple[int, int]], claim_len: int) -> list[tuple[int, int]]:
-    """chunk 上で最も一致が密な窓を選び、その窓に入る組を返す。"""
+    """chunk 上で最も一致が密な窓を選び、その窓に入る組を返す。
+
+    窓ごとにスライスと set を作り直すと O(ペア数 * 窓内ペア数) になり、反復の多い
+    チャンクで二乗的に効く。claim 位置の出現数を Counter で増減させ、distinct 数を
+    インクリメンタルに保つことで O(ペア数) にしてある。
+    """
     if not pairs:
         return []
     width = max(claim_len * 2, NGRAM * 4)
     ordered = sorted(pairs, key=lambda p: p[1])
-    best: list[tuple[int, int]] = []
+    counts: Counter[int] = Counter()
+    distinct = 0
+    best_distinct = 0
+    best_left = 0
+    best_right = -1
     left = 0
-    for right in range(len(ordered)):
+    for right, (claim_pos, _) in enumerate(ordered):
+        if counts[claim_pos] == 0:
+            distinct += 1
+        counts[claim_pos] += 1
         while ordered[right][1] - ordered[left][1] > width:
+            dropped = ordered[left][0]
+            counts[dropped] -= 1
+            if counts[dropped] == 0:
+                distinct -= 1
             left += 1
-        window = ordered[left : right + 1]
-        if len({p[0] for p in window}) > len({p[0] for p in best}):
-            best = window
-    return best
+        if distinct > best_distinct:
+            best_distinct = distinct
+            best_left, best_right = left, right
+    return ordered[best_left : best_right + 1]
 
 
 def _longest_run(claim_positions: set[int]) -> int:
@@ -179,12 +374,17 @@ def _longest_run(claim_positions: set[int]) -> int:
 
 def resolve_lexical_span(claim: str, chunk_text: str) -> tuple[int, int] | None:
     """主張文の根拠スパンを chunk_text 上の (start, end) で返す。当たらなければ None。"""
+    if len(chunk_text) > MAX_CHUNK_CHARS:
+        return None
     nc = normalize_for_match(claim)
     nt = normalize_for_match(chunk_text)
     if len(nc.text) < NGRAM or len(nt.text) < NGRAM:
         return None
 
-    window = _best_window(_match_positions(nc.text, nt.text), len(nc.text))
+    pairs = _match_positions(nc.text, nt.text)
+    if pairs is None:  # 反復が多すぎる。偽陽性を出すより黙る。
+        return None
+    window = _best_window(pairs, len(nc.text))
     if not window:
         return None
 
@@ -205,6 +405,19 @@ def resolve_lexical_span(claim: str, chunk_text: str) -> tuple[int, int] | None:
     return nt.origin[lo], nt.origin[min(hi, len(nt.origin) - 1)] + 1
 
 
+# pixel-native の合成チャンク (core/retrieval/search.py の _pixel_native_chunk)。
+# SQLite に実体行が無く、text は本文ではなく「添付画像を読み取って回答の根拠に
+# してください」というプロンプト用のプレースホルダ。LLM がそれを引き写すと
+# プレースホルダ上のオフセットでスパンが確定してしまうが、FE はこの prefix を見て
+# 全文ビューへ落とすためチャンク本文を持たない = 無関係な位置を根拠として塗る。
+# システム自身の指示文を「根拠」として提示しないよう、照合対象から外す。
+_SYNTHETIC_CHUNK_ID_PREFIXES = ("vp:", "vt:")
+
+
+def _is_synthetic_chunk(chunk_id: str) -> bool:
+    return chunk_id.startswith(_SYNTHETIC_CHUNK_ID_PREFIXES)
+
+
 def attach_evidence_spans(
     *,
     answer: str,
@@ -218,7 +431,10 @@ def attach_evidence_spans(
         citation = next((c for c in citations if c.get("n") == occ.n), None)
         if citation is None:
             continue
-        text = chunk_texts.get(citation.get("chunk_id", ""))
+        chunk_id = citation.get("chunk_id", "") or ""
+        if _is_synthetic_chunk(chunk_id):
+            continue
+        text = chunk_texts.get(chunk_id)
         if not text:
             continue
         found = resolve_lexical_span(occ.claim, text)

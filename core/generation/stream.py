@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -359,8 +360,13 @@ class GenerationService:
 
         answer = "".join(answer_parts)
         citations = build_citations(answer=answer, specs=spec_by_n)
-        # 第1段(字句照合)。LLM 呼び出しなし・CPU 数ms。生成レイテンシに影響しない。
-        citations = attach_evidence_spans(
+        # 第1段(字句照合)。LLM 呼び出しも IO も無い純 CPU。通常の日本語回答では
+        # 数ms だが、上限は「引用出現1件あたり十数ms」の出現数倍(chunk は
+        # MAX_CHUNK_CHARS=20,000文字、一致ペアは MAX_MATCH_PAIRS=50,000 で頭打ち。
+        # 超えたら特定を諦める)。同期実行するとイベントループ全体を止めるため
+        # スレッドへ逃がす。
+        citations = await asyncio.to_thread(
+            attach_evidence_spans,
             answer=answer,
             citations=citations,
             chunk_texts={h.chunk_id: h.text for h in hits},

@@ -69,6 +69,56 @@ async def test_ask_returns_answer_and_citations():
     assert result["model_used"] == "qwen2.5:14b"
 
 
+class _SpanRetrieval:
+    """回答が逐語で引き写せる本文を持つヒットを返す fake。"""
+
+    async def search(self, *, notebook_id, query, limit):
+        return [
+            RetrievedChunk(
+                chunk_id="c1", source_id="s1", source_title="規格", source_kind="pdf",
+                page=3, heading_path=None, ord=0,
+                text="レベル2では作業成果物が適切に管理される。監視及び調整が求められる。",
+                token_count=20, score=0.9,
+            ),
+        ]
+
+
+class _QuotingGateway:
+    async def chat_stream(self, *, model, messages, options=None, meta=None):
+        for tok in ["レベル2では作業成果物が適切に管理される", "[^1]", "。"]:
+            yield tok
+
+
+@pytest.mark.asyncio
+async def test_ask_spans_omit_offsets_that_the_client_cannot_resolve():
+    """MCP の応答は chunk_id を落としており、チャンク本文を取る API も無い。
+
+    start / end はそのチャンク本文上のオフセットなので、受け手には解釈不能な
+    数値になる。契約に含めない(quote は自己完結、answer_occurrence は回答から
+    数え直せる)。
+    """
+    from types import SimpleNamespace
+
+    result = await ask_tool(
+        notebook_id="nb1", question="?", model=None, style="concise",
+        retrieval=_SpanRetrieval(), ollama=_QuotingGateway(), client=FakeClient(),
+        config=SimpleNamespace(
+            visual=SimpleNamespace(search_strategy="hybrid_rrf"),
+            generation=SimpleNamespace(
+                context_budget_ratio=0.8, response_budget_tokens=512, auto_continue_max=2
+            ),
+            retrieval=SimpleNamespace(top_k=8, min_history_turns=0),
+            ollama=SimpleNamespace(default_model="qwen2.5:14b"),
+        ),
+        notebook_default_model=None,
+    )
+    spans = result["citations"][0]["spans"]
+    assert len(spans) == 1, spans
+    assert set(spans[0]) == {"answer_occurrence", "ordinal", "quote", "method"}
+    assert "作業成果物が適切に管理される" in spans[0]["quote"]
+    assert "chunk_id" not in result["citations"][0]
+
+
 class _LocationRetrieval:
     """location の全項目を持つヒットを返す fake。"""
 

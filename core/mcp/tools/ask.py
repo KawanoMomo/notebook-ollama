@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Protocol
 
 from core.exceptions import AppError, ErrorCode
@@ -36,6 +37,23 @@ _STYLE_HINTS = {
     "detailed": "詳細に、根拠を示して回答してください。",
     "bullet": "箇条書きで構造化して回答してください。",
 }
+
+
+def _project_span(span: dict[str, Any]) -> dict[str, Any]:
+    """MCP 応答用にスパンを射影する。
+
+    start / end は「そのチャンク本文上の文字オフセット」だが、MCP の応答は
+    chunk_id を意図的に落としており、チャンク本文を取得する手段も MCP には
+    露出していない。受け手が解釈できない数値を契約に含めない。
+    quote は自己完結しており、answer_occurrence は回答テキストから数え直せる
+    (未特定の出現は spans に載らないため ordinal だけでは対応が取れない)。
+    """
+    return {
+        "answer_occurrence": span["answer_occurrence"],
+        "ordinal": span.get("ordinal"),
+        "quote": span["quote"],
+        "method": span["method"],
+    }
 
 
 async def ask_tool(
@@ -176,8 +194,10 @@ async def ask_tool(
     answer = "".join(answer_parts)
     # 第1段(字句照合)を Web 経路 (core/generation/stream.py) と同じ形で適用する。
     # ここを飛ばすと MCP 経由の回答だけ spans 無しになる。chunk_id は射影で落とす
-    # ため、spans の付与は射影より前に行う。
-    with_spans = attach_evidence_spans(
+    # ため、spans の付与は射影より前に行う。純 CPU だがイベントループを止めない
+    # ようスレッドへ逃がす(理由は stream.py の同じ箇所のコメント)。
+    with_spans = await asyncio.to_thread(
+        attach_evidence_spans,
         answer=answer,
         citations=build_citations(answer=answer, specs=specs),
         chunk_texts={h.chunk_id: h.text for h in hits},
@@ -188,7 +208,7 @@ async def ask_tool(
             "source_title": c["source_title"],
             "location": c["location"],
             "url_or_path": c["url_or_path"],
-            "spans": c.get("spans", []),
+            "spans": [_project_span(s) for s in c.get("spans", [])],
         }
         for c in with_spans
     ]
