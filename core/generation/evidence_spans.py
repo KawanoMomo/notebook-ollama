@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 _CITATION_RE = re.compile(r"\[\^(\d+)\]")
@@ -69,3 +70,58 @@ def iter_claim_occurrences(answer: str) -> list[ClaimOccurrence]:
             )
         )
     return out
+
+
+_PUNCT_CATEGORIES = {"Po", "Ps", "Pe", "Pi", "Pf", "Pd", "Pc"}
+
+
+def _is_cjk(ch: str) -> bool:
+    code = ord(ch)
+    return (
+        0x3040 <= code <= 0x30FF  # かな
+        or 0x4E00 <= code <= 0x9FFF  # 漢字
+        or 0x3400 <= code <= 0x4DBF
+    )
+
+
+def cjk_ratio(text: str) -> float:
+    letters = [c for c in text if not c.isspace()]
+    if not letters:
+        return 0.0
+    return sum(1 for c in letters if _is_cjk(c)) / len(letters)
+
+
+@dataclass(frozen=True)
+class Normalized:
+    text: str
+    origin: list[int]
+
+
+def normalize_for_match(text: str) -> Normalized:
+    """NFKC → 小文字化 → 約物除去 → 空白の文字種別処理。逆写像を伴う。
+
+    空白は「CJK どうしの間は除去、ラテンどうしの間は単一スペース」に畳む。
+    英語の単語境界を壊すと頻出部分文字列で偽一致するため。
+    """
+    chars: list[str] = []
+    origin: list[int] = []
+    pending_space = False
+    for idx, raw in enumerate(text):
+        ch = unicodedata.normalize("NFKC", raw).lower()
+        if not ch:
+            continue
+        ch = ch[0]
+        if ch.isspace():
+            pending_space = True
+            continue
+        if unicodedata.category(ch) in _PUNCT_CATEGORIES:
+            continue
+        if pending_space and chars:
+            prev = chars[-1]
+            if not _is_cjk(prev) and not _is_cjk(ch):
+                chars.append(" ")
+                origin.append(idx)
+        pending_space = False
+        chars.append(ch)
+        origin.append(idx)
+    return Normalized(text="".join(chars), origin=origin)
