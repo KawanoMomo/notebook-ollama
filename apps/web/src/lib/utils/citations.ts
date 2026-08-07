@@ -4,24 +4,29 @@ import type { Citation } from '$lib/api/types';
 const CODE_REGION_RE = /<(code|pre)\b[\s\S]*?<\/\1>/gi;
 
 /**
- * Replace [^n] markers in HTML with clickable citation badges.
- * Returns HTML with badge spans.
+ * [^n] マーカーをバッジへ置換する。
  *
- * 計数の基準面は「コード領域を除外した本文」。BE の
- * core/generation/evidence_spans.mask_code_regions と同じ規則にしないと
- * answer_occurrence の対応が崩れ、別の主張の根拠を表示してしまう。
+ * 計数の基準面は「コード領域を除外した本文」。BE の iter_claim_occurrences と
+ * 同じ規則にすることで answer_occurrence の対応が崩れないようにしている。
  * 対の検証は tests/unit/citationCodeRegions.test.ts(実際に markdown-it を通す)。
  */
 export function injectCitationBadges(html: string, citations: Citation[]): string {
   const byN = new Map(citations.map((c) => [c.n, c]));
+  let occurrence = 0;
 
   const replaceOutsideCode = (segment: string): string =>
-    segment.replace(/\[\^(\d+)\]/g, (_match, nStr) => {
+    segment.replace(/\[\^(\d+)\]/g, (_m, nStr) => {
       const n = Number(nStr);
       const c = byN.get(n);
       if (!c) return `[^${n}]`;
+      const current = occurrence++;
+      const span = c.spans?.find((s) => s.answer_occurrence === current);
+      const label = span?.ordinal != null ? `${n}-${span.ordinal}` : `${n}`;
       const title = `${c.source_title}${c.location ? ' / ' + c.location : ''}`;
-      return `<button class="citation-badge" data-n="${n}" title="${escapeAttr(title)}">${n}</button>`;
+      return (
+        `<button class="citation-badge" data-n="${n}" data-occurrence="${current}"` +
+        ` title="${escapeAttr(title)}">${label}</button>`
+      );
     });
 
   let out = '';
@@ -40,9 +45,7 @@ function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-/**
- * Extract list of citation numbers in textual order.
- */
+/** Extract list of citation numbers in textual order. */
 export function listCitationNumbers(text: string): number[] {
   const seen = new Set<number>();
   const out: number[] = [];
