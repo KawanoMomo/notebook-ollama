@@ -479,7 +479,11 @@ async def resolve_spans(
                 claim=claim,
                 chunk_text=chunks[0].text,
                 chunk_id=chunk_id,
-                gateway=ctx.ollama_gateway,
+                # 埋め込みは LLM 用 gateway ではなく text_embedder 側 gateway を通す。
+                # 分離構成(llm=openai-compat)では ctx.ollama_gateway が生成用 compat
+                # サーバーを指すため、bge-m3 の要求が 404 になり num_gpu=0 の NaN 回避も
+                # 失われる(ADR-018 の再発事例)。
+                gateway=ctx.text_embedder.gateway,
                 model=ctx.config.ollama.embedding_model,
                 cache=_SPAN_CACHE,
             ),
