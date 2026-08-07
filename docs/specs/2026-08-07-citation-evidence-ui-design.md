@@ -26,15 +26,16 @@ code:
   - apps/api/schemas/chat.py
   - apps/api/schemas/settings.py
   - apps/web/src/app.css
-  - apps/web/src/lib/components/CitationBadge.svelte
   - apps/web/src/lib/components/SourceViewer.svelte
   - apps/web/src/lib/utils/citations.ts
   - apps/web/src/routes/settings
   - apps/web/tests/unit
   - core/generation/citations.py
+  - core/generation/evidence_spans.py
   - core/generation/stream.py
   - core/mcp/tools/ask.py
   - core/ollama
+  - core/retrieval/span_scorer.py
   - tests/integration
   - tests/unit
 ---

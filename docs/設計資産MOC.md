@@ -71,7 +71,10 @@ tags:
 ## 🧭 ADR（採番済み）
 
 台帳は [[README|docs/adr/README.md]]、カテゴリ定義は [[categories]]。
-未採番のドラフトは `docs/adr/drafts/` に置く（**現在0件**）。採番・正式登録は承認後に `/adr` で行います。
+未採番のドラフトは `docs/adr/drafts/` に置く（**現在1件**）。採番・正式登録は承認後に `/adr` で行います。
+
+> [!note] 未採番ドラフト
+> - [[code-region-parity-markdown-it-py|BE/FE のコード領域判定を markdown-it-py で同一アルゴリズムに揃える]] ✏️ (2026-08-07)
 
 > [!note] 発表モード / 音声入力 / ベータ基盤
 > - [[001-source-links-generic-parent-child|ADR-001 ソース間結合は汎用親子リンク基盤(source_links)]] — `data-model`
