@@ -6,7 +6,13 @@
     type RecordingSegmentContent,
   } from '$lib/api/source_outline';
   import { linksApi } from '$lib/api/links';
-  import type { AssetInfo, Citation, SlideUtterancePage } from '$lib/api/types';
+  import type {
+    AssetInfo,
+    Citation,
+    EvidenceSpan,
+    SlideUtterancePage,
+  } from '$lib/api/types';
+  import { resolveSpans } from '$lib/api/spans';
   import { sourcesApi } from '$lib/api/sources';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
@@ -55,7 +61,11 @@
     selectedChunkId: string | null;
     selectedSourceId: string | null;
     /** チャット側でクリックされた主張(バッジ)。出典カード経由や未選択では null。 */
-    selectedCitation?: { citation: Citation; answerOccurrence: number } | null;
+    selectedCitation?: {
+      citation: Citation;
+      answerOccurrence: number;
+      messageId: string;
+    } | null;
   }
   let {
     notebookId,
@@ -312,11 +322,41 @@
   // (チャンク切替の途中で前の引用のオフセットを当てないため)。
   let textEl = $state<HTMLElement | null>(null);
 
+  // 第2段(埋め込み類似)の遅延解決結果。第1段が空のときだけ使う。
+  let lazySpans = $state<EvidenceSpan[]>([]);
+  let resolving = $state(false);
+  // 取得の世代カウンタ(上の utterancesFetchSeq と同パターン)。in-flight の
+  // 古い応答が新しい選択の表示を上書きしないよう、最後の取得だけを反映する。
+  let spanFetchSeq = 0;
+
+  $effect(() => {
+    const sel = selectedCitation;
+    lazySpans = [];
+    const seq = ++spanFetchSeq;
+    if (!sel || (sel.citation.spans ?? []).length > 0) {
+      resolving = false;
+      return;
+    }
+    resolving = true;
+    resolveSpans(sel.messageId, sel.citation.n, sel.answerOccurrence)
+      .then((spans) => {
+        if (seq !== spanFetchSeq) return; // 古い応答は破棄
+        lazySpans = spans;
+      })
+      .finally(() => {
+        if (seq === spanFetchSeq) resolving = false;
+      });
+  });
+
   const activeSpans = $derived(
     selectedCitation && selectedCitation.citation.chunk_id === selectedChunkId
-      ? (selectedCitation.citation.spans ?? [])
+      ? (selectedCitation.citation.spans ?? []).length > 0
+        ? selectedCitation.citation.spans!
+        : lazySpans
       : [],
   );
+  // 第2段で拾った箇所は「根拠」ではなく「関連」として弱く示す。
+  const isRelated = $derived(activeSpans.some((s) => s.method === 'embedding'));
   const segments = $derived(
     chunk ? splitBySpans(chunk.text, activeSpans, selectedCitation?.answerOccurrence ?? null) : [],
   );
@@ -351,7 +391,13 @@
     <div class="state err">エラー: {error}</div>
   {:else if chunk}
     <div class="chunk">
-      {#if unresolved}
+      {#if resolving}
+        <p class="resolving"><Spinner /> 根拠箇所を探しています…</p>
+      {:else if isRelated}
+        <p class="unresolved">
+          根拠箇所は特定できませんでした。この主張に関連する箇所を示しています
+        </p>
+      {:else if unresolved}
         <p class="unresolved">この主張の根拠箇所は特定できませんでした</p>
       {/if}
       {#if sourceMeta?.kind === 'recording' && chunk.start_ms != null}
@@ -387,7 +433,9 @@
           </div>
         {:else}
           <pre class="text" bind:this={textEl}>{#each segments as seg}{#if seg.span}<mark
-                class={seg.active ? 'ev active' : 'ev'}>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</pre>
+                class={`ev ${seg.span.method === 'embedding' ? 'related' : ''} ${seg.active ? 'active' : ''}`}
+                title={seg.span.method === 'embedding' ? 'この主張に関連する箇所(根拠の保証はありません)' : undefined}
+              >{seg.text}{#if seg.span.method === 'embedding'}<span class="rel-chip">関連</span>{/if}</mark>{:else}{seg.text}{/if}{/each}</pre>
         {/if}
       {:else}
         {#if chunk.heading_path}
@@ -402,7 +450,9 @@
           {@html tableHtmlToSafeMarkup(tableAssetHtml)}
         {:else}
           <pre class="text" bind:this={textEl}>{#each segments as seg}{#if seg.span}<mark
-                class={seg.active ? 'ev active' : 'ev'}>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</pre>
+                class={`ev ${seg.span.method === 'embedding' ? 'related' : ''} ${seg.active ? 'active' : ''}`}
+                title={seg.span.method === 'embedding' ? 'この主張に関連する箇所(根拠の保証はありません)' : undefined}
+              >{seg.text}{#if seg.span.method === 'embedding'}<span class="rel-chip">関連</span>{/if}</mark>{:else}{seg.text}{/if}{/each}</pre>
         {/if}
         {#if figureAssetIds.length > 0}
           <div class="figure-thumbs">
@@ -620,7 +670,22 @@
     background: linear-gradient(transparent 62%, var(--color-evidence-soft) 62%);
     border-bottom-color: var(--color-evidence);
   }
-  .unresolved {
+  /* 第2段(埋め込み類似)の箇所は破線で弱く示し、根拠と区別する。 */
+  .text :global(mark.ev.related) {
+    background: linear-gradient(transparent 62%, rgba(107, 107, 107, 0.12) 62%);
+    border-bottom: 2px dashed var(--color-fg-muted);
+  }
+  .text :global(.rel-chip) {
+    font-size: 9px;
+    color: var(--color-fg-muted);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0 3px;
+    margin-left: 3px;
+    vertical-align: 1px;
+  }
+  .unresolved,
+  .resolving {
     margin: 0 0 var(--space-2);
     font-size: 11px;
     color: var(--color-fg-muted);

@@ -27,7 +27,11 @@
   let selectedChunkId = $state<string | null>(null);
   // どのバッジ(主張の出現位置)が選ばれたか。出典パネルの根拠ハイライトと
   // チャット側バッジの選択表示に使う。出典カード経由の選択では null。
-  let selectedCitation = $state<{ citation: Citation; answerOccurrence: number } | null>(null);
+  let selectedCitation = $state<{
+    citation: Citation;
+    answerOccurrence: number;
+    messageId: string;
+  } | null>(null);
   let unbindShortcuts: (() => void) | null = null;
 
   // 全体既定名(設定未ロード時は空文字)

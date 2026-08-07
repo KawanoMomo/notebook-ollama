@@ -10,7 +10,7 @@
     onCitationClick: (
       chunkId: string,
       sourceId: string,
-      selection: { citation: Citation; answerOccurrence: number } | null,
+      selection: { citation: Citation; answerOccurrence: number; messageId: string } | null,
     ) => void;
   }
   let { message, activeOccurrence = null, onCitationClick }: Props = $props();
@@ -49,7 +49,9 @@
         onCitationClick(
           c.chunk_id,
           c.source_id,
-          Number.isFinite(occurrence) ? { citation: c, answerOccurrence: occurrence } : null,
+          Number.isFinite(occurrence)
+            ? { citation: c, answerOccurrence: occurrence, messageId: message.id }
+            : null,
         );
       }
     }

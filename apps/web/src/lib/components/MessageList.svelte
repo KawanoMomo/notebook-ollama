@@ -12,7 +12,7 @@
     onCitationClick: (
       chunkId: string,
       sourceId: string,
-      selection: { citation: Citation; answerOccurrence: number } | null,
+      selection: { citation: Citation; answerOccurrence: number; messageId: string } | null,
     ) => void;
   }
   let { activeOccurrence = null, onCitationClick }: Props = $props();
