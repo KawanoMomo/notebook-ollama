@@ -10,6 +10,7 @@ from core.generation.citations import (
     CitationSpec,
     build_citations,
 )
+from core.generation.evidence_spans import attach_evidence_spans
 from core.generation.locations import format_location
 from core.generation.prompts import (
     SYSTEM_PROMPT,
@@ -358,6 +359,12 @@ class GenerationService:
 
         answer = "".join(answer_parts)
         citations = build_citations(answer=answer, specs=spec_by_n)
+        # 第1段(字句照合)。LLM 呼び出しなし・CPU 数ms。生成レイテンシに影響しない。
+        citations = attach_evidence_spans(
+            answer=answer,
+            citations=citations,
+            chunk_texts={h.chunk_id: h.text for h in hits},
+        )
         yield GenerationEvent(
             kind="done",
             data={

@@ -4,6 +4,7 @@ from typing import Any, Protocol
 
 from core.exceptions import AppError, ErrorCode
 from core.generation.citations import CitationSpec, build_citations
+from core.generation.evidence_spans import attach_evidence_spans
 from core.generation.locations import format_location
 from core.generation.prompts import SYSTEM_PROMPT, PromptChunk, build_user_prompt
 from core.ollama.models_info import parse_context_window
@@ -173,13 +174,22 @@ async def ask_tool(
                 f"{TRUNCATION_NOTE_PREFIX}({budget_tokens}×{length_hits}回)に達したため打ち切られました。"
             )
     answer = "".join(answer_parts)
+    # 第1段(字句照合)を Web 経路 (core/generation/stream.py) と同じ形で適用する。
+    # ここを飛ばすと MCP 経由の回答だけ spans 無しになる。chunk_id は射影で落とす
+    # ため、spans の付与は射影より前に行う。
+    with_spans = attach_evidence_spans(
+        answer=answer,
+        citations=build_citations(answer=answer, specs=specs),
+        chunk_texts={h.chunk_id: h.text for h in hits},
+    )
     citations = [
         {
             "n": c["n"],
             "source_title": c["source_title"],
             "location": c["location"],
             "url_or_path": c["url_or_path"],
+            "spans": c.get("spans", []),
         }
-        for c in build_citations(answer=answer, specs=specs)
+        for c in with_spans
     ]
     return {"answer": answer, "citations": citations, "model_used": chosen_model}
