@@ -29,6 +29,27 @@ _BOUNDARY_RE = re.compile(
     r"|\n"
 )
 
+# 「次が大文字」だけでは略語を割ってしまう(`e.g. Sleep` `Fig. 3-1` `No. 5` など)。
+# ピリオド直前の語がこれらなら文境界にしない。技術文書に頻出するものを列挙する。
+_ABBREVIATIONS = frozenset(
+    {
+        "e.g.", "i.e.", "cf.", "vs.", "etc.", "al.",
+        "fig.", "figs.", "no.", "nos.", "eq.", "eqs.", "sec.", "secs.",
+        "ch.", "ref.", "refs.", "tab.", "vol.", "pp.", "approx.",
+        "dr.", "mr.", "mrs.", "ms.", "prof.", "st.", "inc.", "ltd.", "co.",
+    }
+)
+# ピリオドの直前にある「単語らしきもの」を取る(略語判定用)。
+_TRAILING_TOKEN_RE = re.compile(r"([A-Za-z][A-Za-z.]*\.)$")
+
+
+def _is_abbreviation_boundary(text: str, pos: int) -> bool:
+    """pos(境界候補=ピリオドの直後)が略語の途中かどうか。"""
+    m = _TRAILING_TOKEN_RE.search(text[:pos])
+    if m is None:
+        return False
+    return m.group(1).lower() in _ABBREVIATIONS
+
 
 @dataclass(frozen=True)
 class Sentence:
@@ -53,6 +74,8 @@ def split_sentences(text: str) -> list[Sentence]:
         end = m.end()
         if end <= cursor:
             continue
+        if _is_abbreviation_boundary(text, end):
+            continue  # `e.g. Sleep` `Fig. 3` などを割らない
         pieces.append(Sentence(text=text[cursor:end], start=cursor, end=end))
         cursor = end
     if cursor < len(text):
@@ -120,10 +143,12 @@ class SpanCache:
         if key not in self._store:
             return None
         self._store.move_to_end(key)
-        return self._store[key]
+        # 実体を返すと、呼び出し側(ルータは answer_occurrence を差し替える)の
+        # 書き換えがキャッシュを汚染する。複製を返す。
+        return [dict(span) for span in self._store[key]]
 
     def put(self, key: tuple[str, str, str], value: list[dict[str, Any]]) -> None:
-        self._store[key] = value
+        self._store[key] = [dict(span) for span in value]
         self._store.move_to_end(key)
         while len(self._store) > self.limit:
             self._store.popitem(last=False)
@@ -139,6 +164,10 @@ async def score_spans(
     cache: SpanCache,
 ) -> list[dict[str, Any]]:
     """主張文に意味的に近い文を最大1件返す。根拠の保証はない。"""
+    if not claim.strip():
+        # 空の主張文では類似度に意味が無い。埋め込みを呼ぶだけ無駄なので即座に諦める
+        # (cjk_ratio('')=0 で言語跨ぎ判定にも掛からず、そのまま流れてしまっていた)。
+        return []
     key = (chunk_id, hashlib.sha1(claim.encode("utf-8")).hexdigest(), model)
     cached = cache.get(key)
     if cached is not None:
@@ -169,13 +198,19 @@ async def score_spans(
         return []
 
     best = scored[0][1]
+    # 文分割は境界文字を次片の先頭に含めるため、先頭に空白や改行が残ることがある。
+    # そのままだとハイライトが直前の行から始まって見えるので、両端を詰める。
+    lead = len(best.text) - len(best.text.lstrip())
+    trail = len(best.text) - len(best.text.rstrip())
+    start = best.start + lead
+    end = best.end - trail
     spans = [
         {
             "answer_occurrence": -1,  # 呼び出し側が実際の出現位置で上書きする
             "ordinal": None,
-            "start": best.start,
-            "end": best.end,
-            "quote": best.text,
+            "start": start,
+            "end": end,
+            "quote": chunk_text[start:end],
             "method": "embedding",
         }
     ]
