@@ -6,7 +6,7 @@
     type RecordingSegmentContent,
   } from '$lib/api/source_outline';
   import { linksApi } from '$lib/api/links';
-  import type { AssetInfo, SlideUtterancePage } from '$lib/api/types';
+  import type { AssetInfo, Citation, SlideUtterancePage } from '$lib/api/types';
   import { sourcesApi } from '$lib/api/sources';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
@@ -19,6 +19,7 @@
   import { pushToast } from './Toast.svelte';
   import { formatBytes } from '$lib/utils/format';
   import { sanitizeTableHtml } from '$lib/utils/tableHtml';
+  import { splitBySpans } from '$lib/utils/highlight';
 
   function isTableFigureRagEnabled(): boolean {
     return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
@@ -53,8 +54,15 @@
     notebookId: string;
     selectedChunkId: string | null;
     selectedSourceId: string | null;
+    /** チャット側でクリックされた主張(バッジ)。出典カード経由や未選択では null。 */
+    selectedCitation?: { citation: Citation; answerOccurrence: number } | null;
   }
-  let { notebookId, selectedChunkId, selectedSourceId }: Props = $props();
+  let {
+    notebookId,
+    selectedChunkId,
+    selectedSourceId,
+    selectedCitation = null,
+  }: Props = $props();
 
   let chunk = $state<ChunkDetail | null>(null);
   // 選択中チャンクに対応する表アセットの HTML(chunk.text 中の md_snippet を
@@ -298,6 +306,29 @@
     for (const s of content.segments) set.add(segChannel(s.speaker));
     return [...set];
   });
+
+  // ---- 根拠スパンのハイライト -------------------------------------------------
+  // 選択中の引用が表示中チャンクのものであるときだけスパンを適用する
+  // (チャンク切替の途中で前の引用のオフセットを当てないため)。
+  let textEl = $state<HTMLElement | null>(null);
+
+  const activeSpans = $derived(
+    selectedCitation && selectedCitation.citation.chunk_id === selectedChunkId
+      ? (selectedCitation.citation.spans ?? [])
+      : [],
+  );
+  const segments = $derived(
+    chunk ? splitBySpans(chunk.text, activeSpans, selectedCitation?.answerOccurrence ?? null) : [],
+  );
+  // 引用は選ばれたのに根拠スパンが無い = 第1段(字句照合)で特定できなかった主張。
+  const unresolved = $derived(!!selectedCitation && activeSpans.length === 0);
+
+  $effect(() => {
+    void segments; // チャンク読み込み後に描き直された mark を対象にする
+    if (!textEl || !selectedCitation) return;
+    const target = textEl.querySelector('mark.ev.active');
+    target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
 </script>
 
 <div class="viewer">
@@ -320,6 +351,9 @@
     <div class="state err">エラー: {error}</div>
   {:else if chunk}
     <div class="chunk">
+      {#if unresolved}
+        <p class="unresolved">この主張の根拠箇所は特定できませんでした</p>
+      {/if}
       {#if sourceMeta?.kind === 'recording' && chunk.start_ms != null}
         <AudioCitationPlayer
           notebookId={notebookId}
@@ -352,7 +386,8 @@
             {/key}
           </div>
         {:else}
-          <pre class="text">{chunk.text}</pre>
+          <pre class="text" bind:this={textEl}>{#each segments as seg}{#if seg.span}<mark
+                class={seg.active ? 'ev active' : 'ev'}>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</pre>
         {/if}
       {:else}
         {#if chunk.heading_path}
@@ -362,9 +397,12 @@
           <div class="page">p.{chunk.page}</div>
         {/if}
         {#if tableAssetHtml}
+          <!-- 表アセットで本文を置換した経路。スパンのオフセットは置換前の
+               chunk.text 基準なので、ここではハイライトしない。 -->
           {@html tableHtmlToSafeMarkup(tableAssetHtml)}
         {:else}
-          <pre class="text">{chunk.text}</pre>
+          <pre class="text" bind:this={textEl}>{#each segments as seg}{#if seg.span}<mark
+                class={seg.active ? 'ev active' : 'ev'}>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</pre>
         {/if}
         {#if figureAssetIds.length > 0}
           <div class="figure-thumbs">
@@ -571,6 +609,21 @@
     font-size: 13px;
     line-height: 1.6;
     margin: 0;
+  }
+  /* 根拠スパン: 選択中は濃いマーカー、同一チャンクの他スパンは淡色。 */
+  .text :global(mark.ev) {
+    background: linear-gradient(transparent 62%, var(--color-evidence-faint) 62%);
+    border-bottom: 2px solid color-mix(in srgb, var(--color-evidence) 35%, transparent);
+    color: inherit;
+  }
+  .text :global(mark.ev.active) {
+    background: linear-gradient(transparent 62%, var(--color-evidence-soft) 62%);
+    border-bottom-color: var(--color-evidence);
+  }
+  .unresolved {
+    margin: 0 0 var(--space-2);
+    font-size: 11px;
+    color: var(--color-fg-muted);
   }
   .figure-thumbs {
     display: flex;

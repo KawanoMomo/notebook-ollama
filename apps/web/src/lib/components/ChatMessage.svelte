@@ -5,15 +5,35 @@
 
   interface Props {
     message: Message;
-    onCitationClick: (chunkId: string, sourceId: string) => void;
+    /** 出典パネルで表示中の主張(バッジ)の出現位置。未選択なら null。 */
+    activeOccurrence?: number | null;
+    onCitationClick: (
+      chunkId: string,
+      sourceId: string,
+      selection: { citation: Citation; answerOccurrence: number } | null,
+    ) => void;
   }
-  let { message, onCitationClick }: Props = $props();
+  let { message, activeOccurrence = null, onCitationClick }: Props = $props();
+
+  let contentEl = $state<HTMLElement | null>(null);
 
   let html = $derived(
     message.role === 'assistant'
       ? injectCitationBadges(renderMarkdown(message.content), message.citations)
       : renderMarkdown(message.content),
   );
+
+  // {@html} で描画したバッジは Svelte の管理外なので、選択状態は DOM へ直接当てる。
+  // html を読むことで、本文再描画のたびに再適用されるようにしている。
+  $effect(() => {
+    void html;
+    const root = contentEl;
+    if (!root) return;
+    const active = activeOccurrence;
+    for (const el of root.querySelectorAll<HTMLElement>('.citation-badge')) {
+      el.classList.toggle('is-active', active !== null && Number(el.dataset.occurrence) === active);
+    }
+  });
 
   function citationByN(n: number): Citation | undefined {
     return message.citations.find((c) => c.n === n);
@@ -23,22 +43,33 @@
     const t = e.target;
     if (t instanceof HTMLElement && t.classList.contains('citation-badge')) {
       const n = Number(t.dataset.n);
+      const occurrence = Number(t.dataset.occurrence);
       const c = Number.isFinite(n) ? citationByN(n) : undefined;
-      if (c) onCitationClick(c.chunk_id, c.source_id);
+      if (c) {
+        onCitationClick(
+          c.chunk_id,
+          c.source_id,
+          Number.isFinite(occurrence) ? { citation: c, answerOccurrence: occurrence } : null,
+        );
+      }
     }
   }
 </script>
 
 <article class={`msg ${message.role}`}>
   <div class="role">{message.role === 'user' ? 'あなた' : 'アシスタント'}</div>
-  <div class="content" onclick={onContentClick} role="presentation">{@html html}</div>
+  <div class="content" bind:this={contentEl} onclick={onContentClick} role="presentation">{@html html}</div>
   {#if message.citations.length > 0}
     <div class="cites">
       <div class="cites-label">出典</div>
       <ul class="cards">
         {#each message.citations as c (c.n)}
           <li>
-            <button class="card" onclick={() => onCitationClick(c.chunk_id, c.source_id)} type="button">
+            <button
+              class="card"
+              onclick={() => onCitationClick(c.chunk_id, c.source_id, null)}
+              type="button"
+            >
               <div class="card-head">
                 <span class="num">{c.n}</span>
                 <span class="title" title={c.source_title}>{c.source_title}</span>
@@ -168,6 +199,11 @@
     cursor: pointer;
   }
   .content :global(.citation-badge:hover) {
+    background: var(--color-evidence);
+    color: #fff;
+  }
+  /* 出典パネルで表示中の主張。spec §3.3「選択中は塗り、非選択は淡色」。 */
+  .content :global(.citation-badge.is-active) {
     background: var(--color-evidence);
     color: #fff;
   }

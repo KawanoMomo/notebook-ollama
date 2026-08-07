@@ -18,12 +18,16 @@
   import SourceViewer from '$lib/components/SourceViewer.svelte';
   import { recordingStore } from '$lib/stores/recording.svelte';
   import { presentationStore } from '$lib/stores/presentation.svelte';
+  import type { Citation } from '$lib/api/types';
 
   let { data } = $props<{ data: { notebookId: string } }>();
 
   let viewerOpen = $state(true);
   let selectedSourceId = $state<string | null>(null);
   let selectedChunkId = $state<string | null>(null);
+  // どのバッジ(主張の出現位置)が選ばれたか。出典パネルの根拠ハイライトと
+  // チャット側バッジの選択表示に使う。出典カード経由の選択では null。
+  let selectedCitation = $state<{ citation: Citation; answerOccurrence: number } | null>(null);
   let unbindShortcuts: (() => void) | null = null;
 
   // 全体既定名(設定未ロード時は空文字)
@@ -180,6 +184,7 @@
             // SourceViewer が古い selectedSourceId を優先してしまう。
             selectedSourceId = id;
             selectedChunkId = null;
+            selectedCitation = null;
           }}
         />
       </aside>
@@ -191,18 +196,21 @@
         {:else}
           <ChatPanel
             notebookId={data.notebookId}
-            onCitationClick={(cid, sourceId) => {
+            activeOccurrence={selectedCitation?.answerOccurrence ?? null}
+            onCitationClick={(cid, sourceId, selection) => {
               // 視覚検索の合成チャンクは BE 側に実チャンク行が無く getChunk が失敗するため、
               // 通常のソース選択(全文ビュー)へフォールバックする。
               // 'vp:' = ページ単位、'vt:' = タイル単位 (Stage 4)。
               if (cid.startsWith('vp:') || cid.startsWith('vt:')) {
                 selectedSourceId = sourceId;
                 selectedChunkId = null;
+                selectedCitation = null;
                 return;
               }
               // 引用クリック時は古いソース選択を消し、引用の source_id を解決させる。
               selectedChunkId = cid;
               selectedSourceId = null;
+              selectedCitation = selection;
             }}
           />
         {/if}
@@ -217,6 +225,7 @@
             notebookId={data.notebookId}
             selectedChunkId={selectedChunkId}
             selectedSourceId={selectedSourceId}
+            selectedCitation={selectedCitation}
           />
         </aside>
       {/if}
