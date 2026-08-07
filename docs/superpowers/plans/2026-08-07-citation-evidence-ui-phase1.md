@@ -107,6 +107,14 @@ def test_iter_claim_occurrences_ignores_markers_inside_code():
     answer = "本文[^1]。\n```\n[^2]\n```\n"
     got = iter_claim_occurrences(answer)
     assert [(c.n, c.answer_occurrence) for c in got] == [(1, 0)]
+
+
+def test_iter_claim_occurrences_ignores_indented_code_block():
+    # markdown-it は4スペース始まりの行も <pre><code> にする。FE と計数を揃えるため
+    # BE 側でもマスクしないと answer_occurrence が全域でズレる。
+    answer = "本文はここに書かれている[^1]。\n\n    sample = data[^2]\n"
+    got = iter_claim_occurrences(answer)
+    assert [(c.n, c.answer_occurrence) for c in got] == [(1, 0)]
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -131,10 +139,15 @@ from dataclasses import dataclass
 _CITATION_RE = re.compile(r"\[\^(\d+)\]")
 _FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+# markdown-it は 4スペース/タブ始まりの行もコードブロックにする。FE と計数の基準面を
+# 揃えるため、BE 側でもこれをマスクする(揃えないと answer_occurrence が全域でズレる)。
+_INDENT_CODE_RE = re.compile(r"(?m)^(?: {4}|\t).*$")
 # 文末とみなす区切り。箇条書き先頭記号も文境界として扱う。
-_SENTENCE_BOUNDARY_RE = re.compile(r"[。．!?！？\n]|(?:^|\n)\s*[-*・]\s*")
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?m)[。．!?！？\n]|^\s*[-*・]\s*")
 
-MIN_CLAIM_CHARS = 20
+# 主張文がこれより短ければ直前2文まで遡る。日本語の1文(「レベル2では成果物が
+# 管理される」= 15文字)を安易に前文と繋げないため、20 ではなく 12 とする。
+MIN_CLAIM_CHARS = 12
 
 
 def mask_code_regions(text: str) -> str:
@@ -144,6 +157,7 @@ def mask_code_regions(text: str) -> str:
         return " " * len(m.group(0))
 
     masked = _FENCE_RE.sub(blank, text)
+    masked = _INDENT_CODE_RE.sub(blank, masked)
     return _INLINE_CODE_RE.sub(blank, masked)
 
 
@@ -637,6 +651,7 @@ git commit -m "feat(citations): 引用へ根拠スパンを付与する公開API
 
 **Files:**
 - Modify: `core/generation/stream.py`(`build_citations` 呼び出し箇所)
+- Modify: `core/mcp/tools/ask.py`(同じ後処理を適用。ここを飛ばすと MCP 経由の回答だけ spans 無しになる)
 - Modify: `apps/api/schemas/chat.py`
 - Test: `tests/integration/test_chat_spans_persist.py`
 
@@ -744,6 +759,8 @@ from core.generation.evidence_spans import attach_evidence_spans
         )
 ```
 
+`core/mcp/tools/ask.py` — こちらも `snippet=h.text[:200]` で citations を組んでいる箇所の直後に、同じ `attach_evidence_spans` を適用する(呼び出し形は上と同一)。
+
 `apps/api/schemas/chat.py` — スキーマを明示する(既存の `citations: list[dict[str, Any]]` はそのままでも通るが、契約を型で固定する)。
 
 ```python
@@ -844,6 +861,17 @@ describe('injectCitationBadges — 枝番', () => {
     expect(second).toBeGreaterThan(first);
     expect(html.slice(first, second)).toContain('>3<');
     expect(html.slice(second)).toContain('>3-1<');
+  });
+
+  it('インデント式コードブロック(4スペース)内のマーカーも数えない', () => {
+    // markdown-it は 4スペース始まりの行も <pre><code> にする。BE の mask_code_regions と
+    // 対になるケース。どちらかが欠けると answer_occurrence が全域でズレる。
+    const c = cite(1, [
+      { answer_occurrence: 0, ordinal: 1, start: 0, end: 3, quote: 'abc', method: 'lexical' },
+    ]);
+    const html = injectCitationBadges('<p>本文[^1]。</p><pre><code>sample = data[^1]\n</code></pre>', [c]);
+    expect(html).toContain('data-occurrence="0"');
+    expect(html).not.toContain('data-occurrence="1"');
   });
 
   it('コードブロック内のマーカーは数えずバッジ化もしない', () => {
@@ -961,8 +989,15 @@ git commit -m "feat(web): 引用バッジを枝番表示にし出現位置を持
 **Files:**
 - Modify: `apps/web/src/app.css`
 - Modify: `apps/web/src/lib/components/ChatMessage.svelte`(`.num` と `.citation-badge` のスタイル)
+- Modify: `apps/web/src/lib/components/SourceViewer.svelte`(`.text` の一様塗りを廃止)
 - Delete: `apps/web/src/lib/components/CitationBadge.svelte`(どこからも import されていない死んだコンポーネント)
 - Test: `apps/web/tests/unit/citationTheme.test.ts`(新規)
+
+> [!warning] トークン削除の巻き添え
+> `SourceViewer.svelte:565-566` の `.text` は `--color-citation-bg` /
+> `--color-citation-border` を参照している(チャンク全文の黄色塗り＝ spec §1 問題1 の
+> 当該箇所)。トークンだけ消すと**未定義変数になって表示が壊れる**(ビルドは通るので
+> 気づかない)。このタスクで `.text` の一様塗りを同時に廃止する。
 
 **Interfaces:**
 - Consumes: なし
@@ -988,6 +1023,24 @@ describe('配色トークン', () => {
     expect(css).toContain('--color-evidence:');
     expect(css).toContain('--color-evidence-soft:');
     expect(css).toContain('--color-evidence-faint:');
+  });
+});
+
+describe('旧トークンの参照が残っていない', () => {
+  it('SourceViewer が廃止トークンを参照していない', () => {
+    const sv = readFileSync(
+      new URL('../../src/lib/components/SourceViewer.svelte', import.meta.url),
+      'utf8',
+    );
+    expect(sv).not.toContain('--color-citation-');
+  });
+
+  it('ChatMessage が廃止トークンを参照していない', () => {
+    const cm = readFileSync(
+      new URL('../../src/lib/components/ChatMessage.svelte', import.meta.url),
+      'utf8',
+    );
+    expect(cm).not.toContain('--color-citation-');
   });
 });
 ```
@@ -1047,6 +1100,22 @@ Expected: FAIL — 旧トークンが残っている
   }
 ```
 
+```svelte
+<!-- apps/web/src/lib/components/SourceViewer.svelte の <style> — .text の一様塗りを廃止。
+     チャンク全文を色で塗るのをやめ、根拠スパンだけを Task 9 で強調する。 -->
+  .text {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    padding: var(--space-3);
+    border-radius: var(--radius-sm);
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
+  }
+```
+
 ```bash
 git rm apps/web/src/lib/components/CitationBadge.svelte
 ```
@@ -1055,6 +1124,11 @@ git rm apps/web/src/lib/components/CitationBadge.svelte
 
 Run: `cd apps/web && npx vitest run tests/unit/citationTheme.test.ts && npm run test:unit && npm run build`
 Expected: PASS、ビルドも成功(削除したコンポーネントへの参照が無いことの確認を兼ねる)
+
+さらに機械的な取りこぼし防止として、リポジトリ全体に旧トークンが残っていないことを確認する。
+
+Run: `git grep -n -- "--color-citation" ; echo "exit=$?"`
+Expected: ヒット0件(`exit=1`)
 
 - [ ] **Step 5: Commit**
 
@@ -1252,10 +1326,14 @@ describe('出典パネルのハイライト対象', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: テストを走らせて現状を確認する(このタスクは TDD ではない)**
 
 Run: `cd apps/web && npx vitest run tests/unit/SourceViewerHighlight.test.ts`
-Expected: PASS(Task 8 の実装で通る)。**このテストは回帰用の受け皿**なので、続けて下記の実装を行い `npm run build` が通ることを確認する。
+Expected: PASS(Task 8 の実装で既に通る)。
+
+> このタスクは Svelte コンポーネントの結線が主で、red→green のサイクルにならない。
+> 上のテストは**描画に使う純ロジックの回帰受け皿**であり、コンポーネント自体の確認は
+> Task 11 の実機スクリーンショットで担保する(CLAUDE.md の視覚検証ゲート)。
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -1348,6 +1426,34 @@ Expected: PASS(Task 8 の実装で通る)。**このテストは回帰用の受�
   }
 ```
 
+バッジの選択状態(spec §3.3「選択中は塗り、非選択は淡色」)も反映する。`ChatMessage` は
+選択中の出現を受け取り、対応するバッジに `is-active` を付ける。
+
+```svelte
+<!-- ChatMessage.svelte -->
+  interface Props {
+    message: Message;
+    activeOccurrence: number | null; // +page.svelte から渡す
+    onCitationClick: (...) => void;
+  }
+
+  // {@html} 後の DOM に対して属性を当てる
+  $effect(() => {
+    const root = contentEl;
+    if (!root) return;
+    for (const el of root.querySelectorAll('.citation-badge')) {
+      el.classList.toggle('is-active', Number(el.dataset.occurrence) === activeOccurrence);
+    }
+  });
+```
+
+```css
+  .content :global(.citation-badge.is-active) {
+    background: var(--color-evidence);
+    color: #fff;
+  }
+```
+
 選択中スパンへのスクロールは `$effect` で行う。
 
 ```svelte
@@ -1376,18 +1482,23 @@ git commit -m "feat(web): 出典パネルで根拠スパンをマーカー下線
 ### Task 10: Phase 1 ゲート — 解決率の実測 CLI
 
 **Files:**
-- Create: `scripts/measure_evidence_spans.py`
+- Modify: `core/generation/evidence_spans.py`(`summarize_resolution` を追加)
+- Create: `scripts/measure_evidence_spans.py`(薄い CLI のみ)
 - Test: `tests/unit/test_measure_evidence_spans.py`
 
 **Interfaces:**
-- Consumes: `attach_evidence_spans`(Task 4)
-- Produces: `summarize(records: list[dict]) -> dict` — `{"total": int, "resolved": int, "rate": float}`。CLI は保存済み会話を読み、第1段の解決率を出力する
+- Consumes: `iter_claim_occurrences`(Task 1)
+- Produces: `summarize_resolution(records: list[dict]) -> dict` — `{"total": int, "resolved": int, "rate": float}`
+
+> `scripts/` に `__init__.py` は無く、pytest の `testpaths` も `tests` のみ。
+> `scripts.*` からの import は環境依存で壊れるため、**集計ロジックは `core/` に置き**、
+> `scripts/` は引数処理と DB 読み出しだけにする。
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/unit/test_measure_evidence_spans.py
-from scripts.measure_evidence_spans import summarize
+from core.generation.evidence_spans import summarize_resolution as summarize
 
 
 def test_summarize_counts_occurrences_not_citations():
@@ -1411,28 +1522,10 @@ Expected: FAIL — モジュールが存在しない
 
 - [ ] **Step 3: Write minimal implementation**
 
+`core/generation/evidence_spans.py` の末尾に追記する。
+
 ```python
-# scripts/measure_evidence_spans.py
-"""第1段(字句照合)の解決率を実測する。Phase 1 ゲート用。
-
-使い方:
-    uv run --no-sync python scripts/measure_evidence_spans.py --data-dir <隔離data_dir>
-
-本番 data_dir を指さないこと(隔離環境で実行する)。
-"""
-
-from __future__ import annotations
-
-import argparse
-import json
-import sqlite3
-from pathlib import Path
-from typing import Any
-
-from core.generation.evidence_spans import iter_claim_occurrences
-
-
-def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_resolution(records: list[dict[str, Any]]) -> dict[str, Any]:
     total = 0
     resolved = 0
     for rec in records:
@@ -1446,6 +1539,28 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         resolved += sum(1 for o in occurrences if (o.n, o.answer_occurrence) in seen)
     rate = resolved / total if total else 0.0
     return {"total": total, "resolved": resolved, "rate": rate}
+```
+
+```python
+# scripts/measure_evidence_spans.py
+"""第1段(字句照合)の解決率を実測する。Phase 1 ゲート用。
+
+使い方:
+    uv run --no-sync python scripts/measure_evidence_spans.py --data-dir ./.verify-data
+
+本番 data_dir を指さないこと(隔離環境で実行する)。DB 名は core/config.py の
+`metadata_db_path` に合わせて metadata.db。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+from core.generation.evidence_spans import summarize_resolution
 
 
 def _load(db_path: Path) -> list[dict[str, Any]]:
@@ -1455,25 +1570,22 @@ def _load(db_path: Path) -> list[dict[str, Any]]:
         "SELECT content, citations FROM messages WHERE role='assistant' AND citations IS NOT NULL"
     ).fetchall()
     conn.close()
-    return [
-        {"answer": r["content"], "citations": json.loads(r["citations"])}
-        for r in rows
-    ]
+    return [{"answer": r["content"], "citations": json.loads(r["citations"])} for r in rows]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", required=True, type=Path)
     args = parser.parse_args()
-    result = summarize(_load(args.data_dir / "notebook.db"))
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    db = args.data_dir / "metadata.db"
+    if not db.exists():
+        raise SystemExit(f"metadata.db が見つかりません: {db}")
+    print(json.dumps(summarize_resolution(_load(db)), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
     main()
 ```
-
-> DB ファイル名は `core/config.py` の設定に合わせること(異なれば実際の名前に直す)。
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1499,11 +1611,17 @@ git commit -m "feat(citations): 第1段の解決率を実測するCLIを追加"
 
 - [ ] **Step 1: 隔離環境で起動**
 
+環境変数のプレフィックスは `NOTEBOOK_OLLAMA_`(`core/config.py` の `env_prefix`)。
+**名前を間違えると本番 data_dir(既定の `_default_data_dir()`)に対して検証してしまう。**
+
 ```bash
 # 本番 data_dir と 8765 ポートは使わない
-NOTEBOOK_DATA_DIR=./.verify-data uv run --no-sync uvicorn apps.api.main:app --port 8799
+NOTEBOOK_OLLAMA_DATA_DIR=./.verify-data uv run --no-sync uvicorn apps.api.main:app --port 8799
 cd apps/web && npm run dev
 ```
+
+起動ログの `data_dir` が `.verify-data` を指していることを目視で確認してから次へ進む。
+本番サーバー(8765)には触れない。
 
 - [ ] **Step 2: 日本語 PDF を1本取り込み、5問質問する**
 
@@ -1588,8 +1706,20 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-MIN_SENTENCE_CHARS = 15
-_BOUNDARY_RE = re.compile(r"(?<=[。．!?！？])|\n")
+# 結合の下限。日本語の普通の短文(「これは一文目である。」= 10文字)を潰さない値。
+MIN_SENTENCE_CHARS = 8
+
+# 文境界:
+#   - 和文の句点類の直後
+#   - ASCII の . ! ? の直後で、空白を挟んで「大文字か開き括弧」が続くもの
+#   - 改行
+# 略語・小数を割らないための条件が「次が大文字」。`Fig. 3` は次が数字、`e.g. foo` は
+# 次が小文字なので、いずれも境界にならない。`details. The` は境界になる。
+_BOUNDARY_RE = re.compile(
+    r"(?<=[。．!?！？])"
+    r"|(?<=[.!?])(?=\s+[A-Z(\[\"'])"
+    r"|\n"
+)
 
 
 @dataclass(frozen=True)
@@ -1599,8 +1729,16 @@ class Sentence:
     end: int
 
 
+def _is_table_row(text: str) -> bool:
+    return text.lstrip().startswith("|")
+
+
 def split_sentences(text: str) -> list[Sentence]:
-    """文単位に分割する。短い断片は次と結合して過分割(e.g. / Fig. 3)を防ぐ。"""
+    """文単位に分割する。
+
+    - 短い断片は次と結合して過分割を防ぐ(MIN_SENTENCE_CHARS)
+    - 表 Markdown 行(`|` 始まり)は 1行 = 1単位。結合対象にしない(spec §3.1.2 手順2)
+    """
     pieces: list[Sentence] = []
     cursor = 0
     for m in _BOUNDARY_RE.finditer(text):
@@ -1614,9 +1752,18 @@ def split_sentences(text: str) -> list[Sentence]:
 
     merged: list[Sentence] = []
     for piece in pieces:
-        if merged and len(merged[-1].text.strip()) < MIN_SENTENCE_CHARS:
-            prev = merged.pop()
-            merged.append(Sentence(text=text[prev.start : piece.end], start=prev.start, end=piece.end))
+        prev = merged[-1] if merged else None
+        can_merge = (
+            prev is not None
+            and len(prev.text.strip()) < MIN_SENTENCE_CHARS
+            and not _is_table_row(prev.text)
+            and not _is_table_row(piece.text)
+        )
+        if can_merge:
+            merged.pop()
+            merged.append(
+                Sentence(text=text[prev.start : piece.end], start=prev.start, end=piece.end)
+            )
         else:
             merged.append(piece)
     return [s for s in merged if s.text.strip()]
@@ -1647,7 +1794,7 @@ git commit -m "feat(citations): 第2段の文分割を追加"
 - Produces:
   - `MULTILINGUAL_EMBEDDING_MODELS: frozenset[str]`
   - `is_cross_language(a: str, b: str) -> bool`
-  - `async score_spans(*, claim: str, chunk_text: str, chunk_id: str, gateway, model: str, cache: SpanCache) -> list[dict]`
+  - `async score_spans(*, claim: str, chunk_text: str, chunk_id: str, gateway, model: str, cache: SpanCache) -> list[dict]` — 返すのは**0件または1件**。最上位が2位から `MIN_MARGIN` 以上離れているときだけ採る
   - `class SpanCache` — LRU(上限 256)。キーは `(chunk_id, sha1(claim), model)`
 
 - [ ] **Step 1: Write the failing test**
@@ -1775,9 +1922,9 @@ from core.generation.evidence_spans import cjk_ratio
 MULTILINGUAL_EMBEDDING_MODELS = frozenset(
     {"bge-m3", "bge-m3:latest", "multilingual-e5-large", "paraphrase-multilingual"}
 )
-MAX_SPANS = 3
-# 相対判定: 最上位が2位より有意に離れているか。絶対閾値だけに頼らない
-# (コサイン類似度の分布はモデルごとに異なるため)。
+# 相対判定: 最上位が2位より有意に離れているときだけ、その1文を採る。
+# 「2位は1位と紛らわしいから信用しない」と「2位も返す」は両立しないため、
+# 返すのは常に最大1件とする(spec §3.1.2 も1件に統一済み)。
 MIN_MARGIN = 0.05
 MIN_ABSOLUTE = 0.30
 CJK_LANGUAGE_THRESHOLD = 0.3
@@ -1844,7 +1991,9 @@ async def score_spans(
         return []
 
     sentences = split_sentences(chunk_text)
-    if not sentences:
+    if len(sentences) < 2:
+        # 文が1つしかないチャンクでは「どこか」を絞れない(=チャンク全文になる)。
+        # 全文ハイライトへの退化を防ぐため、ここで打ち切る。
         cache.put(key, [])
         return []
 
@@ -1861,18 +2010,16 @@ async def score_spans(
         cache.put(key, [])
         return []
 
-    # 採用は「最上位が2位から有意に離れている」ことを条件に、絶対値も満たす上位のみ。
+    best = scored[0][1]
     spans = [
         {
             "answer_occurrence": -1,  # 呼び出し側が実際の出現位置で上書きする
             "ordinal": None,
-            "start": s.start,
-            "end": s.end,
-            "quote": s.text,
+            "start": best.start,
+            "end": best.end,
+            "quote": best.text,
             "method": "embedding",
         }
-        for score, s in scored[:MAX_SPANS]
-        if score >= MIN_ABSOLUTE
     ]
     cache.put(key, spans)
     return spans
@@ -1892,7 +2039,196 @@ git commit -m "feat(citations): 第2段の埋め込み類似・多言語許可�
 
 ---
 
-### Task 14: 第2段の API とストリーム中ガード
+### Task 14a: message 単発取得の追加
+
+**Files:**
+- Modify: `core/storage/messages_repo.py`
+- Test: `tests/integration/test_messages_repo_get.py`
+
+**Interfaces:**
+- Consumes: なし
+- Produces: `get_message(conn: sqlite3.Connection, message_id: str) -> MessageRecord | None`
+
+> 既存の `messages_repo` には `append_message` / `list_messages`(conversation_id 単位)しか
+> 無く、message_id 単発取得が存在しない。Task 14c が必要とするので先に足す。
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/integration/test_messages_repo_get.py
+from core.storage.conversations_repo import create_conversation
+from core.storage.database import connect, migrate
+from core.storage.messages_repo import append_message, get_message
+from core.storage.notebooks_repo import create_notebook
+
+
+def _ctx(tmp_path):
+    conn = connect(tmp_path / "m.db")
+    migrate(conn)
+    nb = create_notebook(conn, name="N")
+    return conn, create_conversation(conn, notebook_id=nb.id, title="t")
+
+
+def test_get_message_returns_record(tmp_path):
+    conn, conv = _ctx(tmp_path)
+    created = append_message(
+        conn, conversation_id=conv.id, role="assistant", content="a[^1]", model="m"
+    )
+    got = get_message(conn, created.id)
+    assert got is not None
+    assert got.content == "a[^1]"
+    assert got.conversation_id == conv.id
+
+
+def test_get_message_returns_none_when_missing(tmp_path):
+    conn, _ = _ctx(tmp_path)
+    assert get_message(conn, "no-such-id") is None
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run --no-sync pytest tests/integration/test_messages_repo_get.py -v`
+Expected: FAIL — `ImportError: cannot import name 'get_message'`
+
+- [ ] **Step 3: Write minimal implementation**
+
+```python
+# core/storage/messages_repo.py に追記
+def get_message(conn: sqlite3.Connection, message_id: str) -> MessageRecord | None:
+    row = conn.execute("SELECT * FROM messages WHERE id=?", (message_id,)).fetchone()
+    return MessageRecord.from_row(row) if row is not None else None
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `uv run --no-sync pytest tests/integration/test_messages_repo_get.py -v`
+Expected: PASS(2件)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/storage/messages_repo.py tests/integration/test_messages_repo_get.py
+git commit -m "feat(storage): message の単発取得を追加"
+```
+
+---
+
+### Task 14b: 生成ストリームの実行中レジストリ
+
+**Files:**
+- Create: `core/generation/stream_registry.py`
+- Modify: `apps/api/routers/chat.py`(既存のストリーム配信エンドポイント)
+- Test: `tests/unit/test_stream_registry.py`
+
+**Interfaces:**
+- Consumes: なし
+- Produces: `mark_running(conversation_id: str)`(コンテキストマネージャ)、`is_stream_running(conversation_id: str) -> bool`
+
+> **登録側を先に作る。** 登録する箇所が無ければ 409 は永遠に発生せず、Task 14c の
+> ガードはテストも実装もできない。既存のストリーム配信エンドポイントを `with
+> mark_running(conversation_id):` で囲む(`finally` 相当で必ず解除されるようにする)。
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/unit/test_stream_registry.py
+import pytest
+
+from core.generation.stream_registry import is_stream_running, mark_running
+
+
+def test_marks_and_clears():
+    assert not is_stream_running("c1")
+    with mark_running("c1"):
+        assert is_stream_running("c1")
+    assert not is_stream_running("c1")
+
+
+def test_clears_on_exception():
+    with pytest.raises(RuntimeError):
+        with mark_running("c2"):
+            raise RuntimeError("boom")
+    assert not is_stream_running("c2")
+
+
+def test_nested_marks_are_reference_counted():
+    with mark_running("c3"):
+        with mark_running("c3"):
+            assert is_stream_running("c3")
+        assert is_stream_running("c3")
+    assert not is_stream_running("c3")
+
+
+def test_other_conversation_is_unaffected():
+    with mark_running("c4"):
+        assert not is_stream_running("c5")
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run --no-sync pytest tests/unit/test_stream_registry.py -v`
+Expected: FAIL — モジュールが存在しない
+
+- [ ] **Step 3: Write minimal implementation**
+
+```python
+# core/generation/stream_registry.py
+"""生成ストリームの実行中会話を追跡する。
+
+第2段(埋め込み)と翻訳は VRAM を生成と取り合うため、実行中は走らせない。
+プロセス内メモリのみ。単一プロセス運用が前提(uvicorn --workers 1)。
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from contextlib import contextmanager
+from typing import Iterator
+
+_running: Counter[str] = Counter()
+
+
+def is_stream_running(conversation_id: str) -> bool:
+    return _running[conversation_id] > 0
+
+
+@contextmanager
+def mark_running(conversation_id: str) -> Iterator[None]:
+    _running[conversation_id] += 1
+    try:
+        yield
+    finally:
+        _running[conversation_id] -= 1
+        if _running[conversation_id] <= 0:
+            del _running[conversation_id]
+```
+
+`apps/api/routers/chat.py` — 既存のストリーム配信箇所を囲む。
+
+```python
+from core.generation.stream_registry import mark_running
+
+    # 既存のストリーム生成コルーチン/ジェネレータ全体を囲む
+    with mark_running(conversation_id):
+        async for event in generator:
+            ...
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `uv run --no-sync pytest tests/unit/test_stream_registry.py -v && uv run --no-sync pytest -q`
+Expected: PASS(4件)、既存の回帰なし
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/generation/stream_registry.py apps/api/routers/chat.py tests/unit/test_stream_registry.py
+git commit -m "feat(generation): 生成ストリームの実行中会話を追跡する"
+```
+
+---
+
+### Task 14c: 第2段の API
 
 **Files:**
 - Modify: `apps/api/routers/chat.py`
@@ -1900,7 +2236,7 @@ git commit -m "feat(citations): 第2段の埋め込み類似・多言語許可�
 - Test: `tests/integration/test_span_resolve_endpoint.py`
 
 **Interfaces:**
-- Consumes: `score_spans` / `SpanCache`(Task 13)、`iter_claim_occurrences`(Task 1)
+- Consumes: `score_spans` / `SpanCache`(Task 13)、`iter_claim_occurrences`(Task 1)、`get_message`(Task 14a)、`is_stream_running`(Task 14b)
 - Produces: `POST /api/messages/{message_id}/citations/{n}/spans`
   - リクエスト: `{"answer_occurrence": int}`
   - レスポンス: `{"spans": [EvidenceSpan], "method": "embedding"}`
@@ -1933,17 +2269,20 @@ def test_returns_spans_shape(client, seeded_message_id):
             assert span["answer_occurrence"] == 0
 
 
-def test_conflicts_while_stream_running(client, seeded_message_id, running_stream):
-    res = client.post(
-        f"/api/messages/{seeded_message_id}/citations/1/spans",
-        json={"answer_occurrence": 0},
-    )
+def test_conflicts_while_stream_running(client, seeded_message_id, seeded_conversation_id):
+    from core.generation.stream_registry import mark_running
+
+    with mark_running(seeded_conversation_id):
+        res = client.post(
+            f"/api/messages/{seeded_message_id}/citations/1/spans",
+            json={"answer_occurrence": 0},
+        )
     assert res.status_code == 409
 ```
 
-> `client` / `seeded_message_id` / `running_stream` は既存の統合テストに合わせて用意する。
-> 生成中フラグは `apps/api/main.py` かルータのモジュール状態で管理しているものを使う。無ければ
-> 「実行中の会話 id 集合」を持つ小さなレジストリをルータに足す。
+> `client` / `seeded_message_id` / `seeded_conversation_id` は `tests/integration/test_api/`
+> 配下の既存テストの組み立て方に倣う(`tests/integration` に conftest.py は無い)。
+> 生成中フラグは Task 14b の `stream_registry` を使う。
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1970,7 +2309,9 @@ import asyncio
 from fastapi import HTTPException
 
 from core.generation.evidence_spans import iter_claim_occurrences
+from core.generation.stream_registry import is_stream_running
 from core.retrieval.span_scorer import SpanCache, score_spans
+from core.storage.messages_repo import get_message
 
 _SPAN_CACHE = SpanCache()
 SPAN_RESOLVE_TIMEOUT_SEC = 15
@@ -1978,7 +2319,7 @@ SPAN_RESOLVE_TIMEOUT_SEC = 15
 
 @router.post("/messages/{message_id}/citations/{n}/spans", response_model=ResolveSpansResponse)
 async def resolve_spans(message_id: str, n: int, body: ResolveSpansRequest, ...):
-    message = messages_repo.get(conn, message_id)
+    message = get_message(conn, message_id)
     if message is None:
         raise HTTPException(status_code=404, detail="message not found")
     if is_stream_running(message.conversation_id):
@@ -2029,9 +2370,10 @@ async def resolve_spans(message_id: str, n: int, body: ResolveSpansRequest, ...)
     )
 ```
 
-> `conn` / `embed_gateway` / `settings` の受け取り方、`chunks_repo.get` の正確な名前は
-> 同ファイル内の既存エンドポイントに倣うこと。`is_stream_running` /
-> `previous_user_message_content` が無ければこのルータ内に小さく実装する。
+> `conn` / `embed_gateway` / `settings` の受け取り方、`chunks_repo` の取得関数名は
+> 同ファイル内の既存エンドポイントに倣うこと。`previous_user_message_content` は
+> `list_messages(conn, conversation_id=...)` で会話を読み、当該 assistant メッセージの
+> 直前の user メッセージを返す小さなヘルパーとしてこのルータ内に実装する。
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -2149,15 +2491,24 @@ export async function resolveSpans(
 
   let lazySpans = $state<EvidenceSpan[]>([]);
   let resolving = $state(false);
+  let spanFetchSeq = 0;
 
   $effect(() => {
     const sel = selectedCitation;
     lazySpans = [];
+    // 世代カウンタで in-flight の古い応答が新しい選択を上書きするのを防ぐ。
+    // 同じ対策が同ファイル 215-238 行の utterancesFetchSeq に既にある。同じ形にする。
+    const seq = ++spanFetchSeq;
     if (!sel || (sel.citation.spans ?? []).length > 0) return;
     resolving = true;
     resolveSpans(sel.messageId, sel.citation.n, sel.answerOccurrence)
-      .then((spans) => (lazySpans = spans))
-      .finally(() => (resolving = false));
+      .then((spans) => {
+        if (seq !== spanFetchSeq) return;
+        lazySpans = spans;
+      })
+      .finally(() => {
+        if (seq === spanFetchSeq) resolving = false;
+      });
   });
 
   const activeSpans = $derived(
@@ -2230,7 +2581,7 @@ git commit -m "feat(web): 根拠未特定時に関連箇所を遅延解決して
 
 - [ ] **Step 1: 隔離環境に英語 PDF を1本取り込む**
 
-Task 11 と同じ隔離 data_dir / ポート 8799 を使う。
+Task 11 と同じ隔離 data_dir(`NOTEBOOK_OLLAMA_DATA_DIR=./.verify-data`)/ ポート 8799 を使う。
 
 - [ ] **Step 2: 日本語で 20 問質問する**
 
