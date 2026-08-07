@@ -11,6 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 from apps.api.schemas.chat import ContinueInput, Conversation, Message, MessageInput
 from core.exceptions import AppError, ErrorCode
 from core.generation.stream import strip_truncation_note
+from core.generation.stream_registry import mark_running
 from core.logging import get_logger
 from core.ollama.client import OllamaClient
 from core.ollama.models_info import parse_context_window
@@ -241,44 +242,53 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
         buffer: list[str] = []
         citations: list[dict[str, Any]] = []
         truncated = False
-        try:
-            async for ev in ctx.generation.run(
-                notebook_id=notebook_id,
-                source_ids=body.source_ids,
+        # 生成中は第2段(埋め込み)を走らせない。例外・クライアント切断
+        # (GeneratorExit)でも finally で必ず解除される。
+        with mark_running(conv.id):
+            try:
+                async for ev in ctx.generation.run(
+                    notebook_id=notebook_id,
+                    source_ids=body.source_ids,
+                    model=model,
+                    question=body.content,
+                    history=history,
+                    num_ctx=num_ctx,
+                    context_budget_ratio=ctx.config.generation.context_budget_ratio,
+                    response_budget_tokens=ctx.config.generation.response_budget_tokens,
+                    auto_continue_max=ctx.config.generation.auto_continue_max,
+                    retrieval_top_k=ctx.config.retrieval.top_k,
+                    min_history_turns=ctx.config.retrieval.min_history_turns,
+                ):
+                    if ev.kind == "token":
+                        buffer.append(ev.data["text"])
+                    yield {
+                        "event": ev.kind,
+                        "data": json.dumps(ev.data, ensure_ascii=False),
+                    }
+                    if ev.kind == "done":
+                        citations = ev.data["citations"]
+                        truncated = ev.data["truncated"]
+            except AppError as exc:
+                # SSE開始後に例外を投げると "response already started" の500に化けて
+                # FEには生のネットワークエラーしか見えない(実機FB 2026-07-26)。
+                # error イベントとして流せば conversation store が本文に表示できる。
+                log.warning("generation_failed", code=exc.code.value, detail=exc.detail)
+                msg = exc.message + (f"\n{exc.remediation}" if exc.remediation else "")
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"message": msg}, ensure_ascii=False),
+                }
+                return
+            # persist assistant message
+            messages_repo.append_message(
+                ctx.conn,
+                conversation_id=conv.id,
+                role="assistant",
+                content="".join(buffer),
+                citations=citations,
                 model=model,
-                question=body.content,
-                history=history,
-                num_ctx=num_ctx,
-                context_budget_ratio=ctx.config.generation.context_budget_ratio,
-                response_budget_tokens=ctx.config.generation.response_budget_tokens,
-                auto_continue_max=ctx.config.generation.auto_continue_max,
-                retrieval_top_k=ctx.config.retrieval.top_k,
-                min_history_turns=ctx.config.retrieval.min_history_turns,
-            ):
-                if ev.kind == "token":
-                    buffer.append(ev.data["text"])
-                yield {"event": ev.kind, "data": json.dumps(ev.data, ensure_ascii=False)}
-                if ev.kind == "done":
-                    citations = ev.data["citations"]
-                    truncated = ev.data["truncated"]
-        except AppError as exc:
-            # SSE開始後に例外を投げると "response already started" の500に化けて
-            # FEには生のネットワークエラーしか見えない(実機FB 2026-07-26)。
-            # error イベントとして流せば conversation store が本文に表示できる。
-            log.warning("generation_failed", code=exc.code.value, detail=exc.detail)
-            msg = exc.message + (f"\n{exc.remediation}" if exc.remediation else "")
-            yield {"event": "error", "data": json.dumps({"message": msg}, ensure_ascii=False)}
-            return
-        # persist assistant message
-        messages_repo.append_message(
-            ctx.conn,
-            conversation_id=conv.id,
-            role="assistant",
-            content="".join(buffer),
-            citations=citations,
-            model=model,
-            truncated=truncated,
-        )
+                truncated=truncated,
+            )
 
     return EventSourceResponse(
         event_gen(),
@@ -339,40 +349,50 @@ async def continue_message(
         buffer: list[str] = [prefill]
         citations: list[dict[str, Any]] = []
         truncated = False
-        try:
-            async for ev in ctx.generation.run(
-                notebook_id=notebook_id,
-                source_ids=body.source_ids,
-                model=model,
-                question=question,
-                history=history,
-                num_ctx=num_ctx,
-                context_budget_ratio=ctx.config.generation.context_budget_ratio,
-                response_budget_tokens=ctx.config.generation.response_budget_tokens,
-                auto_continue_max=ctx.config.generation.auto_continue_max,
-                retrieval_top_k=ctx.config.retrieval.top_k,
-                min_history_turns=ctx.config.retrieval.min_history_turns,
-                prefill_answer=prefill,
-            ):
-                if ev.kind == "token":
-                    buffer.append(ev.data["text"])
-                yield {"event": ev.kind, "data": json.dumps(ev.data, ensure_ascii=False)}
-                if ev.kind == "done":
-                    citations = ev.data["citations"]
-                    truncated = ev.data["truncated"]
-        except AppError as exc:
-            # send_message 側と同じ: SSE開始後の例外は error イベント化する。
-            # 元メッセージは prefill のまま温存される(truncated 維持)。
-            log.warning("continuation_failed_sse", code=exc.code.value, detail=exc.detail)
-            msg = exc.message + (f"\n{exc.remediation}" if exc.remediation else "")
-            yield {"event": "error", "data": json.dumps({"message": msg}, ensure_ascii=False)}
-            return
-        messages_repo.update_message_content(
-            ctx.conn,
-            message_id=last.id,
-            content="".join(buffer),
-            citations=citations,
-            truncated=truncated,
-        )
+        # send_message 側と同じく生成中フラグを立てる。
+        with mark_running(conv.id):
+            try:
+                async for ev in ctx.generation.run(
+                    notebook_id=notebook_id,
+                    source_ids=body.source_ids,
+                    model=model,
+                    question=question,
+                    history=history,
+                    num_ctx=num_ctx,
+                    context_budget_ratio=ctx.config.generation.context_budget_ratio,
+                    response_budget_tokens=ctx.config.generation.response_budget_tokens,
+                    auto_continue_max=ctx.config.generation.auto_continue_max,
+                    retrieval_top_k=ctx.config.retrieval.top_k,
+                    min_history_turns=ctx.config.retrieval.min_history_turns,
+                    prefill_answer=prefill,
+                ):
+                    if ev.kind == "token":
+                        buffer.append(ev.data["text"])
+                    yield {
+                        "event": ev.kind,
+                        "data": json.dumps(ev.data, ensure_ascii=False),
+                    }
+                    if ev.kind == "done":
+                        citations = ev.data["citations"]
+                        truncated = ev.data["truncated"]
+            except AppError as exc:
+                # send_message 側と同じ: SSE開始後の例外は error イベント化する。
+                # 元メッセージは prefill のまま温存される(truncated 維持)。
+                log.warning(
+                    "continuation_failed_sse", code=exc.code.value, detail=exc.detail
+                )
+                msg = exc.message + (f"\n{exc.remediation}" if exc.remediation else "")
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"message": msg}, ensure_ascii=False),
+                }
+                return
+            messages_repo.update_message_content(
+                ctx.conn,
+                message_id=last.id,
+                content="".join(buffer),
+                citations=citations,
+                truncated=truncated,
+            )
 
     return EventSourceResponse(event_gen(), ping=20, ping_message_factory=_ping_event)
