@@ -139,15 +139,37 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-citation-bg);
-    border: 1px solid var(--color-citation-border);
-    color: #6b5300;
-    border-radius: 50%;
-    width: 18px;
+    background: var(--color-evidence-faint);
+    border: 1px solid var(--color-evidence);
+    color: var(--color-evidence);
+    border-radius: var(--radius-sm);
+    min-width: 20px;
     height: 18px;
+    padding: 0 5px;
     font-size: 11px;
     font-weight: 600;
     flex-shrink: 0;
+  }
+  .content :global(.citation-badge) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-evidence-faint);
+    border: 1px solid var(--color-evidence);
+    color: var(--color-evidence);
+    border-radius: var(--radius-sm);
+    min-width: 20px;
+    height: 17px;
+    padding: 0 5px;
+    margin: 0 2px;
+    font-size: 10.5px;
+    font-weight: 600;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+  .content :global(.citation-badge:hover) {
+    background: var(--color-evidence);
+    color: #fff;
   }
   .title {
     font-weight: 600;

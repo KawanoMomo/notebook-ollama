@@ -562,8 +562,8 @@
     margin-bottom: var(--space-2);
   }
   .text {
-    background: var(--color-citation-bg);
-    border-left: 3px solid var(--color-citation-border);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
     padding: var(--space-3);
     border-radius: var(--radius-sm);
     white-space: pre-wrap;

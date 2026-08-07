@@ -10,8 +10,9 @@
   --color-success: #2e7d32;
   --color-warning: #ed6c02;
   --color-error: #d32f2f;
-  --color-citation-bg: #fff8c4;
-  --color-citation-border: #d4a017;
+  --color-evidence: #3563e9;
+  --color-evidence-soft: rgba(53, 99, 233, 0.14);
+  --color-evidence-faint: rgba(53, 99, 233, 0.06);
 
   --space-1: 4px;
   --space-2: 8px;
