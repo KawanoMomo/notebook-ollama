@@ -42,6 +42,7 @@ tags:
 > - [[2026-06-19-rag-ux-improvements-design|RAG運用UX改善(群1)]] ✅
 > - [[2026-06-25-source-guide-design|Source Guide(ソースガイド)]] ✅
 > - [[2026-07-02-job-status-bar-optimistic-ui-design|ジョブ状態可視化 + Optimistic UI]] ✅
+> - [[2026-08-07-citation-evidence-ui-design|出典表示の刷新 — 根拠スパン/原本ページ/選択範囲翻訳]] ✏️
 
 > [!abstract] 取込・検索 (ingestion / retrieval)
 > - [[2026-07-20-pdf-table-figure-sidecar-design|PDF表・図サイドカー抽出 (Stage 1)]] ✅

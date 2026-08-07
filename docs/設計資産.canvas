@@ -671,6 +671,26 @@
       "color": "3"
     },
     {
+      "id": "1da991b2c8348128",
+      "type": "group",
+      "x": 684,
+      "y": 3371,
+      "width": 292,
+      "height": 147,
+      "label": "ui  (基盤)",
+      "color": "1"
+    },
+    {
+      "id": "8ab9cb6d1cf634d9",
+      "type": "file",
+      "x": 700,
+      "y": 3417,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-08-07-citation-evidence-ui-design.md",
+      "color": "1"
+    },
+    {
       "id": "d98b68bdbc84ba4d",
       "type": "group",
       "x": 300,
