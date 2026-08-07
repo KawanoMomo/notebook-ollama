@@ -17,9 +17,15 @@ export function injectCitationBadges(html: string, citations: Citation[]): strin
   const replaceOutsideCode = (segment: string): string =>
     segment.replace(/\[\^(\d+)\]/g, (_m, nStr) => {
       const n = Number(nStr);
+      // 出現番号は「citations に載っているか」に関わらず必ず進める。
+      // BE の iter_claim_occurrences は全マーカーを数えるため、ここで
+      // 未知の n をカウントから外すと answer_occurrence が全域でズレ、
+      // 別の主張の根拠をハイライトしてしまう。
+      // (build_citations は specs に無い n を落とすが、回答本文からマーカーは消えない。
+      //  LLM が幻覚で [^7] を出した場合などに実際に起きる)
+      const current = occurrence++;
       const c = byN.get(n);
       if (!c) return `[^${n}]`;
-      const current = occurrence++;
       const span = c.spans?.find((s) => s.answer_occurrence === current);
       const label = span?.ordinal != null ? `${n}-${span.ordinal}` : `${n}`;
       const title = `${c.source_title}${c.location ? ' / ' + c.location : ''}`;

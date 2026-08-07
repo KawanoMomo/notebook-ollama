@@ -72,6 +72,9 @@ def _code_line_flags(lines: list[str]) -> list[bool]:
     flags = [False] * len(lines)
     fence_char: str | None = None
     fence_len = 0
+    # フェンスを開いた時点のリストコンテナ content indent。閉じフェンスの判定も
+    # 同じ基準で行う(コンテナ相対で 0-3 桁のインデントは許される)。
+    fence_container = 0
     in_indent_code = False
     in_paragraph = False
     list_indents: list[int] = []
@@ -87,14 +90,15 @@ def _code_line_flags(lines: list[str]) -> list[bool]:
 
         if fence_char is not None:
             flags[i] = True
-            closing = _FENCE_CLOSE_RE.match(body)
+            closing = _FENCE_CLOSE_RE.match(body[fence_container:])
             if closing and closing.group(1)[0] == fence_char and len(closing.group(1)) >= fence_len:
                 fence_char = None
                 fence_len = 0
                 in_paragraph = False
             continue
 
-        threshold = (list_indents[-1] if list_indents else 0) + _INDENT_CODE_WIDTH
+        container = list_indents[-1] if list_indents else 0
+        threshold = container + _INDENT_CODE_WIDTH
         if in_indent_code:
             if is_blank or indent >= threshold:
                 flags[i] = True
@@ -105,11 +109,16 @@ def _code_line_flags(lines: list[str]) -> list[bool]:
             in_paragraph = False
             continue
 
-        opening = _FENCE_OPEN_RE.match(body)
+        # フェンスの許容インデントは「行頭から 0-3 桁」ではなく
+        # 「リストコンテナの content indent から 0-3 桁」。番号付きリスト
+        # (content indent 3) 配下の4スペースフェンスは LLM 回答の頻出形状で、
+        # 絶対桁で判定すると markdown-it と食い違う。
+        opening = _FENCE_OPEN_RE.match(body[container:])
         if opening and (opening.group(1)[0] == "~" or "`" not in opening.group(2)):
             # フェンスは段落を中断できる。閉じられなければ文書末までコード。
             fence_char = opening.group(1)[0]
             fence_len = len(opening.group(1))
+            fence_container = container
             flags[i] = True
             in_paragraph = False
             continue

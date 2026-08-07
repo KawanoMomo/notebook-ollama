@@ -86,3 +86,23 @@ describe('injectCitationBadges — 枝番', () => {
     expect(html).toContain('<code>[^1]</code>');
   });
 });
+
+describe('injectCitationBadges — citations に無い [^n] があっても出現番号がズレない', () => {
+  it('未知の n もカウントに含める(BE と基準面を揃える)', () => {
+    // build_citations は specs に無い n を落とすが、回答本文からマーカーは消えない。
+    // LLM が幻覚で [^7] を出すとこの形になる。
+    const c = cite(1, [
+      { answer_occurrence: 1, ordinal: 1, start: 0, end: 3, quote: 'abc', method: 'lexical' },
+      { answer_occurrence: 2, ordinal: 2, start: 5, end: 8, quote: 'def', method: 'lexical' },
+    ]);
+    const html = injectCitationBadges('<p>幻[^7]。A[^1]。B[^1]。</p>', [c]);
+    // [^7] は素通しするが occurrence は消費するので、[^1] は 1 と 2 になる
+    expect(html).toContain('[^7]');
+    expect(html).toContain('data-occurrence="1"');
+    expect(html).toContain('data-occurrence="2"');
+    expect(html).not.toContain('data-occurrence="0"');
+    // 枝番も BE の answer_occurrence とそのまま対応する
+    expect(html).toContain('>1-1<');
+    expect(html).toContain('>1-2<');
+  });
+});
