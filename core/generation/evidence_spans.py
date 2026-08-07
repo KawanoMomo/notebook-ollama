@@ -453,3 +453,19 @@ def attach_evidence_spans(
             }
         )
     return [{**c, "spans": spans_by_n.get(c.get("n"), [])} for c in citations]
+
+
+def summarize_resolution(records: list[dict[str, Any]]) -> dict[str, Any]:
+    total = 0
+    resolved = 0
+    for rec in records:
+        occurrences = iter_claim_occurrences(rec["answer"])
+        total += len(occurrences)
+        seen = {
+            (c["n"], s["answer_occurrence"])
+            for c in rec.get("citations", [])
+            for s in c.get("spans", [])
+        }
+        resolved += sum(1 for o in occurrences if (o.n, o.answer_occurrence) in seen)
+    rate = resolved / total if total else 0.0
+    return {"total": total, "resolved": resolved, "rate": rate}
