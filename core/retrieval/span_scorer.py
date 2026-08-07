@@ -5,8 +5,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import math
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
+from typing import Any, Protocol
+
+from core.generation.evidence_spans import cjk_ratio
 
 # 結合の下限。日本語の普通の短文(「これは一文目である。」= 10文字)を潰さない値。
 MIN_SENTENCE_CHARS = 8
@@ -69,3 +75,109 @@ def split_sentences(text: str) -> list[Sentence]:
         else:
             merged.append(piece)
     return [s for s in merged if s.text.strip()]
+
+
+MULTILINGUAL_EMBEDDING_MODELS = frozenset(
+    {"bge-m3", "bge-m3:latest", "multilingual-e5-large", "paraphrase-multilingual"}
+)
+# 相対判定: 最上位が2位より有意に離れているときだけ、その1文を採る。
+# 「2位は1位と紛らわしいから信用しない」と「2位も返す」は両立しないため、
+# 返すのは常に最大1件とする(spec §3.1.2 も1件に統一済み)。
+MIN_MARGIN = 0.05
+MIN_ABSOLUTE = 0.30
+CJK_LANGUAGE_THRESHOLD = 0.3
+
+
+class EmbedGateway(Protocol):
+    async def embed(self, *, model: str, text: str) -> list[float]: ...
+
+
+def is_cross_language(a: str, b: str) -> bool:
+    """2つのテキストの主体言語が異なるか(CJK 比率で判定)。"""
+    return (cjk_ratio(a) >= CJK_LANGUAGE_THRESHOLD) != (cjk_ratio(b) >= CJK_LANGUAGE_THRESHOLD)
+
+
+def _is_multilingual(model: str) -> bool:
+    base = model.split(":")[0]
+    return model in MULTILINGUAL_EMBEDDING_MODELS or base in MULTILINGUAL_EMBEDDING_MODELS
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+class SpanCache:
+    """(chunk_id, sha1(claim), model) → spans の LRU キャッシュ。"""
+
+    def __init__(self, limit: int = 256):
+        self.limit = limit
+        self._store: OrderedDict[tuple[str, str, str], list[dict[str, Any]]] = OrderedDict()
+
+    def get(self, key: tuple[str, str, str]) -> list[dict[str, Any]] | None:
+        if key not in self._store:
+            return None
+        self._store.move_to_end(key)
+        return self._store[key]
+
+    def put(self, key: tuple[str, str, str], value: list[dict[str, Any]]) -> None:
+        self._store[key] = value
+        self._store.move_to_end(key)
+        while len(self._store) > self.limit:
+            self._store.popitem(last=False)
+
+
+async def score_spans(
+    *,
+    claim: str,
+    chunk_text: str,
+    chunk_id: str,
+    gateway: EmbedGateway,
+    model: str,
+    cache: SpanCache,
+) -> list[dict[str, Any]]:
+    """主張文に意味的に近い文を最大1件返す。根拠の保証はない。"""
+    key = (chunk_id, hashlib.sha1(claim.encode("utf-8")).hexdigest(), model)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    if is_cross_language(claim, chunk_text) and not _is_multilingual(model):
+        cache.put(key, [])
+        return []
+
+    sentences = split_sentences(chunk_text)
+    if len(sentences) < 2:
+        # 文が1つしかないチャンクでは「どこか」を絞れない(=チャンク全文になる)。
+        # 全文ハイライトへの退化を防ぐため、ここで打ち切る。
+        cache.put(key, [])
+        return []
+
+    claim_vec = await gateway.embed(model=model, text=claim)
+    scored: list[tuple[float, Sentence]] = []
+    for s in sentences:
+        vec = await gateway.embed(model=model, text=s.text)
+        scored.append((_cosine(claim_vec, vec), s))
+    scored.sort(key=lambda p: p[0], reverse=True)
+
+    top = scored[0][0]
+    runner_up = scored[1][0] if len(scored) > 1 else 0.0
+    if top < MIN_ABSOLUTE or (top - runner_up) < MIN_MARGIN:
+        cache.put(key, [])
+        return []
+
+    best = scored[0][1]
+    spans = [
+        {
+            "answer_occurrence": -1,  # 呼び出し側が実際の出現位置で上書きする
+            "ordinal": None,
+            "start": best.start,
+            "end": best.end,
+            "quote": best.text,
+            "method": "embedding",
+        }
+    ]
+    cache.put(key, spans)
+    return spans
