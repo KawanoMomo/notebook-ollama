@@ -125,3 +125,80 @@ def normalize_for_match(text: str) -> Normalized:
         chars.append(ch)
         origin.append(idx)
     return Normalized(text="".join(chars), origin=origin)
+
+
+NGRAM = 6
+CJK_MIN_COVERAGE = 0.30
+CJK_MIN_RUN = 8
+LATIN_MIN_COVERAGE = 0.40
+LATIN_MIN_RUN = 15
+CJK_MAIN_THRESHOLD = 0.3
+
+
+def _match_positions(claim: str, chunk: str) -> list[tuple[int, int]]:
+    """(claim 内の開始位置, chunk 内の開始位置) の一致 n-gram 一覧。"""
+    pairs: list[tuple[int, int]] = []
+    for ci in range(len(claim) - NGRAM + 1):
+        gram = claim[ci : ci + NGRAM]
+        pos = chunk.find(gram)
+        while pos != -1:
+            pairs.append((ci, pos))
+            pos = chunk.find(gram, pos + 1)
+    return pairs
+
+
+def _best_window(pairs: list[tuple[int, int]], claim_len: int) -> list[tuple[int, int]]:
+    """chunk 上で最も一致が密な窓を選び、その窓に入る組を返す。"""
+    if not pairs:
+        return []
+    width = max(claim_len * 2, NGRAM * 4)
+    ordered = sorted(pairs, key=lambda p: p[1])
+    best: list[tuple[int, int]] = []
+    left = 0
+    for right in range(len(ordered)):
+        while ordered[right][1] - ordered[left][1] > width:
+            left += 1
+        window = ordered[left : right + 1]
+        if len({p[0] for p in window}) > len({p[0] for p in best}):
+            best = window
+    return best
+
+
+def _longest_run(claim_positions: set[int]) -> int:
+    """連続する claim 位置の最長連鎖を文字数に直す。"""
+    if not claim_positions:
+        return 0
+    ordered = sorted(claim_positions)
+    best = run = 1
+    for prev, cur in zip(ordered, ordered[1:]):
+        run = run + 1 if cur == prev + 1 else 1
+        best = max(best, run)
+    return best + NGRAM - 1
+
+
+def resolve_lexical_span(claim: str, chunk_text: str) -> tuple[int, int] | None:
+    """主張文の根拠スパンを chunk_text 上の (start, end) で返す。当たらなければ None。"""
+    nc = normalize_for_match(claim)
+    nt = normalize_for_match(chunk_text)
+    if len(nc.text) < NGRAM or len(nt.text) < NGRAM:
+        return None
+
+    window = _best_window(_match_positions(nc.text, nt.text), len(nc.text))
+    if not window:
+        return None
+
+    claim_positions = {p[0] for p in window}
+    total = len(nc.text) - NGRAM + 1
+    coverage = len(claim_positions) / total if total else 0.0
+    run = _longest_run(claim_positions)
+
+    if cjk_ratio(nc.text) >= CJK_MAIN_THRESHOLD:
+        min_coverage, min_run = CJK_MIN_COVERAGE, CJK_MIN_RUN
+    else:
+        min_coverage, min_run = LATIN_MIN_COVERAGE, LATIN_MIN_RUN
+    if coverage < min_coverage or run < min_run:
+        return None
+
+    lo = min(p[1] for p in window)
+    hi = max(p[1] for p in window) + NGRAM - 1
+    return nt.origin[lo], nt.origin[min(hi, len(nt.origin) - 1)] + 1
