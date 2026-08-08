@@ -1601,6 +1601,48 @@ git commit -m "feat(citations): 第1段の解決率を実測するCLIを追加"
 
 ---
 
+### ゲート実測結果 (2026-08-07 実施)
+
+> [!success] Phase 1 ゲート — 解決率 70%
+> 隔離環境(`NOTEBOOK_OLLAMA_DATA_DIR=./.gate-data` / API `:8801` / vite `:5198`)で実施。
+> 本番(`:8765`・既定 data_dir)には接触していない。
+>
+> - ソース: `data/eval/corpus/aspice-pam40-p17-46.pdf`(日本語 / 30ページ / 50チャンク)
+> - モデル: `qwen3:30b-a3b`(既定の `qwen2.5:14b` は未インストールのため変更)
+> - 質問5問 → `[^n]` の出現 **10件中7件を解決 = 70%**(`scripts/measure_evidence_spans.py`)
+> - 未解決3件はいずれも LLM の言い換えによるもので、方式の想定内
+>
+> **実機スクリーンショット**(`.gate-shots/`): 枝番バッジ(`2-1` `2-2` `1-1` `1-2`、未特定は
+> 枝番なし)、選択中バッジの塗り分け、出典パネルの根拠スパンのマーカー下線、黄色の消滅を確認。
+>
+> この検証で **自動テストでは検出できない欠陥を1件発見**した(`48a9539` で修正):
+> `SourceViewer` が `chunk_id → source_id` の解決に「最新のアシスタントメッセージの
+> citations」しか見ておらず、直近の回答が引用ゼロだと**どのバッジからも出典パネルが
+> 開かない**状態だった(=機能そのものが到達不能)。
+
+> [!success] Phase 1.5 ゲート — 偽陽性 0%(暫定)
+> 同じ隔離環境。**英語の実コーパスが手元に無いため、合成の英語技術文書
+> (`.gate-shots/en-capability.pdf` / 5ページ / 5チャンク)で代用**した。実文書での再測定が望ましい。
+>
+> - 日本語で10問(うち5問は文書に答えが無い設問=偽陽性の誘発を狙ったもの)
+> - **第1段は5問すべてで解決ゼロ** — spec §2 の「言語跨ぎでは字句照合が効かない」を実測で確認
+> - 第2段(埋め込み遅延解決)を6出現に対して実行 → **4件解決 / 2件未特定**
+> - **無関係な箇所を光らせた件数: 0 件(偽陽性率 0%)**。ゲート基準(20%超で既定OFF)を満たす
+>
+> 解決した4件の内訳(いずれも妥当):
+>
+> | 質問(日本語) | 第2段が示した英文 |
+> |---|---|
+> | 能力レベル2で求められることは | The process is planned, monitored and adjusted against defined objectives. |
+> | 作業成果物管理の属性では何が要求されるか | The work product management attribute requires that requirements for the work products are defined. |
+> | 能力レベル1はどのような状態を示すか | Capability level 1 indicates that the implemented process achieves its process purpose. |
+> | 作業成果物のレビューはどう行うか | Work products are reviewed in accordance with planned arrangements and adjusted as necessary. |
+>
+> 未特定2件(評定尺度 / 測定フレームワーク)は相対判定(margin)が棄却したもの。
+> 「当たらないなら黙る」方針どおりの挙動。
+>
+> **留保**: 標本は10問(spec の想定は20問)、コーパスは合成。実英語文書での再測定を推奨。
+
 ### Task 11: Phase 1 実機検証ゲート(コード変更なし)
 
 **Files:** なし(検証のみ)
