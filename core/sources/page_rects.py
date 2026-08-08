@@ -18,6 +18,8 @@ _POINTS_PER_INCH = 72.0
 # 単語単位フォールバックで、この長さ未満の語は無視する
 # (前置詞や冠詞まで拾うとページ中が枠だらけになる)。
 _MIN_WORD_CHARS = 4
+# 日本語の部分一致で使う窓幅。短すぎるとページ中が枠だらけになる。
+_CJK_WINDOW = 12
 
 
 @dataclass(frozen=True)
@@ -60,23 +62,70 @@ def _to_rects(found: list, dpi: int) -> list[Rect]:
     ]
 
 
+def _is_cjk(ch: str) -> bool:
+    code = ord(ch)
+    return (
+        0x3040 <= code <= 0x30FF  # かな
+        or 0x4E00 <= code <= 0x9FFF  # 漢字
+        or 0x3400 <= code <= 0x4DBF
+    )
+
+
+def _pieces_for_fallback(text: str) -> list[str]:
+    """全体一致しなかったときに試す部分文字列(正規化済みテキスト用)。
+
+    英語は単語単位。日本語は語境界が無いので固定長の窓で切り出す。
+    """
+    if sum(1 for c in text if _is_cjk(c)) >= len(text) * 0.3:
+        return [
+            text[i : i + _CJK_WINDOW]
+            for i in range(0, max(1, len(text) - _CJK_WINDOW + 1), _CJK_WINDOW)
+        ]
+    return [w for w in text.split(" ") if len(w) >= _MIN_WORD_CHARS]
+
+
+def _original_lines(quote: str) -> list[str]:
+    """quote を元の改行で分けた行。
+
+    PDF 抽出由来の quote の改行は、そのまま原本の行区切りに対応する。
+    search_for は行をまたぐ日本語文字列をまず見つけられない(実測: 行単位なら
+    全行ヒットするのに、連結すると 0 件)ため、行単位が最も当たる。
+    """
+    return [ln.strip() for ln in quote.splitlines() if len(ln.strip()) >= _MIN_WORD_CHARS]
+
+
 def rects_from_quote(pdf_path: Path, page: int, quote: str, dpi: int) -> list[Rect]:
-    """quote に対応する矩形。全体一致 → 単語単位の順に試し、駄目なら空。"""
-    text = " ".join(quote.split())
-    if not text:
+    """quote に対応する矩形。全体一致 → 部分一致の順に試し、駄目なら空。
+
+    PDF 抽出由来の quote には改行が混じる。英語は空白へ畳めばよいが、
+    日本語は本文に空白が無いため、空白を入れると一致しなくなる。
+    そこで「空白へ畳んだ形」と「空白を除いた形」の両方を試す。
+    """
+    spaced = " ".join(quote.split())
+    squeezed = "".join(quote.split())
+    if not squeezed:
         return []
     with pymupdf.open(pdf_path) as doc:
         if page < 1 or page > doc.page_count:
             return []
         pg = doc[page - 1]
-        found = pg.search_for(text)
-        if found:
-            return _to_rects(found, dpi)
+        for candidate in (spaced, squeezed):
+            found = pg.search_for(candidate)
+            if found:
+                return _to_rects(found, dpi)
         # 行末ハイフネーションや抽出順のズレで全体一致しないことがある。
-        # 単語単位で拾って和を取る(フォールバックは一段だけ)。
+        # 部分一致で拾って和を取る(フォールバックは一段だけ)。
+        # 1段目: 元の改行で割った行。日本語で最も当たる(行をまたぐ検索は通らない)。
         pieces: list = []
-        for word in text.split(" "):
-            if len(word) < _MIN_WORD_CHARS:
-                continue
-            pieces.extend(pg.search_for(word))
-        return _to_rects(pieces, dpi)
+        for line in _original_lines(quote):
+            pieces.extend(pg.search_for(line))
+        if pieces:
+            return _to_rects(pieces, dpi)
+        # 2段目: 単語 / 固定長窓。英語の行末ハイフネーション等はこちらで拾う。
+        for base in (squeezed, spaced):
+            pieces = []
+            for piece in _pieces_for_fallback(base):
+                pieces.extend(pg.search_for(piece))
+            if pieces:
+                return _to_rects(pieces, dpi)
+        return []
