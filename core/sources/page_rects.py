@@ -97,9 +97,10 @@ def _original_lines(quote: str) -> list[str]:
 def rects_from_quote(pdf_path: Path, page: int, quote: str, dpi: int) -> list[Rect]:
     """quote に対応する矩形。全体一致 → 部分一致の順に試し、駄目なら空。
 
-    PDF 抽出由来の quote には改行が混じる。英語は空白へ畳めばよいが、
-    日本語は本文に空白が無いため、空白を入れると一致しなくなる。
-    そこで「空白へ畳んだ形」と「空白を除いた形」の両方を試す。
+    PDF 抽出由来の quote には改行が混じるので、まず空白へ畳んだ形で探す。
+    これは日本語でも当たる(1つの一致が複数行にまたがると search_for は
+    行ごとに矩形を返すため、戻り値が複数になるのは正常)。
+    畳んだ形で駄目なときのために、空白を除いた形と部分一致も順に試す。
     """
     spaced = " ".join(quote.split())
     squeezed = "".join(quote.split())
@@ -116,16 +117,23 @@ def rects_from_quote(pdf_path: Path, page: int, quote: str, dpi: int) -> list[Re
         # 行末ハイフネーションや抽出順のズレで全体一致しないことがある。
         # 部分一致で拾って和を取る(フォールバックは一段だけ)。
         # 1段目: 元の改行で割った行。日本語で最も当たる(行をまたぐ検索は通らない)。
+        # 同じ行がページ内で複数回出てくることがあるが、囲みたいのは「いま選んで
+        # いる根拠1箇所」なので、行ごとに最初のヒットだけを採る(ページ中が枠
+        # だらけになるのを防ぐ)。
         pieces: list = []
         for line in _original_lines(quote):
-            pieces.extend(pg.search_for(line))
+            hits = pg.search_for(line)
+            if hits:
+                pieces.append(hits[0])
         if pieces:
             return _to_rects(pieces, dpi)
         # 2段目: 単語 / 固定長窓。英語の行末ハイフネーション等はこちらで拾う。
         for base in (squeezed, spaced):
             pieces = []
             for piece in _pieces_for_fallback(base):
-                pieces.extend(pg.search_for(piece))
+                hits = pg.search_for(piece)
+                if hits:
+                    pieces.append(hits[0])
             if pieces:
                 return _to_rects(pieces, dpi)
         return []

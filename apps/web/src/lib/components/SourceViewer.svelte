@@ -384,7 +384,13 @@
   const showOriginal = $derived(
     isOriginalPageViewEnabled() && canShowOriginal(sourceMeta?.kind, chunk?.page),
   );
-  const activeQuote = $derived(activeSpans[0]?.quote ?? '');
+  // 原本タブで枠を出す対象は「いま選択している主張」の根拠。
+  // spans[0] を使うと、4-2 を押しても 4-1 の場所が囲まれてしまう。
+  const activeSpan = $derived(
+    activeSpans.find((s) => s.answer_occurrence === selectedCitation?.answerOccurrence) ??
+      activeSpans[0],
+  );
+  const activeQuote = $derived(activeSpan?.quote ?? '');
 
   function chooseTab(next: 'text' | 'original') {
     tabPreference = next;
