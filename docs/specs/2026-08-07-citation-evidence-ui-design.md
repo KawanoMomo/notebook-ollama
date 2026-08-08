@@ -23,6 +23,7 @@ related:
 code:
   - apps/api/routers/chat.py
   - apps/api/routers/sources.py
+  - apps/api/routers/translate.py
   - apps/api/schemas/chat.py
   - apps/api/schemas/settings.py
   - apps/web/src/app.css
@@ -36,6 +37,8 @@ code:
   - core/mcp/tools/ask.py
   - core/ollama
   - core/retrieval/span_scorer.py
+  - core/sources/page_render.py
+  - core/translation/translator.py
   - tests/integration
   - tests/unit
 ---
@@ -427,10 +430,24 @@ spans: list[EvidenceSpan] = []      # 空 = そのチャンクの全出現が未
 **オープン ADR(status: proposed のまま保持し、結論を出さない)**
 
 4. **言語跨ぎで「根拠」を示す方式** — 現時点では第2段の埋め込み類似で「関連箇所」を
-   示すに留め、根拠そのものは示さない。⑥ quote モードの実効性(解決率・レイテンシ増・
-   指示追従の失敗率)を実測し、実用に耐えると判断できた時点で「回答言語 ≠ ソース言語なら
-   自動 ON」へ切り替える。それまでこの ADR はオープンのまま残し、決着していないことを
-   可視化する。
+   示すに留め、根拠そのものは示さない。⑥ quote モードの実効性を実測し、実用に耐えると
+   判断できた時点で「回答言語 ≠ ソース言語なら自動 ON」へ切り替える。
+
+   **実測(2026-08-08、英語ソース×日本語質問3問、`qwen3:30b-a3b`)**:
+
+   | | 解決スパン | うち quote | うち lexical | 秒(2問目以降平均) | 回答長平均 |
+   |---|---|---|---|---|---|
+   | OFF | **0** | 0 | 0 | 28.8 | 133 |
+   | ON | **9** | 4 | 5 | 40.4 | 296 |
+
+   - 言語跨ぎで根拠を示せることを確認(0件 → 9件)
+   - 代償はレイテンシ **+40%** と出力長 **+123%**
+   - quote が本文と一致したのは 44%。残りは第1段が補完した(quote モードは回答に
+     原文を写させるため、字句照合も当たりやすくなる副次効果がある)
+
+   **残る判断**: 自動 ON の切替条件(言語判定をどこで行うか)と、+40% のレイテンシを
+   既定で許容するか。標本が3問と少ないため、判断前に問数を増やした再測定が必要。
+   この ADR はオープンのまま残す。
 
 ## 7. 未解決事項
 
