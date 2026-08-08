@@ -726,7 +726,10 @@ def _pages_cache_dir(ctx):
     return ctx.config.data_dir / "cache" / "pages"
 
 
-@router.get("/{notebook_id}/sources/{source_id}/pages/{page}")
+@router.get(
+    "/{notebook_id}/sources/{source_id}/pages/{page}",
+    dependencies=[Depends(require_feature("original-page-view"))],
+)
 async def get_source_page(
     request: Request, notebook_id: str, source_id: str, page: int, dpi: int = 150
 ) -> Response:
@@ -752,6 +755,7 @@ async def get_source_page(
 @router.post(
     "/{notebook_id}/sources/{source_id}/pages/{page}/rects",
     response_model=PageRectsResponse,
+    dependencies=[Depends(require_feature("original-page-view"))],
 )
 async def get_source_page_rects(
     request: Request,

@@ -23,6 +23,8 @@ def client(tmp_path, monkeypatch):
 
 
 def _create_nb(client, name="原本ページテスト") -> str:
+    # 原本ページ表示はベータ。既定 OFF なので、契約テストでは有効にしてから叩く。
+    client.put("/api/features/original-page-view", json={"enabled": True})
     return client.post("/api/notebooks", json={"name": name}).json()["id"]
 
 

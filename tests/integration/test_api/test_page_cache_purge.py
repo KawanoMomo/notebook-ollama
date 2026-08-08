@@ -17,6 +17,7 @@ def client(tmp_path, monkeypatch):
 
 
 def _seed(client) -> tuple[str, str]:
+    client.put("/api/features/original-page-view", json={"enabled": True})
     nb = client.post("/api/notebooks", json={"name": "キャッシュ掃除"}).json()["id"]
     ctx = client.app.state.ctx
     src = sources_repo.create_source(

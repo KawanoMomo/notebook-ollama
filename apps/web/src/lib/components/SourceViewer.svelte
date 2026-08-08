@@ -34,6 +34,10 @@
     return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
   }
 
+  function isOriginalPageViewEnabled(): boolean {
+    return featuresStore.flags.find((f) => f.id === 'original-page-view')?.enabled === true;
+  }
+
   // チャンク本文に埋め込まれた <table>...</table> だけを sanitize して
   // {@html} で描画し、それ以外は従来どおりエスケープ済みプレーンテキストにする
   // (chunk.text 全体を無条件で {@html} しないためのガード)。
@@ -376,7 +380,10 @@
   // ユーザーが最後に自分で選んだタブ。引用を渡り歩いても、明示的に切り替えるまで
   // その表示を保つ(原本で確認している最中に毎回テキストへ戻されるのは煩わしい)。
   let tabPreference = $state<'text' | 'original'>(loadViewerTab());
-  const showOriginal = $derived(canShowOriginal(sourceMeta?.kind, chunk?.page));
+  // ベータ(原本ページ表示)が有効で、かつ PDF 由来でページ番号を持つときだけ出す。
+  const showOriginal = $derived(
+    isOriginalPageViewEnabled() && canShowOriginal(sourceMeta?.kind, chunk?.page),
+  );
   const activeQuote = $derived(activeSpans[0]?.quote ?? '');
 
   function chooseTab(next: 'text' | 'original') {

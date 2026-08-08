@@ -271,6 +271,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
                     min_history_turns=ctx.config.retrieval.min_history_turns,
                     # β: 既定 OFF。OFF のときプロンプトも生成経路も従来と同一。
                     quote_mode=ctx.features.is_enabled("citation-quote-mode"),
+                    sentence_id_mode=ctx.features.is_enabled("citation-sentence-id"),
                 ):
                     if ev.kind == "token":
                         buffer.append(ev.data["text"])
@@ -380,6 +381,7 @@ async def continue_message(
                     prefill_answer=prefill,
                     # 継続でも同じモードで生成する(途中で書式が変わらないように)。
                     quote_mode=ctx.features.is_enabled("citation-quote-mode"),
+                    sentence_id_mode=ctx.features.is_enabled("citation-sentence-id"),
                 ):
                     if ev.kind == "token":
                         buffer.append(ev.data["text"])

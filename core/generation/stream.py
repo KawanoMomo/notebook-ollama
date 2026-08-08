@@ -13,6 +13,11 @@ from core.generation.citations import (
 )
 from core.generation.evidence_spans import attach_evidence_spans
 from core.generation.quote_spans import attach_quote_spans, strip_quote_tags
+from core.generation.sentence_ids import (
+    annotate_chunk_texts,
+    attach_sentence_id_spans,
+    normalize_tagged_citations,
+)
 from core.generation.locations import format_location
 from core.generation.prompts import (
     SYSTEM_PROMPT,
@@ -114,6 +119,7 @@ class GenerationService:
         auto_continue_max: int = 0,
         prefill_answer: str | None = None,
         quote_mode: bool = False,
+        sentence_id_mode: bool = False,
     ) -> AsyncIterator[GenerationEvent]:
         hits = await self._deps.retrieval.search(
             notebook_id=notebook_id,
@@ -158,12 +164,26 @@ class GenerationService:
 
         prompt_chunks: list[PromptChunk] = []
         spec_by_n: dict[int, CitationSpec] = {}
+        # β: 文ID方式。プロンプト本文に <C1> を差し込み、モデルにはその番号で
+        # 引用させる。refs は「文ID → チャンク上のオフセット」の対応表。
+        sentence_refs: dict[int, Any] = {}
+        annotated_by_chunk: dict[str, str] = {}
+        if sentence_id_mode:
+            annotated, sentence_refs = annotate_chunk_texts(
+                [(h.chunk_id, h.text) for h in hits]
+            )
+            annotated_by_chunk = {h.chunk_id: a for h, a in zip(hits, annotated, strict=True)}
+
         for idx, hit in enumerate(hits, start=1):
             location = _hit_location(hit)
             prompt_text = hit.text
             chunk_assets = assets_by_chunk.get(hit.chunk_id)
             if chunk_assets:
                 prompt_text = substitute_table_html(hit.text, chunk_assets)
+            elif sentence_id_mode and hit.chunk_id in annotated_by_chunk:
+                # 表 HTML 置換とは併用しない(タグとHTMLが混ざると読みにくく、
+                # オフセットも合わなくなる)。表のあるチャンクは注釈しない。
+                prompt_text = annotated_by_chunk[hit.chunk_id]
             prompt_chunks.append(
                 PromptChunk(n=idx, title=hit.source_title, location=location, text=prompt_text)
             )
@@ -184,7 +204,7 @@ class GenerationService:
         system_prompt = (
             SYSTEM_PROMPT_PIXEL_NATIVE
             if is_pixel_native
-            else build_system_prompt(quote_mode=quote_mode)
+            else build_system_prompt(quote_mode=quote_mode, sentence_id_mode=sentence_id_mode)
         )
         budget = allocate_budget(
             BudgetInput(
@@ -368,8 +388,17 @@ class GenerationService:
             )
 
         answer = "".join(answer_parts)
+        tagged: list[tuple[int, int, int]] = []
+        if sentence_id_mode:
+            # `[^1:C12]` を `[^1]` に戻してから既存パイプラインへ渡す
+            # (build_citations も表示も [^n] を前提にしている)。
+            answer, tagged = normalize_tagged_citations(answer)
         citations = build_citations(answer=answer, specs=spec_by_n)
         chunk_texts = {h.chunk_id: h.text for h in hits}
+        if sentence_id_mode and tagged:
+            citations = attach_sentence_id_spans(
+                citations=citations, tagged=tagged, refs=sentence_refs
+            )
         if quote_mode:
             # β: LLM が併記した根拠原文を優先スパンにする。言語跨ぎで「根拠」を
             # 示せる唯一の経路。見つからなかった出現は下の第1段が拾う。
