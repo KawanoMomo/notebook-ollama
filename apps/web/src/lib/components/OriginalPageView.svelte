@@ -25,21 +25,37 @@
     current = page;
   });
 
+  // 表示中の dpi。矩形もこれと同じ dpi で取らないと、画像の自然サイズと
+  // 矩形の座標系がズレる(拡大時に 300dpi 画像へ 150dpi の矩形を当てると半分の
+  // 位置に描かれ、無関係な場所がハイライトされる)。
+  const dpi = $derived(zoomed ? 300 : 150);
+
   $effect(() => {
     const nb = notebookId;
     const sid = sourceId;
     const p = current;
     const cid = chunkId;
     const q = quote;
+    const d = dpi;
     const seq = ++rectFetchSeq;
     rects = [];
     rectSource = 'none';
     if (!sid) return;
-    fetchPageRects(nb, sid, p, cid, q).then((r) => {
+    fetchPageRects(nb, sid, p, cid, q, d).then((r) => {
       if (seq !== rectFetchSeq) return;
       rects = r.rects;
       rectSource = r.source;
     });
+  });
+
+  // 拡大中は Esc で閉じられるようにする(下までスクロールしないと閉じられないのは辛い)。
+  $effect(() => {
+    if (!zoomed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') zoomed = false;
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   });
 
   function onImageLoad(e: Event) {
@@ -49,9 +65,14 @@
 </script>
 
 <div class="wrap" class:zoomed>
+  {#if zoomed}
+    <button class="close" type="button" aria-label="拡大表示を閉じる" onclick={() => (zoomed = false)}
+      >✕</button
+    >
+  {/if}
   <div class="page">
     <img
-      src={pageImageUrl(notebookId, sourceId, current, zoomed ? 300 : 150)}
+      src={pageImageUrl(notebookId, sourceId, current, dpi)}
       alt={`原本 p.${current}`}
       onload={onImageLoad}
     />
@@ -118,6 +139,24 @@
     font-size: 11px;
     color: var(--color-fg-muted);
     margin: var(--space-2) 0 0;
+  }
+  .close {
+    position: sticky;
+    top: 0;
+    float: right;
+    z-index: 1;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    border-radius: var(--radius-sm);
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .close:hover {
+    background: var(--color-bg-elevated);
   }
   .wrap.zoomed {
     position: fixed;

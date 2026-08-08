@@ -9,6 +9,11 @@
   import { eventsStore } from '$lib/stores/events.svelte';
   import { pushToast } from '$lib/components/Toast.svelte';
   import { bindShortcuts } from '$lib/utils/keys';
+  import {
+    clampViewerWidth,
+    loadViewerWidth,
+    saveViewerWidth,
+  } from '$lib/utils/viewerWidth';
   import Spinner from '$lib/components/Spinner.svelte';
   import JobStatusBar from '$lib/components/JobStatusBar.svelte';
   import SourcesPanel from '$lib/components/SourcesPanel.svelte';
@@ -23,6 +28,38 @@
   let { data } = $props<{ data: { notebookId: string } }>();
 
   let viewerOpen = $state(true);
+  // 出典パネルの幅。既定 360px は本文を読むには狭いのでドラッグで変えられる。
+  let viewerWidth = $state(360);
+  let resizing = $state(false);
+
+  $effect(() => {
+    viewerWidth = clampViewerWidth(loadViewerWidth(), window.innerWidth);
+  });
+
+  function startResize(e: PointerEvent) {
+    resizing = true;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function onResize(e: PointerEvent) {
+    if (!resizing) return;
+    // 右端からの距離がそのままパネル幅になる。
+    viewerWidth = clampViewerWidth(window.innerWidth - e.clientX, window.innerWidth);
+  }
+  function endResize(e: PointerEvent) {
+    if (!resizing) return;
+    resizing = false;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    saveViewerWidth(viewerWidth);
+  }
+  function onResizeKey(e: KeyboardEvent) {
+    // キーボードでも動かせるようにする(ドラッグだけだと操作できない人がいる)。
+    const step = e.shiftKey ? 48 : 16;
+    if (e.key === 'ArrowLeft') viewerWidth = clampViewerWidth(viewerWidth + step, window.innerWidth);
+    else if (e.key === 'ArrowRight') viewerWidth = clampViewerWidth(viewerWidth - step, window.innerWidth);
+    else return;
+    e.preventDefault();
+    saveViewerWidth(viewerWidth);
+  }
   let selectedSourceId = $state<string | null>(null);
   let selectedChunkId = $state<string | null>(null);
   // どのバッジ(主張の出現位置)が選ばれたか。出典パネルの根拠ハイライトと
@@ -179,7 +216,8 @@
   {:else if currentNotebookStore.error}
     <div class="state err">エラー: {currentNotebookStore.error}</div>
   {:else}
-    <div class="cols" class:viewer-open={viewerOpen || presentationStore.active}>
+    <div class="cols" class:viewer-open={viewerOpen || presentationStore.active}
+      style:--viewer-width={`${viewerWidth}px`}>
       <aside class="sources">
         <SourcesPanel
           notebookId={data.notebookId}
@@ -224,6 +262,19 @@
           <LiveCaptionView variant="sidebar" />
         </aside>
       {:else if viewerOpen}
+        <div
+          class="resizer"
+          class:active={resizing}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="出典パネルの幅を変更"
+          tabindex="0"
+          onpointerdown={startResize}
+          onpointermove={onResize}
+          onpointerup={endResize}
+          onpointercancel={endResize}
+          onkeydown={onResizeKey}
+        ></div>
         <aside class="viewer">
           <SourceViewer
             notebookId={data.notebookId}
@@ -295,7 +346,20 @@
     min-height: 0;
   }
   .cols.viewer-open {
-    grid-template-columns: var(--sidebar-width) 1fr var(--viewer-width);
+    grid-template-columns: var(--sidebar-width) 1fr 6px var(--viewer-width);
+  }
+  .resizer {
+    cursor: col-resize;
+    background: var(--color-border);
+    opacity: 0.6;
+    touch-action: none;
+  }
+  .resizer:hover,
+  .resizer.active,
+  .resizer:focus-visible {
+    background: var(--color-accent);
+    opacity: 1;
+    outline: none;
   }
   .sources {
     border-right: 1px solid var(--color-border);
