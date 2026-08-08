@@ -253,6 +253,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
         buffer: list[str] = []
         citations: list[dict[str, Any]] = []
         truncated = False
+        final_answer: str | None = None
         # 生成中は第2段(埋め込み)を走らせない。例外・クライアント切断
         # (GeneratorExit)でも finally で必ず解除される。
         with mark_running(conv.id):
@@ -282,6 +283,10 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
                     if ev.kind == "done":
                         citations = ev.data["citations"]
                         truncated = ev.data["truncated"]
+                        # ストリームした生トークンには β の文ID書式 `[^1:C12]` が
+                        # 残る。done の answer は正規化済みなので、保存はこちらを
+                        # 使う(buffer をそのまま保存すると履歴にタグが焼き付く)。
+                        final_answer = ev.data.get("answer")
             except AppError as exc:
                 # SSE開始後に例外を投げると "response already started" の500に化けて
                 # FEには生のネットワークエラーしか見えない(実機FB 2026-07-26)。
@@ -298,7 +303,7 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
                 ctx.conn,
                 conversation_id=conv.id,
                 role="assistant",
-                content="".join(buffer),
+                content=final_answer if final_answer is not None else "".join(buffer),
                 citations=citations,
                 model=model,
                 truncated=truncated,
@@ -363,6 +368,7 @@ async def continue_message(
         buffer: list[str] = [prefill]
         citations: list[dict[str, Any]] = []
         truncated = False
+        final_answer: str | None = None
         # send_message 側と同じく生成中フラグを立てる。
         with mark_running(conv.id):
             try:
@@ -392,6 +398,10 @@ async def continue_message(
                     if ev.kind == "done":
                         citations = ev.data["citations"]
                         truncated = ev.data["truncated"]
+                        # ストリームした生トークンには β の文ID書式 `[^1:C12]` が
+                        # 残る。done の answer は正規化済みなので、保存はこちらを
+                        # 使う(buffer をそのまま保存すると履歴にタグが焼き付く)。
+                        final_answer = ev.data.get("answer")
             except AppError as exc:
                 # send_message 側と同じ: SSE開始後の例外は error イベント化する。
                 # 元メッセージは prefill のまま温存される(truncated 維持)。
@@ -407,7 +417,7 @@ async def continue_message(
             messages_repo.update_message_content(
                 ctx.conn,
                 message_id=last.id,
-                content="".join(buffer),
+                content=final_answer if final_answer is not None else "".join(buffer),
                 citations=citations,
                 truncated=truncated,
             )

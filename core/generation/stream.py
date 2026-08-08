@@ -399,6 +399,13 @@ class GenerationService:
             citations = attach_sentence_id_spans(
                 citations=citations, tagged=tagged, refs=sentence_refs
             )
+            # 範囲指定 (C15-C16) では複数文にまたがるので、quote はここで
+            # チャンク本文から切り出す(表示と原本矩形の両方が使う)。
+            for citation in citations:
+                text = chunk_texts.get(citation.get("chunk_id", ""), "")
+                for span in citation.get("spans", []):
+                    if span.get("method") == "sentence_id" and not span.get("quote"):
+                        span["quote"] = text[span["start"] : span["end"]]
         if quote_mode:
             # β: LLM が併記した根拠原文を優先スパンにする。言語跨ぎで「根拠」を
             # 示せる唯一の経路。見つからなかった出現は下の第1段が拾う。

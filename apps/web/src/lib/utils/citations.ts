@@ -15,7 +15,10 @@ export function injectCitationBadges(html: string, citations: Citation[]): strin
   let occurrence = 0;
 
   const replaceOutsideCode = (segment: string): string =>
-    segment.replace(/\[\^(\d+)\]/g, (_m, nStr) => {
+    // `[^1]` に加え、β の文ID書式 `[^1:C12]` / `[^1:C15-C16]` も受ける。
+    // 生成側では正規化して保存するが、その修正より前の履歴にはタグが残っている。
+    // ここで吸収しないと、その回答だけリンクが出ずタグが露出する。
+    segment.replace(/\[\^(\d+)(?::\s*C\d+(?:\s*[-,、]\s*C?\d+)*)?\]/g, (_m, nStr) => {
       const n = Number(nStr);
       // 出現番号は「citations に載っているか」に関わらず必ず進める。
       // BE の iter_claim_occurrences は全マーカーを数えるため、ここで

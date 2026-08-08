@@ -106,3 +106,31 @@ describe('injectCitationBadges — citations に無い [^n] があっても出�
     expect(html).toContain('>1-2<');
   });
 });
+
+describe('injectCitationBadges — 文ID書式が残った履歴の救済', () => {
+  it('[^1:C12] もバッジ化してタグを表示に残さない', () => {
+    const c = cite(1, [
+      { answer_occurrence: 0, ordinal: 1, start: 0, end: 3, quote: 'abc', method: 'sentence_id' },
+    ]);
+    const html = injectCitationBadges('<p>本文[^1:C12]。</p>', [c]);
+    expect(html).not.toContain('C12');
+    expect(html).toContain('>1-1<');
+    expect(html).toContain('data-occurrence="0"');
+  });
+
+  it('範囲指定 [^1:C15-C16] も同様に扱う', () => {
+    const html = injectCitationBadges('<p>本文[^1:C15-C16]。</p>', [cite(1)]);
+    expect(html).not.toContain('C15');
+    expect(html).toContain('>1<');
+  });
+
+  it('文ID付きと素のマーカーが混在しても出現番号がズレない', () => {
+    const c = cite(1, [
+      { answer_occurrence: 1, ordinal: 1, start: 0, end: 3, quote: 'abc', method: 'sentence_id' },
+    ]);
+    const html = injectCitationBadges('<p>A[^1]。B[^1:C5]。</p>', [c]);
+    expect(html).toContain('data-occurrence="0"');
+    expect(html).toContain('data-occurrence="1"');
+    expect(html.slice(html.indexOf('data-occurrence="1"'))).toContain('>1-1<');
+  });
+});
