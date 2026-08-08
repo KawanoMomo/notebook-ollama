@@ -26,6 +26,8 @@
   import { formatBytes } from '$lib/utils/format';
   import { sanitizeTableHtml } from '$lib/utils/tableHtml';
   import { splitBySpans } from '$lib/utils/highlight';
+  import { canShowOriginal } from '$lib/utils/originalTab';
+  import OriginalPageView from './OriginalPageView.svelte';
 
   function isTableFigureRagEnabled(): boolean {
     return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
@@ -366,6 +368,17 @@
   );
   // 第2段で拾った箇所は「根拠」ではなく「関連」として弱く示す。
   const isRelated = $derived(activeSpans.some((s) => s.method === 'embedding'));
+
+  // --- 原本タブ (Phase 2) -------------------------------------------------
+  // PDF 由来かつページ番号を持つチャンクでだけ出す。録音・テキストには原本が無い。
+  let tab = $state<'text' | 'original'>('text');
+  const showOriginal = $derived(canShowOriginal(sourceMeta?.kind, chunk?.page));
+  const activeQuote = $derived(activeSpans[0]?.quote ?? '');
+  // 別チャンクへ移ったらテキストへ戻す(無関係なページが残らないように)。
+  $effect(() => {
+    selectedChunkId;
+    tab = 'text';
+  });
   const segments = $derived(
     chunk ? splitBySpans(chunk.text, activeSpans, selectedCitation?.answerOccurrence ?? null) : [],
   );
@@ -400,6 +413,23 @@
     <div class="state err">エラー: {error}</div>
   {:else if chunk}
     <div class="chunk">
+      {#if showOriginal}
+        <div class="tabs">
+          <button type="button" class:on={tab === 'text'} onclick={() => (tab = 'text')}>テキスト</button>
+          <button type="button" class:on={tab === 'original'} onclick={() => (tab = 'original')}>
+            原本 p.{chunk.page}
+          </button>
+        </div>
+      {/if}
+      {#if tab === 'original' && showOriginal}
+        <OriginalPageView
+          {notebookId}
+          sourceId={resolvedSourceId ?? ''}
+          page={chunk.page ?? 1}
+          chunkId={chunk.id}
+          quote={activeQuote}
+        />
+      {:else}
       {#if resolving}
         <p class="resolving"><Spinner /> 根拠箇所を探しています…</p>
       {:else if isRelated}
@@ -475,6 +505,7 @@
             {/each}
           </div>
         {/if}
+      {/if}
       {/if}
     </div>
   {:else if selectedChunkId === null && resolvedSourceId}
@@ -698,6 +729,24 @@
     margin: 0 0 var(--space-2);
     font-size: 11px;
     color: var(--color-fg-muted);
+  }
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: var(--space-2);
+  }
+  .tabs button {
+    border: none;
+    background: none;
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--color-fg-muted);
+    cursor: pointer;
+  }
+  .tabs button.on {
+    color: var(--color-fg);
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--color-evidence);
   }
   .figure-thumbs {
     display: flex;
