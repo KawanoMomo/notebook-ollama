@@ -349,7 +349,10 @@
     const sel = selectedCitation;
     lazySpans = [];
     const seq = ++spanFetchSeq;
-    if (!sel || (sel.citation.spans ?? []).length > 0) {
+    const own = (sel?.citation.spans ?? []).filter(
+      (sp) => sp.answer_occurrence === sel?.answerOccurrence,
+    );
+    if (!sel || own.length > 0) {
       resolving = false;
       return;
     }
@@ -364,10 +367,20 @@
       });
   });
 
+  const citationSpans = $derived(
+    selectedCitation && selectedCitation.citation.chunk_id === selectedChunkId
+      ? (selectedCitation.citation.spans ?? [])
+      : [],
+  );
+  // 押されたバッジ(= その出現)に属するスパンだけ。ここを citation 全体にすると、
+  // 枝番の無いバッジ(未特定の出現)を押したときに他の主張の根拠が光ってしまう。
+  const ownSpans = $derived(
+    citationSpans.filter((s) => s.answer_occurrence === selectedCitation?.answerOccurrence),
+  );
   const activeSpans = $derived(
     selectedCitation && selectedCitation.citation.chunk_id === selectedChunkId
-      ? (selectedCitation.citation.spans ?? []).length > 0
-        ? selectedCitation.citation.spans!
+      ? ownSpans.length > 0
+        ? ownSpans
         : lazySpans
       : [],
   );
@@ -386,10 +399,7 @@
   );
   // 原本タブで枠を出す対象は「いま選択している主張」の根拠。
   // spans[0] を使うと、4-2 を押しても 4-1 の場所が囲まれてしまう。
-  const activeSpan = $derived(
-    activeSpans.find((s) => s.answer_occurrence === selectedCitation?.answerOccurrence) ??
-      activeSpans[0],
-  );
+  const activeSpan = $derived(activeSpans[0]);
   const activeQuote = $derived(activeSpan?.quote ?? '');
 
   function chooseTab(next: 'text' | 'original') {
@@ -448,6 +458,8 @@
     chunk ? splitBySpans(chunk.text, activeSpans, selectedCitation?.answerOccurrence ?? null) : [],
   );
   // 引用は選ばれたのに根拠スパンが無い = 第1段(字句照合)で特定できなかった主張。
+  // 「この主張が」未特定かどうか。citation 全体で見ると、他の主張に根拠がある
+  // だけで「特定できた」ことになってしまう。
   const unresolved = $derived(!!selectedCitation && activeSpans.length === 0);
 
   $effect(() => {

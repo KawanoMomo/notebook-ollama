@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { splitBySpans } from '../../src/lib/utils/highlight';
-import type { Citation } from '../../src/lib/api/types';
+import type { Citation, EvidenceSpan } from '../../src/lib/api/types';
 
 /**
  * SourceViewer は API 依存が重いため、描画に使う純ロジックを検証する。
@@ -32,5 +32,23 @@ describe('出典パネルのハイライト対象', () => {
     const got = splitBySpans('ABCDEFGHIJKLMN', [], null);
     expect(got).toHaveLength(1);
     expect(got[0].span).toBeNull();
+  });
+});
+
+describe('未特定のバッジを押したとき', () => {
+  // 出現0 は未特定、出現1 に根拠がある citation
+  const spans = [
+    { answer_occurrence: 1, ordinal: 1, start: 10, end: 20, quote: '', method: 'lexical' },
+  ] as unknown as EvidenceSpan[];
+
+  it('その出現に属するスパンだけを渡せば何も光らない', () => {
+    const own = spans.filter((s) => s.answer_occurrence === 0);
+    const got = splitBySpans('z'.repeat(40), own, 0);
+    expect(got.filter((s) => s.span !== null)).toHaveLength(0);
+  });
+
+  it('citation 全体を渡すと他の主張の根拠が光ってしまう(退行の番人)', () => {
+    const got = splitBySpans('z'.repeat(40), spans, 0);
+    expect(got.filter((s) => s.span !== null).length).toBeGreaterThan(0);
   });
 });

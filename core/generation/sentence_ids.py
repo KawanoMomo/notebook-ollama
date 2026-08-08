@@ -20,6 +20,9 @@ from core.retrieval.span_scorer import split_sentences
 
 # 文ID を本文へ埋め込む書式。
 _SENTENCE_TAG = "<C{sid}>"
+# 範囲指定を展開する上限。これを超える範囲は端点2つだけを採る
+# (モデルが C1-C999 のような無意味な範囲を出したときに全文が光るのを防ぐ)。
+_MAX_RANGE_SPAN = 20
 
 
 @dataclass(frozen=True)
@@ -68,27 +71,45 @@ def annotate_chunk_texts(
     return annotated, refs
 
 
-def normalize_tagged_citations(answer: str) -> tuple[str, list[tuple[int, int, int, int]]]:
-    """`[^n:Ck]` を `[^n]` に戻し、(出現順, n, 開始文ID, 終了文ID) の列を返す。
+def normalize_tagged_citations(answer: str) -> tuple[str, list[tuple[int, int, tuple[int, ...]]]]:
+    """`[^n:Ck]` を `[^n]` に戻し、(出現順, n, 引用された文IDの組) を返す。
 
     モデルは指示した `C12` の単独形だけでなく、`C15-C16` の範囲や `C15,C16` の
-    列挙も出す(実機で観測)。書式ゆれを吸収し、最小と最大の文IDを範囲として扱う。
+    列挙も出す(実機で観測)。範囲は端点間を展開し、列挙はそのまま保つ。
+    **min〜max に潰さない**: `C15,C18` を潰すと、引用されていない C16/C17 まで
+    根拠として光ってしまう。
 
     表示と既存パイプライン(build_citations / iter_claim_occurrences)は `[^n]` を
     前提にしているため、span を作る前にこの正規化を通す。
     """
-    found: list[tuple[int, int, int, int]] = []
+    found: list[tuple[int, int, tuple[int, ...]]] = []
     occurrence = 0
     # 例: [^1] / [^1:C12] / [^1:C15-C16] / [^1:C15,C16] / [^1:C15, C16]
     pattern = re.compile(r"\[\^(\d+)((?::\s*C\d+(?:\s*[-,、]\s*C?\d+)*)?)\]")
+    # 範囲かどうかは区切り文字で決まる。ハイフンは範囲、カンマ/読点は列挙。
+    range_pair = re.compile(r"C?(\d+)\s*-\s*C?(\d+)")
 
     def repl(m: re.Match[str]) -> str:
         nonlocal occurrence
         n = int(m.group(1))
         tail = m.group(2) or ""
-        ids = [int(x) for x in re.findall(r"\d+", tail)]
+        ids: list[int] = []
+        for part in re.split(r"[,、]", tail):
+            hit = range_pair.search(part)
+            if hit:
+                lo, hi = int(hit.group(1)), int(hit.group(2))
+                if lo <= hi and hi - lo <= _MAX_RANGE_SPAN:
+                    ids.extend(range(lo, hi + 1))
+                else:
+                    ids.extend([lo, hi])
+                continue
+            ids.extend(int(x) for x in re.findall(r"\d+", part))
         if ids:
-            found.append((occurrence, n, min(ids), max(ids)))
+            # 重複を除きつつ出現順を保つ
+            seen: dict[int, None] = {}
+            for i in ids:
+                seen.setdefault(i, None)
+            found.append((occurrence, n, tuple(seen)))
         occurrence += 1
         return f"[^{n}]"
 
@@ -98,34 +119,43 @@ def normalize_tagged_citations(answer: str) -> tuple[str, list[tuple[int, int, i
 def attach_sentence_id_spans(
     *,
     citations: list[dict[str, Any]],
-    tagged: list[tuple[int, int, int, int]],
+    tagged: list[tuple[int, int, tuple[int, ...]]],
     refs: dict[int, SentenceRef],
 ) -> list[dict[str, Any]]:
-    """文IDから spans を作る。番号が未知/噛み合わないものは黙って捨てる。"""
+    """文IDから spans を作る。
+
+    引用された文それぞれが1つのスパンになる(範囲や列挙でも同じ)。1つのバッジ
+    (= 回答中の1マーカー)に属するスパンは、同じ answer_occurrence と同じ枝番を
+    共有する。噛み合わない文IDだけを個別に捨て、噛み合うものは残す。
+    """
     spans_by_n: dict[int, list[dict[str, Any]]] = {}
-    for occurrence, n, first_id, last_id in tagged:
-        start_ref = refs.get(first_id)
-        end_ref = refs.get(last_id)
-        if start_ref is None or end_ref is None:
-            continue  # モデルが番号を捏造した
-        if start_ref.chunk_id != end_ref.chunk_id:
-            continue  # 範囲がチャンクをまたいでいる。位置を確定できない
+    ordinal_by_n: dict[int, int] = {}
+    for occurrence, n, ids in tagged:
         citation = next((c for c in citations if c.get("n") == n), None)
-        if citation is None or citation.get("chunk_id") != start_ref.chunk_id:
-            # 出典番号と文IDが噛み合っていない(別チャンクの文を指している)。
-            # 誤った箇所を光らせないため採らない。
+        if citation is None:
             continue
-        start = min(start_ref.start, end_ref.start)
-        end = max(start_ref.end, end_ref.end)
+        chunk_id = citation.get("chunk_id")
+        usable = [
+            refs[i]
+            for i in ids
+            # 未知の番号(モデルの捏造)と、出典番号と噛み合わない文は採らない。
+            # 誤った箇所を自信満々に光らせないため。
+            if i in refs and refs[i].chunk_id == chunk_id
+        ]
+        if not usable:
+            continue
+        ordinal_by_n[n] = ordinal_by_n.get(n, 0) + 1
+        ordinal = ordinal_by_n[n]
         bucket = spans_by_n.setdefault(n, [])
-        bucket.append(
-            {
-                "answer_occurrence": occurrence,
-                "ordinal": len(bucket) + 1,
-                "start": start,
-                "end": end,
-                "quote": "",  # 呼び出し側がチャンク本文から切り出す
-                "method": "sentence_id",
-            }
-        )
+        for ref in sorted(usable, key=lambda r: r.start):
+            bucket.append(
+                {
+                    "answer_occurrence": occurrence,
+                    "ordinal": ordinal,
+                    "start": ref.start,
+                    "end": ref.end,
+                    "quote": ref.text,
+                    "method": "sentence_id",
+                }
+            )
     return [{**c, "spans": spans_by_n.get(c.get("n"), [])} for c in citations]

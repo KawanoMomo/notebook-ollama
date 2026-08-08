@@ -79,3 +79,26 @@ describe('splitBySpans — 重なるスパン(実データで発生)', () => {
     }
   });
 });
+
+describe('splitBySpans — 1つのバッジが複数文を指す(文ID方式の範囲/列挙)', () => {
+  const multi: EvidenceSpan[] = [
+    { answer_occurrence: 0, ordinal: 1, start: 0, end: 10, quote: '', method: 'sentence_id' },
+    { answer_occurrence: 0, ordinal: 1, start: 20, end: 30, quote: '', method: 'sentence_id' },
+    { answer_occurrence: 1, ordinal: 2, start: 12, end: 18, quote: '', method: 'sentence_id' },
+  ];
+  const text = 'y'.repeat(40);
+
+  it('同じ出現に属するスパンはすべて active になる', () => {
+    const got = splitBySpans(text, multi, 0);
+    const actives = got.filter((s) => s.active);
+    expect(actives).toHaveLength(2);
+    expect(actives.map((s) => s.text)).toEqual([text.slice(0, 10), text.slice(20, 30)]);
+  });
+
+  it('別の出現を選べばそちらだけが active', () => {
+    const got = splitBySpans(text, multi, 1);
+    const actives = got.filter((s) => s.active);
+    expect(actives).toHaveLength(1);
+    expect(actives[0].text).toBe(text.slice(12, 18));
+  });
+});
