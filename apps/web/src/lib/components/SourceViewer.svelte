@@ -26,7 +26,7 @@
   import { formatBytes } from '$lib/utils/format';
   import { sanitizeTableHtml } from '$lib/utils/tableHtml';
   import { splitBySpans } from '$lib/utils/highlight';
-  import { canShowOriginal } from '$lib/utils/originalTab';
+  import { canShowOriginal, loadViewerTab, saveViewerTab } from '$lib/utils/originalTab';
   import OriginalPageView from './OriginalPageView.svelte';
   import { translateStream } from '$lib/api/translate';
 
@@ -373,12 +373,22 @@
   // --- 原本タブ (Phase 2) -------------------------------------------------
   // PDF 由来かつページ番号を持つチャンクでだけ出す。録音・テキストには原本が無い。
   let tab = $state<'text' | 'original'>('text');
+  // ユーザーが最後に自分で選んだタブ。引用を渡り歩いても、明示的に切り替えるまで
+  // その表示を保つ(原本で確認している最中に毎回テキストへ戻されるのは煩わしい)。
+  let tabPreference = $state<'text' | 'original'>(loadViewerTab());
   const showOriginal = $derived(canShowOriginal(sourceMeta?.kind, chunk?.page));
   const activeQuote = $derived(activeSpans[0]?.quote ?? '');
-  // 別チャンクへ移ったらテキストへ戻す(無関係なページが残らないように)。
+
+  function chooseTab(next: 'text' | 'original') {
+    tabPreference = next;
+    tab = next;
+    saveViewerTab(next);
+  }
+
+  // チャンクが変わったら、原本を出せるなら好みを尊重し、出せないならテキストへ。
   $effect(() => {
     selectedChunkId;
-    tab = 'text';
+    tab = showOriginal ? tabPreference : 'text';
   });
 
   // --- 選択範囲翻訳 (Phase 5) ---------------------------------------------
@@ -457,8 +467,8 @@
     <div class="chunk">
       {#if showOriginal}
         <div class="tabs">
-          <button type="button" class:on={tab === 'text'} onclick={() => (tab = 'text')}>テキスト</button>
-          <button type="button" class:on={tab === 'original'} onclick={() => (tab = 'original')}>
+          <button type="button" class:on={tab === 'text'} onclick={() => chooseTab('text')}>テキスト</button>
+          <button type="button" class:on={tab === 'original'} onclick={() => chooseTab('original')}>
             原本 p.{chunk.page}
           </button>
         </div>

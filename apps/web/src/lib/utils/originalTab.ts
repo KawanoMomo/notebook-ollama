@@ -13,3 +13,27 @@ export function canShowOriginal(
   if (!kind || !ORIGINAL_KINDS.has(kind)) return false;
   return typeof page === 'number' && page > 0;
 }
+
+const TAB_KEY = 'notebook-ollama:viewer-tab';
+
+export type ViewerTab = 'text' | 'original';
+
+/**
+ * 最後に選んだタブ。引用を渡り歩いても表示が勝手に戻らないよう覚えておく。
+ * 原本を出せないチャンク(録音など)では呼び出し側がテキストへ倒す。
+ */
+export function loadViewerTab(): ViewerTab {
+  try {
+    return localStorage.getItem(TAB_KEY) === 'original' ? 'original' : 'text';
+  } catch {
+    return 'text';
+  }
+}
+
+export function saveViewerTab(tab: ViewerTab): void {
+  try {
+    localStorage.setItem(TAB_KEY, tab);
+  } catch {
+    // 書けなくても表示は続行する
+  }
+}
