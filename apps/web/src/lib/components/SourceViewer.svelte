@@ -503,6 +503,7 @@
           {notebookId}
           sourceId={resolvedSourceId ?? ''}
           page={chunk.page ?? 1}
+          pageCount={sourceMeta?.page_count ?? 1}
           chunkId={chunk.id}
           quote={activeQuote}
         />

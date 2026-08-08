@@ -243,16 +243,42 @@ def mask_code_regions(text: str) -> str:
     return _mask_inline_code(_mask_block_code(text))
 
 
+# 回答が原文を丸ごと写しているときに使う引用符。言語跨ぎでも中身は原文
+# そのものなので、完全一致で位置を確定できる(字句照合より確実)。
+_QUOTED_RE = re.compile(
+    r"「([^」]+)」|『([^』]+)』|\"([^\"]+)\"|“([^”]+)”"
+)
+# 短い引用は偶然一致しやすいので採らない。
+MIN_QUOTED_CHARS = 12
+
+
+def _quoted_texts(segment: str) -> list[str]:
+    """引用符で囲まれた十分に長い文字列を、現れた順に返す。"""
+    out: list[str] = []
+    for m in _QUOTED_RE.finditer(segment):
+        text = next((g for g in m.groups() if g), "").strip()
+        if len(text) >= MIN_QUOTED_CHARS:
+            out.append(text)
+    return out
+
+
 @dataclass(frozen=True)
 class ClaimOccurrence:
     n: int
     answer_occurrence: int
     claim: str
+    # 直前のマーカー以降、このマーカーまでの本文。引用符の抽出に使う
+    # (先頭から探すと前の主張の引用が漏れてくる)。
+    segment: str = ""
 
 
-def _claim_before(masked: str, marker_start: int) -> str:
-    """marker_start の直前の1文を返す。短すぎる場合は直前2文まで遡る。"""
-    head = masked[:marker_start]
+def _claim_before(masked: str, marker_start: int, floor: int = 0) -> str:
+    """marker_start の直前の1文を返す。短すぎる場合は直前2文まで遡る。
+
+    floor は「直前のマーカーの終端」。ここを越えて遡らない。越えると、前の主張の
+    文(とその中の引用)を自分の根拠として扱ってしまう。
+    """
+    head = masked[floor:marker_start]
     bounds = [m.end() for m in _SENTENCE_BOUNDARY_RE.finditer(head)]
     for take in (1, 2):
         start = bounds[-take] if len(bounds) >= take else 0
@@ -270,14 +296,17 @@ def iter_claim_occurrences(answer: str) -> list[ClaimOccurrence]:
     """
     masked = mask_code_regions(answer)
     out: list[ClaimOccurrence] = []
+    prev_end = 0
     for occurrence, m in enumerate(_CITATION_RE.finditer(masked)):
         out.append(
             ClaimOccurrence(
                 n=int(m.group(1)),
                 answer_occurrence=occurrence,
-                claim=_claim_before(masked, m.start()),
+                claim=_claim_before(masked, m.start(), floor=prev_end),
+                segment=masked[prev_end : m.start()],
             )
         )
+        prev_end = m.end()
     return out
 
 
@@ -491,7 +520,16 @@ def attach_evidence_spans(
         text = chunk_texts.get(chunk_id)
         if not text:
             continue
-        found = resolve_lexical_span(occ.claim, text)
+        # 回答が原文を引用符で写しているなら、それを完全一致で探すのが最も確実。
+        # 言語跨ぎ(英語チャンクへの日本語回答)でも、この経路なら当たる。
+        found = None
+        for quoted in _quoted_texts(occ.segment):
+            at = text.find(quoted)
+            if at >= 0:
+                found = (at, at + len(quoted))
+                break
+        if found is None:
+            found = resolve_lexical_span(occ.claim, text)
         if found is None:
             continue
         start, end = found
