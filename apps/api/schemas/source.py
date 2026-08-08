@@ -83,3 +83,7 @@ class PageRect(BaseModel):
 class PageRectsResponse(BaseModel):
     rects: list[PageRect]
     source: str  # 'asset' | 'quote' | 'none'
+    # 同じ dpi でのページ全体のピクセル寸法。FE はこれで矩形を百分率に直す。
+    # 画像の naturalWidth を使うと、画像読み込みと矩形取得の競合でズレる。
+    page_width: float = 0.0
+    page_height: float = 0.0

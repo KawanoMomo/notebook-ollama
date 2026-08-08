@@ -31,7 +31,7 @@ from core.ingestion.parsers import get_parser
 from core.ingestion.pptx_to_pdf import slides_pdf_path
 from core.logging import get_logger
 from core.storage import notebooks_repo, sources_repo
-from core.sources.page_rects import rects_from_asset_bbox, rects_from_quote
+from core.sources.page_rects import page_size_px, rects_from_asset_bbox, rects_from_quote
 from core.sources.page_render import (
     UnsupportedDpiError,
     purge_source_cache,
@@ -775,6 +775,8 @@ async def get_source_page_rects(
 
     # 表・図チャンクは取込時に Markdown 化され原本に存在しないので search_for は
     # 原理的に空振りする。取込済みアセットの bbox を使う方が精度も高い。
+    page_w, page_h = page_size_px(pdf, page, body.dpi)
+
     for asset in list_assets_for_source(ctx.conn, source_id):
         if asset.chunk_id == body.chunk_id and asset.bbox_json:
             rects = rects_from_asset_bbox(asset.bbox_json, body.dpi)
@@ -782,10 +784,14 @@ async def get_source_page_rects(
                 return PageRectsResponse(
                     rects=[PageRect(x=r.x, y=r.y, w=r.w, h=r.h) for r in rects],
                     source="asset",
+                    page_width=page_w,
+                    page_height=page_h,
                 )
 
     found = rects_from_quote(pdf, page=page, quote=body.quote, dpi=body.dpi)
     return PageRectsResponse(
         rects=[PageRect(x=r.x, y=r.y, w=r.w, h=r.h) for r in found],
         source="quote" if found else "none",
+        page_width=page_w,
+        page_height=page_h,
     )

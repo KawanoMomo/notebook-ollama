@@ -14,8 +14,12 @@
   let current = $state(page);
   let rects = $state<PageRect[]>([]);
   let rectSource = $state<'asset' | 'quote' | 'none'>('none');
-  let natural = $state({ w: 0, h: 0 });
+  // 矩形と同じ dpi でのページ寸法。画像の naturalWidth を使うと、画像の読み込みと
+  // 矩形取得の競合で百分率がズレる(拡大直後に枠が微妙にずれる原因)。
+  let pageSize = $state({ w: 0, h: 0 });
   let zoomed = $state(false);
+  let wrapEl = $state<HTMLElement | null>(null);
+  let pageEl = $state<HTMLElement | null>(null);
   // in-flight の古い応答が新しいページの矩形を上書きしないようにする
   // (同ファイルの utterancesFetchSeq / spanFetchSeq と同じ形)。
   let rectFetchSeq = 0;
@@ -25,9 +29,7 @@
     current = page;
   });
 
-  // 表示中の dpi。矩形もこれと同じ dpi で取らないと、画像の自然サイズと
-  // 矩形の座標系がズレる(拡大時に 300dpi 画像へ 150dpi の矩形を当てると半分の
-  // 位置に描かれ、無関係な場所がハイライトされる)。
+  // 表示中の dpi。矩形もこれと同じ dpi で取る。
   const dpi = $derived(zoomed ? 300 : 150);
 
   $effect(() => {
@@ -40,15 +42,32 @@
     const seq = ++rectFetchSeq;
     rects = [];
     rectSource = 'none';
+    pageSize = { w: 0, h: 0 };
     if (!sid) return;
     fetchPageRects(nb, sid, p, cid, q, d).then((r) => {
       if (seq !== rectFetchSeq) return;
       rects = r.rects;
       rectSource = r.source;
+      pageSize = { w: r.page_width ?? 0, h: r.page_height ?? 0 };
     });
   });
 
-  // 拡大中は Esc で閉じられるようにする(下までスクロールしないと閉じられないのは辛い)。
+  // 拡大したら、選択箇所が画面の中心に来るようスクロールする。
+  // 「どちらへスクロールすればいいか分からない」を無くすため、探させない。
+  $effect(() => {
+    if (!zoomed || !wrapEl || !pageEl || rects.length === 0 || !pageSize.h) return;
+    // 描画が済んでから測る
+    requestAnimationFrame(() => {
+      if (!wrapEl || !pageEl) return;
+      const top = Math.min(...rects.map((r) => r.y));
+      const bottom = Math.max(...rects.map((r) => r.y + r.h));
+      const centerRatio = (top + bottom) / 2 / pageSize.h;
+      const target = pageEl.offsetTop + pageEl.clientHeight * centerRatio;
+      wrapEl.scrollTop = Math.max(0, target - wrapEl.clientHeight / 2);
+    });
+  });
+
+  // 拡大中は Esc で閉じられるようにする。
   $effect(() => {
     if (!zoomed) return;
     const onKey = (e: KeyboardEvent) => {
@@ -58,26 +77,38 @@
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  function onImageLoad(e: Event) {
-    const img = e.currentTarget as HTMLImageElement;
-    natural = { w: img.naturalWidth, h: img.naturalHeight };
+  function step(delta: number) {
+    current = Math.max(1, current + delta);
+  }
+
+  /**
+   * ホイールで前後のページへ。連続して眺めるときにボタンを狙わせない。
+   * 拡大中は画像自体のスクロールが優先で、端に達してからページが変わる。
+   */
+  function onWheel(e: WheelEvent) {
+    if (zoomed && wrapEl) {
+      const atTop = wrapEl.scrollTop <= 0;
+      const atBottom = wrapEl.scrollTop + wrapEl.clientHeight >= wrapEl.scrollHeight - 1;
+      if (!(e.deltaY < 0 ? atTop : atBottom)) return; // まだスクロールできる
+    }
+    e.preventDefault();
+    step(e.deltaY > 0 ? 1 : -1);
   }
 </script>
 
-<div class="wrap" class:zoomed>
+<div class="wrap" class:zoomed bind:this={wrapEl} onwheel={onWheel}>
   {#if zoomed}
     <button class="close" type="button" aria-label="拡大表示を閉じる" onclick={() => (zoomed = false)}
       >✕</button
     >
   {/if}
-  <div class="page">
+  <div class="page" bind:this={pageEl}>
     <img
       src={pageImageUrl(notebookId, sourceId, current, dpi)}
       alt={`原本 p.${current}`}
-      onload={onImageLoad}
     />
     {#each rects as r, i (i)}
-      {@const box = toPercentBox(r, natural.w, natural.h)}
+      {@const box = toPercentBox(r, pageSize.w, pageSize.h)}
       <span
         class="box"
         style:left={box.left}
@@ -89,11 +120,12 @@
   </div>
 
   <div class="bar">
-    <button type="button" disabled={current <= 1} onclick={() => (current = Math.max(1, current - 1))}>
+    <button type="button" disabled={current <= 1} onclick={() => step(-1)}>
       ◀ p.{Math.max(1, current - 1)}
     </button>
     <button type="button" onclick={() => (zoomed = !zoomed)}>{zoomed ? '縮小' : '拡大'}</button>
-    <button type="button" onclick={() => (current = current + 1)}>p.{current + 1} ▶</button>
+    <button type="button" onclick={() => step(1)}>p.{current + 1} ▶</button>
+    <span class="hint">ホイールでページ送り</span>
   </div>
 
   {#if rectSource === 'none'}
@@ -102,6 +134,10 @@
 </div>
 
 <style>
+  .wrap {
+    /* ホイールをページ送りに使うので、ブラウザのスクロール連鎖を止める */
+    overscroll-behavior: contain;
+  }
   .page {
     position: relative;
     line-height: 0;
@@ -121,6 +157,7 @@
   .bar {
     display: flex;
     gap: var(--space-2);
+    align-items: center;
     margin-top: var(--space-2);
   }
   .bar button {
@@ -134,6 +171,10 @@
   .bar button:disabled {
     color: var(--color-fg-muted);
     cursor: default;
+  }
+  .hint {
+    font-size: 10px;
+    color: var(--color-fg-muted);
   }
   .note {
     font-size: 11px;

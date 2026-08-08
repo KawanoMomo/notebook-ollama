@@ -94,6 +94,16 @@ def _original_lines(quote: str) -> list[str]:
     return [ln.strip() for ln in quote.splitlines() if len(ln.strip()) >= _MIN_WORD_CHARS]
 
 
+def page_size_px(pdf_path: Path, page: int, dpi: int) -> tuple[float, float]:
+    """指定 dpi でのページ全体のピクセル寸法。矩形を百分率に直すための基準。"""
+    with pymupdf.open(pdf_path) as doc:
+        if page < 1 or page > doc.page_count:
+            return (0.0, 0.0)
+        rect = doc[page - 1].rect
+        s = _scale(dpi)
+        return (rect.width * s, rect.height * s)
+
+
 def rects_from_quote(pdf_path: Path, page: int, quote: str, dpi: int) -> list[Rect]:
     """quote に対応する矩形。全体一致 → 部分一致の順に試し、駄目なら空。
 

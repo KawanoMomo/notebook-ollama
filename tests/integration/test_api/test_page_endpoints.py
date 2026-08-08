@@ -121,6 +121,8 @@ def test_rects_uses_asset_bbox_when_chunk_has_asset(client):
     assert body["source"] == "asset"
     assert len(body["rects"]) == 1
     assert body["rects"][0]["x"] == pytest.approx(150.0)
+    # dpi に対応したページ寸法(A4相当 595pt x 150/72 ≒ 1240px)
+    assert body["page_width"] == pytest.approx(595.0 * 150 / 72, rel=0.01)
 
 
 def test_rects_falls_back_to_quote_search(client):
@@ -144,4 +146,8 @@ def test_rects_reports_none_when_nothing_matches(client):
         json={"chunk_id": "no-such-chunk", "quote": "zzz qqq", "dpi": 150},
     )
     assert res.status_code == 200
-    assert res.json() == {"rects": [], "source": "none"}
+    body = res.json()
+    assert body["rects"] == []
+    assert body["source"] == "none"
+    # 矩形が無くても寸法は返す(FE が百分率計算に使うため)
+    assert body["page_width"] > 0 and body["page_height"] > 0

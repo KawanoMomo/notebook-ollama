@@ -9,6 +9,9 @@ export interface PageRectsResult {
   rects: PageRect[];
   /** 'asset' = 表・図の bbox 由来 / 'quote' = 原文検索由来 / 'none' = 特定できず */
   source: 'asset' | 'quote' | 'none';
+  /** 矩形と同じ dpi でのページ寸法(px)。百分率計算の基準にする。 */
+  page_width: number;
+  page_height: number;
 }
 
 /** 原本ページ画像の URL。dpi はサーバ側で 150/300 に限定されている。 */
@@ -42,9 +45,9 @@ export async function fetchPageRects(
         body: JSON.stringify({ chunk_id: chunkId, quote, dpi }),
       },
     );
-    if (!res.ok) return { rects: [], source: 'none' };
+    if (!res.ok) return { rects: [], source: 'none', page_width: 0, page_height: 0 };
     return await res.json();
   } catch {
-    return { rects: [], source: 'none' };
+    return { rects: [], source: 'none', page_width: 0, page_height: 0 };
   }
 }

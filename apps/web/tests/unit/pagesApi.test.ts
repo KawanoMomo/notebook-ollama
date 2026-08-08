@@ -16,7 +16,12 @@ describe('pages api', () => {
       'fetch',
       vi.fn(async () => ({
         ok: true,
-        json: async () => ({ rects: [{ x: 1, y: 2, w: 3, h: 4 }], source: 'asset' }),
+        json: async () => ({
+          rects: [{ x: 1, y: 2, w: 3, h: 4 }],
+          source: 'asset',
+          page_width: 1240,
+          page_height: 1754,
+        }),
       })),
     );
     const got = await fetchPageRects('nb', 'src', 1, 'c1', 'quote');
@@ -29,6 +34,8 @@ describe('pages api', () => {
     await expect(fetchPageRects('nb', 'src', 1, 'c1', 'q')).resolves.toEqual({
       rects: [],
       source: 'none',
+      page_width: 0,
+      page_height: 0,
     });
   });
 });
