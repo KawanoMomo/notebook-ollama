@@ -12,10 +12,12 @@ from core.generation.citations import (
     build_citations,
 )
 from core.generation.evidence_spans import attach_evidence_spans
+from core.generation.quote_spans import attach_quote_spans, strip_quote_tags
 from core.generation.locations import format_location
 from core.generation.prompts import (
     SYSTEM_PROMPT,
     SYSTEM_PROMPT_PIXEL_NATIVE,
+    build_system_prompt,
     PromptChunk,
     build_user_prompt,
 )
@@ -111,6 +113,7 @@ class GenerationService:
         source_ids: list[str] | None = None,
         auto_continue_max: int = 0,
         prefill_answer: str | None = None,
+        quote_mode: bool = False,
     ) -> AsyncIterator[GenerationEvent]:
         hits = await self._deps.retrieval.search(
             notebook_id=notebook_id,
@@ -176,7 +179,13 @@ class GenerationService:
                 audio_channel=hit.channel,
             )
 
-        system_prompt = SYSTEM_PROMPT_PIXEL_NATIVE if is_pixel_native else SYSTEM_PROMPT
+        # quote_mode(β)は既定 OFF。OFF のとき build_system_prompt は SYSTEM_PROMPT を
+        # そのまま返すので、プロンプト文字列はバイト単位で従来と同一になる。
+        system_prompt = (
+            SYSTEM_PROMPT_PIXEL_NATIVE
+            if is_pixel_native
+            else build_system_prompt(quote_mode=quote_mode)
+        )
         budget = allocate_budget(
             BudgetInput(
                 num_ctx=num_ctx,
@@ -360,6 +369,14 @@ class GenerationService:
 
         answer = "".join(answer_parts)
         citations = build_citations(answer=answer, specs=spec_by_n)
+        chunk_texts = {h.chunk_id: h.text for h in hits}
+        if quote_mode:
+            # β: LLM が併記した根拠原文を優先スパンにする。言語跨ぎで「根拠」を
+            # 示せる唯一の経路。見つからなかった出現は下の第1段が拾う。
+            citations = attach_quote_spans(
+                answer=answer, citations=citations, chunk_texts=chunk_texts
+            )
+            answer = strip_quote_tags(answer)  # 表示にタグを出さない
         # 第1段(字句照合)。LLM 呼び出しも IO も無い純 CPU。通常の日本語回答では
         # 数ms だが、上限は「引用出現1件あたり十数ms」の出現数倍(chunk は
         # MAX_CHUNK_CHARS=20,000文字、一致ペアは MAX_MATCH_PAIRS=50,000 で頭打ち。
@@ -369,7 +386,7 @@ class GenerationService:
             attach_evidence_spans,
             answer=answer,
             citations=citations,
-            chunk_texts={h.chunk_id: h.text for h in hits},
+            chunk_texts=chunk_texts,
         )
         yield GenerationEvent(
             kind="done",

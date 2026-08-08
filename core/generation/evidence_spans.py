@@ -469,8 +469,19 @@ def attach_evidence_spans(
 ) -> list[dict[str, Any]]:
     """各 citation に spans を付けた新しいリストを返す(引数は変更しない)。"""
     occurrences = iter_claim_occurrences(answer)
-    spans_by_n: dict[int, list[dict[str, Any]]] = {}
+    # 既にスパンを持つ引用(β quote モードで解決済み)は壊さない。出現単位で見て、
+    # まだ埋まっていない出現だけを字句照合で補う。
+    spans_by_n: dict[int, list[dict[str, Any]]] = {
+        c["n"]: [dict(s) for s in (c.get("spans") or [])]
+        for c in citations
+        if c.get("n") is not None and c.get("spans")
+    }
+    already = {
+        (n, s["answer_occurrence"]) for n, spans in spans_by_n.items() for s in spans
+    }
     for occ in occurrences:
+        if (occ.n, occ.answer_occurrence) in already:
+            continue
         citation = next((c for c in citations if c.get("n") == occ.n), None)
         if citation is None:
             continue

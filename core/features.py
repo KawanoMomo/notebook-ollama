@@ -27,6 +27,18 @@ REGISTRY: tuple[FeatureFlag, ...] = (
         since="2026-07-20",
         spec="docs/specs/2026-07-20-pdf-table-figure-sidecar-design.md",
     ),
+    FeatureFlag(
+        id="citation-quote-mode",
+        name="引用の根拠原文を併記(β)",
+        description=(
+            "回答に根拠原文を併記させ、根拠箇所を確実に特定する。言語跨ぎ"
+            "(英語ソースへの日本語回答)でも根拠を示せるが、出力トークンが増え"
+            "応答が遅くなる。"
+        ),
+        stage="beta",
+        since="2026-08-08",
+        spec="docs/specs/2026-08-07-citation-evidence-ui-design.md",
+    ),
 )
 
 

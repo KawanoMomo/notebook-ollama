@@ -57,3 +57,21 @@ def build_user_prompt(*, chunks: list[PromptChunk], question: str) -> str:
 
 def _escape(s: str) -> str:
     return s.replace('"', "'")
+
+
+def quote_mode_instruction() -> str:
+    """β: 根拠原文の併記を求める追加指示(spec §3.6)。"""
+    return (
+        "\n\n各 [^n] の直前に、その主張の根拠となる原文を <q>原文</q> の形で"
+        "1文だけそのまま引用せよ。原文は与えられた資料から一字一句変えずに写すこと。"
+    )
+
+
+def build_system_prompt(*, quote_mode: bool) -> str:
+    """quote_mode が False のときは既存プロンプトと完全に同一の文字列を返す。
+
+    既定 OFF のとき生成経路をバイト単位で不変に保つための境界(spec §3.6)。
+    """
+    if not quote_mode:
+        return SYSTEM_PROMPT
+    return SYSTEM_PROMPT + quote_mode_instruction()
