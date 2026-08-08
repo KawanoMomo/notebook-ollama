@@ -28,6 +28,7 @@
   import { splitBySpans } from '$lib/utils/highlight';
   import { canShowOriginal } from '$lib/utils/originalTab';
   import OriginalPageView from './OriginalPageView.svelte';
+  import { translateStream } from '$lib/api/translate';
 
   function isTableFigureRagEnabled(): boolean {
     return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
@@ -379,6 +380,47 @@
     selectedChunkId;
     tab = 'text';
   });
+
+  // --- 選択範囲翻訳 (Phase 5) ---------------------------------------------
+  let selection = $state<{ text: string; top: number; left: number } | null>(null);
+  let translation = $state<string | null>(null);
+  let translating = $state(false);
+
+  function onTextSelect() {
+    if (tab !== 'text') return;
+    const sel = window.getSelection();
+    const text = sel?.toString().trim() ?? '';
+    if (!text || !sel || sel.rangeCount === 0) {
+      selection = null;
+      return;
+    }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    selection = { text, top: rect.bottom + 4, left: rect.left };
+  }
+
+  async function runTranslate() {
+    if (!selection) return;
+    if (translation !== null) {
+      translation = null; // 再クリックで畳む
+      return;
+    }
+    translating = true;
+    translation = '';
+    await translateStream(
+      selection.text,
+      (t) => (translation = (translation ?? '') + t),
+      { conversationId: conversationStore.conversation?.id },
+    );
+    translating = false;
+  }
+
+  // チャンクやタブが変わったら訳文を捨てる(前の選択の訳が残らないように)。
+  $effect(() => {
+    selectedChunkId;
+    tab;
+    selection = null;
+    translation = null;
+  });
   const segments = $derived(
     chunk ? splitBySpans(chunk.text, activeSpans, selectedCitation?.answerOccurrence ?? null) : [],
   );
@@ -483,6 +525,7 @@
         {#if chunk.page}
           <div class="page">p.{chunk.page}</div>
         {/if}
+        <div role="presentation" onmouseup={onTextSelect}>
         {#if tableAssetHtml}
           <!-- 表アセットで本文を置換した経路。スパンのオフセットは置換前の
                chunk.text 基準なので、ここではハイライトしない。 -->
@@ -492,6 +535,20 @@
                 class={`ev ${seg.span.method === 'embedding' ? 'related' : ''} ${seg.active ? 'active' : ''}`}
                 title={seg.span.method === 'embedding' ? 'この主張に関連する箇所(根拠の保証はありません)' : undefined}
               >{seg.text}{#if seg.span.method === 'embedding'}<span class="rel-chip">関連</span>{/if}</mark>{:else}{seg.text}{/if}{/each}</pre>
+        {/if}
+        </div>
+        {#if selection && tab === 'text'}
+          <button
+            class="translate-fab"
+            type="button"
+            style:top={`${selection.top}px`}
+            style:left={`${selection.left}px`}
+            onclick={runTranslate}>訳</button>
+        {/if}
+        {#if translation !== null}
+          <div class="translation">
+            {#if translating && !translation}翻訳中…{:else if translation}{translation}{:else}訳文を取得できませんでした{/if}
+          </div>
         {/if}
         {#if figureAssetIds.length > 0}
           <div class="figure-thumbs">
@@ -729,6 +786,24 @@
     margin: 0 0 var(--space-2);
     font-size: 11px;
     color: var(--color-fg-muted);
+  }
+  .translate-fab {
+    position: fixed;
+    z-index: 20;
+    border: 1px solid var(--color-evidence);
+    background: var(--color-bg);
+    color: var(--color-evidence);
+    border-radius: var(--radius-sm);
+    padding: 1px 8px;
+    font-size: 11px;
+  }
+  .translation {
+    margin-top: var(--space-2);
+    padding: var(--space-2);
+    border-left: 2px solid var(--color-evidence);
+    background: var(--color-bg-elevated);
+    font-size: 12px;
+    line-height: 1.7;
   }
   .tabs {
     display: flex;
