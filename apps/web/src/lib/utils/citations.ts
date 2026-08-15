@@ -1,27 +1,60 @@
 import type { Citation } from '$lib/api/types';
 
+/** markdown-it が出力するコード領域 (<code> / <pre>)。中の [^n] は本文ではない。 */
+const CODE_REGION_RE = /<(code|pre)\b[\s\S]*?<\/\1>/gi;
+
 /**
- * Replace [^n] markers in HTML with clickable citation badges.
- * Returns HTML with badge spans.
+ * [^n] マーカーをバッジへ置換する。
+ *
+ * 計数の基準面は「コード領域を除外した本文」。BE の iter_claim_occurrences と
+ * 同じ規則にすることで answer_occurrence の対応が崩れないようにしている。
+ * 対の検証は tests/unit/citationCodeRegions.test.ts(実際に markdown-it を通す)。
  */
 export function injectCitationBadges(html: string, citations: Citation[]): string {
   const byN = new Map(citations.map((c) => [c.n, c]));
-  return html.replace(/\[\^(\d+)\]/g, (_match, nStr) => {
-    const n = Number(nStr);
-    const c = byN.get(n);
-    if (!c) return `[^${n}]`;
-    const title = `${c.source_title}${c.location ? ' / ' + c.location : ''}`;
-    return `<button class="citation-badge" data-n="${n}" title="${escapeAttr(title)}">${n}</button>`;
-  });
+  let occurrence = 0;
+
+  const replaceOutsideCode = (segment: string): string =>
+    // `[^1]` に加え、β の文ID書式 `[^1:C12]` / `[^1:C15-C16]` も受ける。
+    // 生成側では正規化して保存するが、その修正より前の履歴にはタグが残っている。
+    // ここで吸収しないと、その回答だけリンクが出ずタグが露出する。
+    segment.replace(/\[\^(\d+)(?::\s*C\d+(?:\s*[-,、]\s*C?\d+)*)?\]/g, (_m, nStr) => {
+      const n = Number(nStr);
+      // 出現番号は「citations に載っているか」に関わらず必ず進める。
+      // BE の iter_claim_occurrences は全マーカーを数えるため、ここで
+      // 未知の n をカウントから外すと answer_occurrence が全域でズレ、
+      // 別の主張の根拠をハイライトしてしまう。
+      // (build_citations は specs に無い n を落とすが、回答本文からマーカーは消えない。
+      //  LLM が幻覚で [^7] を出した場合などに実際に起きる)
+      const current = occurrence++;
+      const c = byN.get(n);
+      if (!c) return `[^${n}]`;
+      const span = c.spans?.find((s) => s.answer_occurrence === current);
+      const label = span?.ordinal != null ? `${n}-${span.ordinal}` : `${n}`;
+      const title = `${c.source_title}${c.location ? ' / ' + c.location : ''}`;
+      return (
+        `<button class="citation-badge" data-n="${n}" data-occurrence="${current}"` +
+        ` title="${escapeAttr(title)}">${label}</button>`
+      );
+    });
+
+  let out = '';
+  let cursor = 0;
+  for (const m of html.matchAll(CODE_REGION_RE)) {
+    const at = m.index ?? 0;
+    out += replaceOutsideCode(html.slice(cursor, at));
+    out += m[0]; // コード領域はそのまま
+    cursor = at + m[0].length;
+  }
+  out += replaceOutsideCode(html.slice(cursor));
+  return out;
 }
 
 function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-/**
- * Extract list of citation numbers in textual order.
- */
+/** Extract list of citation numbers in textual order. */
 export function listCitationNumbers(text: string): number[] {
   const seen = new Set<number>();
   const out: number[] = [];

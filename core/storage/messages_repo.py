@@ -78,6 +78,11 @@ def list_messages(conn: sqlite3.Connection, *, conversation_id: str) -> list[Mes
     return [MessageRecord.from_row(r) for r in rows]
 
 
+def get_message(conn: sqlite3.Connection, message_id: str) -> MessageRecord | None:
+    row = conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
+    return MessageRecord.from_row(row) if row is not None else None
+
+
 def update_message_content(
     conn: sqlite3.Connection,
     *,

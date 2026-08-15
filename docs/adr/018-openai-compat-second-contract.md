@@ -81,6 +81,24 @@ CUDA 回帰数値ゲート 3 件 PASS。実機起動検証(隔離 data_dir + por
 パイプラインと MCP ask は Ollama 前提のまま(spec addendum Q に既知制限として明記)。
 openai-compat の実サーバー(llama-server 等)との疎通実測は未実施。
 
+### 再発記録 (2026-08-07)
+
+引用根拠ハイライト Phase 1 (`docs/specs/2026-08-07-citation-evidence-ui-design.md`) の
+第2段エンドポイント `POST /api/messages/{id}/citations/{n}/spans` で、同型の誤配線が
+再発した。`apps/api/routers/chat.py` の `score_spans(gateway=...)` に
+`ctx.ollama_gateway`(LLM 用)が渡されており、`runtime_backend="openai-compat"` の
+分離構成では bge-m3 の埋め込み要求が生成用 compat サーバーへ飛び、`num_gpu: 0`
+(Ollama NaN 回避)も失われる状態だった。既定(全て Ollama)構成では
+`text_embedder.gateway is ollama_gateway` のため既存テストは全緑のまま素通りしていた。
+
+- 修正: `gateway=ctx.text_embedder.gateway` に変更
+- 回帰テスト: `tests/integration/test_span_resolve_endpoint.py::test_span_embedding_uses_embed_gateway_not_llm_gateway`
+  (分離構成でのみ捕捉できるため、`runtime_backend="openai-compat"` を立てて respx で
+  埋め込み先エンドポイントを検証する)
+- 追加の教訓: **埋め込みを新規に呼ぶコードを足したら、既定構成ではなく分離構成の
+  テストを書く**。既定構成では両 gateway が同一インスタンスであり、この欠陥は
+  原理的に検出できない。
+
 ## 教訓
 
 - 抽象(Protocol)を足しただけでは機能しない。**新しい実装が実際の呼び出し経路に

@@ -57,5 +57,10 @@ data/*
 # 評価・検証の証拠(スクリーンショット等)。ローカル成果物なので追跡しない
 .eval/
 
+# 実機ゲート検証用の隔離環境と成果物 (追跡しない)
+.gate-data/
+.gate-shots/
+.verify-shots/
+
 # 評価コーパスと golden set (実文書を含むためコミットしない)
 data/eval/

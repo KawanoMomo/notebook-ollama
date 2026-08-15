@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -8,14 +9,25 @@ from fastapi import APIRouter, HTTPException, Request, status
 from sse_starlette.event import ServerSentEvent
 from sse_starlette.sse import EventSourceResponse
 
-from apps.api.schemas.chat import ContinueInput, Conversation, Message, MessageInput
+from apps.api.schemas.chat import (
+    ContinueInput,
+    Conversation,
+    Message,
+    MessageInput,
+    ResolveSpansRequest,
+    ResolveSpansResponse,
+)
 from core.exceptions import AppError, ErrorCode
+from core.generation.evidence_spans import iter_claim_occurrences
 from core.generation.stream import strip_truncation_note
+from core.generation.stream_registry import is_stream_running, mark_running
 from core.logging import get_logger
 from core.ollama.client import OllamaClient
 from core.ollama.models_info import parse_context_window
 from core.retrieval.budgeter import HistoryTurn
+from core.retrieval.span_scorer import SpanCache, score_spans
 from core.storage import (
+    chunks_repo,
     conversations_repo,
     messages_repo,
     notebooks_repo,
@@ -241,44 +253,61 @@ async def send_message(request: Request, notebook_id: str, conv_id: str, body: M
         buffer: list[str] = []
         citations: list[dict[str, Any]] = []
         truncated = False
-        try:
-            async for ev in ctx.generation.run(
-                notebook_id=notebook_id,
-                source_ids=body.source_ids,
+        final_answer: str | None = None
+        # 生成中は第2段(埋め込み)を走らせない。例外・クライアント切断
+        # (GeneratorExit)でも finally で必ず解除される。
+        with mark_running(conv.id):
+            try:
+                async for ev in ctx.generation.run(
+                    notebook_id=notebook_id,
+                    source_ids=body.source_ids,
+                    model=model,
+                    question=body.content,
+                    history=history,
+                    num_ctx=num_ctx,
+                    context_budget_ratio=ctx.config.generation.context_budget_ratio,
+                    response_budget_tokens=ctx.config.generation.response_budget_tokens,
+                    auto_continue_max=ctx.config.generation.auto_continue_max,
+                    retrieval_top_k=ctx.config.retrieval.top_k,
+                    min_history_turns=ctx.config.retrieval.min_history_turns,
+                    # β: 既定 OFF。OFF のときプロンプトも生成経路も従来と同一。
+                    quote_mode=ctx.features.is_enabled("citation-quote-mode"),
+                    sentence_id_mode=ctx.features.is_enabled("citation-sentence-id"),
+                ):
+                    if ev.kind == "token":
+                        buffer.append(ev.data["text"])
+                    yield {
+                        "event": ev.kind,
+                        "data": json.dumps(ev.data, ensure_ascii=False),
+                    }
+                    if ev.kind == "done":
+                        citations = ev.data["citations"]
+                        truncated = ev.data["truncated"]
+                        # ストリームした生トークンには β の文ID書式 `[^1:C12]` が
+                        # 残る。done の answer は正規化済みなので、保存はこちらを
+                        # 使う(buffer をそのまま保存すると履歴にタグが焼き付く)。
+                        final_answer = ev.data.get("answer")
+            except AppError as exc:
+                # SSE開始後に例外を投げると "response already started" の500に化けて
+                # FEには生のネットワークエラーしか見えない(実機FB 2026-07-26)。
+                # error イベントとして流せば conversation store が本文に表示できる。
+                log.warning("generation_failed", code=exc.code.value, detail=exc.detail)
+                msg = exc.message + (f"\n{exc.remediation}" if exc.remediation else "")
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"message": msg}, ensure_ascii=False),
+                }
+                return
+            # persist assistant message
+            messages_repo.append_message(
+                ctx.conn,
+                conversation_id=conv.id,
+                role="assistant",
+                content=final_answer if final_answer is not None else "".join(buffer),
+                citations=citations,
                 model=model,
-                question=body.content,
-                history=history,
-                num_ctx=num_ctx,
-                context_budget_ratio=ctx.config.generation.context_budget_ratio,
-                response_budget_tokens=ctx.config.generation.response_budget_tokens,
-                auto_continue_max=ctx.config.generation.auto_continue_max,
-                retrieval_top_k=ctx.config.retrieval.top_k,
-                min_history_turns=ctx.config.retrieval.min_history_turns,
-            ):
-                if ev.kind == "token":
-                    buffer.append(ev.data["text"])
-                yield {"event": ev.kind, "data": json.dumps(ev.data, ensure_ascii=False)}
-                if ev.kind == "done":
-                    citations = ev.data["citations"]
-                    truncated = ev.data["truncated"]
-        except AppError as exc:
-            # SSE開始後に例外を投げると "response already started" の500に化けて
-            # FEには生のネットワークエラーしか見えない(実機FB 2026-07-26)。
-            # error イベントとして流せば conversation store が本文に表示できる。
-            log.warning("generation_failed", code=exc.code.value, detail=exc.detail)
-            msg = exc.message + (f"\n{exc.remediation}" if exc.remediation else "")
-            yield {"event": "error", "data": json.dumps({"message": msg}, ensure_ascii=False)}
-            return
-        # persist assistant message
-        messages_repo.append_message(
-            ctx.conn,
-            conversation_id=conv.id,
-            role="assistant",
-            content="".join(buffer),
-            citations=citations,
-            model=model,
-            truncated=truncated,
-        )
+                truncated=truncated,
+            )
 
     return EventSourceResponse(
         event_gen(),
@@ -339,40 +368,146 @@ async def continue_message(
         buffer: list[str] = [prefill]
         citations: list[dict[str, Any]] = []
         truncated = False
-        try:
-            async for ev in ctx.generation.run(
-                notebook_id=notebook_id,
-                source_ids=body.source_ids,
-                model=model,
-                question=question,
-                history=history,
-                num_ctx=num_ctx,
-                context_budget_ratio=ctx.config.generation.context_budget_ratio,
-                response_budget_tokens=ctx.config.generation.response_budget_tokens,
-                auto_continue_max=ctx.config.generation.auto_continue_max,
-                retrieval_top_k=ctx.config.retrieval.top_k,
-                min_history_turns=ctx.config.retrieval.min_history_turns,
-                prefill_answer=prefill,
-            ):
-                if ev.kind == "token":
-                    buffer.append(ev.data["text"])
-                yield {"event": ev.kind, "data": json.dumps(ev.data, ensure_ascii=False)}
-                if ev.kind == "done":
-                    citations = ev.data["citations"]
-                    truncated = ev.data["truncated"]
-        except AppError as exc:
-            # send_message 側と同じ: SSE開始後の例外は error イベント化する。
-            # 元メッセージは prefill のまま温存される(truncated 維持)。
-            log.warning("continuation_failed_sse", code=exc.code.value, detail=exc.detail)
-            msg = exc.message + (f"\n{exc.remediation}" if exc.remediation else "")
-            yield {"event": "error", "data": json.dumps({"message": msg}, ensure_ascii=False)}
-            return
-        messages_repo.update_message_content(
-            ctx.conn,
-            message_id=last.id,
-            content="".join(buffer),
-            citations=citations,
-            truncated=truncated,
-        )
+        final_answer: str | None = None
+        # send_message 側と同じく生成中フラグを立てる。
+        with mark_running(conv.id):
+            try:
+                async for ev in ctx.generation.run(
+                    notebook_id=notebook_id,
+                    source_ids=body.source_ids,
+                    model=model,
+                    question=question,
+                    history=history,
+                    num_ctx=num_ctx,
+                    context_budget_ratio=ctx.config.generation.context_budget_ratio,
+                    response_budget_tokens=ctx.config.generation.response_budget_tokens,
+                    auto_continue_max=ctx.config.generation.auto_continue_max,
+                    retrieval_top_k=ctx.config.retrieval.top_k,
+                    min_history_turns=ctx.config.retrieval.min_history_turns,
+                    prefill_answer=prefill,
+                    # 継続でも同じモードで生成する(途中で書式が変わらないように)。
+                    quote_mode=ctx.features.is_enabled("citation-quote-mode"),
+                    sentence_id_mode=ctx.features.is_enabled("citation-sentence-id"),
+                ):
+                    if ev.kind == "token":
+                        buffer.append(ev.data["text"])
+                    yield {
+                        "event": ev.kind,
+                        "data": json.dumps(ev.data, ensure_ascii=False),
+                    }
+                    if ev.kind == "done":
+                        citations = ev.data["citations"]
+                        truncated = ev.data["truncated"]
+                        # ストリームした生トークンには β の文ID書式 `[^1:C12]` が
+                        # 残る。done の answer は正規化済みなので、保存はこちらを
+                        # 使う(buffer をそのまま保存すると履歴にタグが焼き付く)。
+                        final_answer = ev.data.get("answer")
+            except AppError as exc:
+                # send_message 側と同じ: SSE開始後の例外は error イベント化する。
+                # 元メッセージは prefill のまま温存される(truncated 維持)。
+                log.warning(
+                    "continuation_failed_sse", code=exc.code.value, detail=exc.detail
+                )
+                msg = exc.message + (f"\n{exc.remediation}" if exc.remediation else "")
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"message": msg}, ensure_ascii=False),
+                }
+                return
+            messages_repo.update_message_content(
+                ctx.conn,
+                message_id=last.id,
+                content=final_answer if final_answer is not None else "".join(buffer),
+                citations=citations,
+                truncated=truncated,
+            )
 
     return EventSourceResponse(event_gen(), ping=20, ping_message_factory=_ping_event)
+
+
+# 第2段(埋め込み類似)の遅延解決。バッジ押下時にのみ呼ばれる。
+# router 本体は /api/notebooks/{notebook_id}/conversations 配下なので、
+# message_id だけで引ける独立ルータを別に立てる(main.py で include)。
+messages_router = APIRouter(prefix="/api/messages", tags=["chat"])
+
+_SPAN_CACHE = SpanCache()
+SPAN_RESOLVE_TIMEOUT_SEC = 15
+# 主張文がこれより短いと埋め込みでは意味を掴めないため、この回答を生んだ
+# user メッセージ(=質問文)にフォールバックする。
+_MIN_CLAIM_CHARS_FOR_EMBEDDING = 20
+
+
+def _previous_user_message_content(conn, message) -> str | None:
+    """当該 assistant メッセージの直前の user メッセージ本文を返す。"""
+    msgs = messages_repo.list_messages(conn, conversation_id=message.conversation_id)
+    prior: str | None = None
+    for m in msgs:
+        if m.id == message.id:
+            return prior
+        if m.role == "user":
+            prior = m.content
+    return None
+
+
+@messages_router.post(
+    "/{message_id}/citations/{n}/spans", response_model=ResolveSpansResponse
+)
+async def resolve_spans(
+    request: Request, message_id: str, n: int, body: ResolveSpansRequest
+) -> ResolveSpansResponse:
+    ctx = request.app.state.ctx
+    conn = ctx.conn
+    message = messages_repo.get_message(conn, message_id)
+    if message is None:
+        raise HTTPException(status_code=404, detail="message not found")
+    if is_stream_running(message.conversation_id):
+        # 生成中は VRAM を取り合うため実行しない(翻訳と同じ扱い)
+        raise HTTPException(status_code=409, detail="generation in progress")
+
+    citation = next((c for c in message.citations if c.get("n") == n), None)
+    if citation is None:
+        return ResolveSpansResponse(spans=[])
+
+    occurrence = next(
+        (
+            o
+            for o in iter_claim_occurrences(message.content)
+            if o.n == n and o.answer_occurrence == body.answer_occurrence
+        ),
+        None,
+    )
+    if occurrence is None:
+        return ResolveSpansResponse(spans=[])
+
+    claim = occurrence.claim
+    if len(claim) < _MIN_CLAIM_CHARS_FOR_EMBEDDING:
+        # 主張文が短すぎる場合のみ、この回答を生んだ user メッセージにフォールバックする
+        claim = _previous_user_message_content(conn, message) or claim
+
+    chunk_id = citation.get("chunk_id") or ""
+    chunks = chunks_repo.get_chunks_by_ids(conn, [chunk_id]) if chunk_id else []
+    if not chunks:
+        return ResolveSpansResponse(spans=[])
+
+    try:
+        spans = await asyncio.wait_for(
+            score_spans(
+                claim=claim,
+                chunk_text=chunks[0].text,
+                chunk_id=chunk_id,
+                # 埋め込みは LLM 用 gateway ではなく text_embedder 側 gateway を通す。
+                # 分離構成(llm=openai-compat)では ctx.ollama_gateway が生成用 compat
+                # サーバーを指すため、bge-m3 の要求が 404 になり num_gpu=0 の NaN 回避も
+                # 失われる(ADR-018 の再発事例)。
+                gateway=ctx.text_embedder.gateway,
+                model=ctx.config.ollama.embedding_model,
+                cache=_SPAN_CACHE,
+            ),
+            timeout=SPAN_RESOLVE_TIMEOUT_SEC,
+        )
+    except TimeoutError:
+        return ResolveSpansResponse(spans=[])
+
+    return ResolveSpansResponse(
+        spans=[{**s, "answer_occurrence": body.answer_occurrence} for s in spans]
+    )

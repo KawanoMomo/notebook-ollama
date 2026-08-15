@@ -1,15 +1,21 @@
 <script lang="ts">
   import ChatMessage from './ChatMessage.svelte';
   import Spinner from './Spinner.svelte';
+  import type { Citation } from '$lib/api/types';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { injectCitationBadges } from '$lib/utils/citations';
   import { conversationStore } from '$lib/stores/conversation.svelte';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
 
   interface Props {
-    onCitationClick: (chunkId: string, sourceId: string) => void;
+    activeOccurrence?: number | null;
+    onCitationClick: (
+      chunkId: string,
+      sourceId: string,
+      selection: { citation: Citation; answerOccurrence: number; messageId: string } | null,
+    ) => void;
   }
-  let { onCitationClick }: Props = $props();
+  let { activeOccurrence = null, onCitationClick }: Props = $props();
 
   let scroller: HTMLDivElement | undefined = $state();
   let userScrolled = $state(false);
@@ -38,7 +44,7 @@
 
 <div class="list" bind:this={scroller} onscroll={onScroll}>
   {#each conversationStore.messages as m (m.id)}
-    <ChatMessage message={m} {onCitationClick} />
+    <ChatMessage message={m} {activeOccurrence} {onCitationClick} />
   {/each}
 
   {#if lastTruncated}

@@ -57,3 +57,34 @@ def build_user_prompt(*, chunks: list[PromptChunk], question: str) -> str:
 
 def _escape(s: str) -> str:
     return s.replace('"', "'")
+
+
+def quote_mode_instruction() -> str:
+    """β: 根拠原文の併記を求める追加指示(spec §3.6)。"""
+    return (
+        "\n\n各 [^n] の直前に、その主張の根拠となる原文を <q>原文</q> の形で"
+        "1文だけそのまま引用せよ。原文は与えられた資料から一字一句変えずに写すこと。"
+    )
+
+
+def build_system_prompt(*, quote_mode: bool, sentence_id_mode: bool = False) -> str:
+    """どのβも OFF のときは既存プロンプトと完全に同一の文字列を返す。
+
+    既定 OFF のとき生成経路をバイト単位で不変に保つための境界(spec §3.6)。
+    """
+    prompt = SYSTEM_PROMPT
+    if sentence_id_mode:
+        prompt += sentence_id_instruction()
+    if quote_mode:
+        prompt += quote_mode_instruction()
+    return prompt
+
+
+def sentence_id_instruction() -> str:
+    """β: 文ID方式の追加指示(spec §3.6)。"""
+    return (
+        "\n\n資料の各文には <C1> <C2> のような文番号が付いている。"
+        "出典を示すときは、番号だけの [^1] ではなく "
+        "[^1:C12] の形で、根拠となった文の番号まで書くこと。"
+        "文番号は資料に実在するものだけを使い、推測で作らないこと。"
+    )

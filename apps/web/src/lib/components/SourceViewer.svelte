@@ -6,7 +6,13 @@
     type RecordingSegmentContent,
   } from '$lib/api/source_outline';
   import { linksApi } from '$lib/api/links';
-  import type { AssetInfo, SlideUtterancePage } from '$lib/api/types';
+  import type {
+    AssetInfo,
+    Citation,
+    EvidenceSpan,
+    SlideUtterancePage,
+  } from '$lib/api/types';
+  import { resolveSpans } from '$lib/api/spans';
   import { sourcesApi } from '$lib/api/sources';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
@@ -19,9 +25,17 @@
   import { pushToast } from './Toast.svelte';
   import { formatBytes } from '$lib/utils/format';
   import { sanitizeTableHtml } from '$lib/utils/tableHtml';
+  import { splitBySpans } from '$lib/utils/highlight';
+  import { canShowOriginal, loadViewerTab, saveViewerTab } from '$lib/utils/originalTab';
+  import OriginalPageView from './OriginalPageView.svelte';
+  import { translateStream } from '$lib/api/translate';
 
   function isTableFigureRagEnabled(): boolean {
     return featuresStore.flags.find((f) => f.id === 'table-figure-rag')?.enabled === true;
+  }
+
+  function isOriginalPageViewEnabled(): boolean {
+    return featuresStore.flags.find((f) => f.id === 'original-page-view')?.enabled === true;
   }
 
   // チャンク本文に埋め込まれた <table>...</table> だけを sanitize して
@@ -53,8 +67,19 @@
     notebookId: string;
     selectedChunkId: string | null;
     selectedSourceId: string | null;
+    /** チャット側でクリックされた主張(バッジ)。出典カード経由や未選択では null。 */
+    selectedCitation?: {
+      citation: Citation;
+      answerOccurrence: number;
+      messageId: string;
+    } | null;
   }
-  let { notebookId, selectedChunkId, selectedSourceId }: Props = $props();
+  let {
+    notebookId,
+    selectedChunkId,
+    selectedSourceId,
+    selectedCitation = null,
+  }: Props = $props();
 
   let chunk = $state<ChunkDetail | null>(null);
   // 選択中チャンクに対応する表アセットの HTML(chunk.text 中の md_snippet を
@@ -88,10 +113,19 @@
   let resolvedSourceId = $derived.by(() => {
     if (selectedSourceId) return selectedSourceId;
     if (!selectedChunkId) return null;
-    const latest = [...conversationStore.messages]
-      .reverse()
-      .find((m) => m.role === 'assistant');
-    return latest?.citations.find((c) => c.chunk_id === selectedChunkId)?.source_id ?? null;
+    // クリックされた引用そのものが source_id を持っているならそれを使う。
+    // 「最新のアシスタントメッセージ」だけを見ると、直近の回答が引用ゼロだったり
+    // 過去メッセージのバッジを押したときに解決できず、出典パネルが開かない。
+    if (selectedCitation?.citation.chunk_id === selectedChunkId) {
+      return selectedCitation.citation.source_id;
+    }
+    // 出典カード経由など selectedCitation が無い場合は、会話全体から後方一致で探す。
+    for (const m of [...conversationStore.messages].reverse()) {
+      if (m.role !== 'assistant') continue;
+      const hit = m.citations.find((c) => c.chunk_id === selectedChunkId);
+      if (hit) return hit.source_id;
+    }
+    return null;
   });
 
   $effect(() => {
@@ -298,6 +332,142 @@
     for (const s of content.segments) set.add(segChannel(s.speaker));
     return [...set];
   });
+
+  // ---- 根拠スパンのハイライト -------------------------------------------------
+  // 選択中の引用が表示中チャンクのものであるときだけスパンを適用する
+  // (チャンク切替の途中で前の引用のオフセットを当てないため)。
+  let textEl = $state<HTMLElement | null>(null);
+
+  // 第2段(埋め込み類似)の遅延解決結果。第1段が空のときだけ使う。
+  let lazySpans = $state<EvidenceSpan[]>([]);
+  let resolving = $state(false);
+  // 取得の世代カウンタ(上の utterancesFetchSeq と同パターン)。in-flight の
+  // 古い応答が新しい選択の表示を上書きしないよう、最後の取得だけを反映する。
+  let spanFetchSeq = 0;
+
+  $effect(() => {
+    const sel = selectedCitation;
+    lazySpans = [];
+    const seq = ++spanFetchSeq;
+    const own = (sel?.citation.spans ?? []).filter(
+      (sp) => sp.answer_occurrence === sel?.answerOccurrence,
+    );
+    if (!sel || own.length > 0) {
+      resolving = false;
+      return;
+    }
+    resolving = true;
+    resolveSpans(sel.messageId, sel.citation.n, sel.answerOccurrence)
+      .then((spans) => {
+        if (seq !== spanFetchSeq) return; // 古い応答は破棄
+        lazySpans = spans;
+      })
+      .finally(() => {
+        if (seq === spanFetchSeq) resolving = false;
+      });
+  });
+
+  const citationSpans = $derived(
+    selectedCitation && selectedCitation.citation.chunk_id === selectedChunkId
+      ? (selectedCitation.citation.spans ?? [])
+      : [],
+  );
+  // 押されたバッジ(= その出現)に属するスパンだけ。ここを citation 全体にすると、
+  // 枝番の無いバッジ(未特定の出現)を押したときに他の主張の根拠が光ってしまう。
+  const ownSpans = $derived(
+    citationSpans.filter((s) => s.answer_occurrence === selectedCitation?.answerOccurrence),
+  );
+  const activeSpans = $derived(
+    selectedCitation && selectedCitation.citation.chunk_id === selectedChunkId
+      ? ownSpans.length > 0
+        ? ownSpans
+        : lazySpans
+      : [],
+  );
+  // 第2段で拾った箇所は「根拠」ではなく「関連」として弱く示す。
+  const isRelated = $derived(activeSpans.some((s) => s.method === 'embedding'));
+
+  // --- 原本タブ (Phase 2) -------------------------------------------------
+  // PDF 由来かつページ番号を持つチャンクでだけ出す。録音・テキストには原本が無い。
+  let tab = $state<'text' | 'original'>('text');
+  // ユーザーが最後に自分で選んだタブ。引用を渡り歩いても、明示的に切り替えるまで
+  // その表示を保つ(原本で確認している最中に毎回テキストへ戻されるのは煩わしい)。
+  let tabPreference = $state<'text' | 'original'>(loadViewerTab());
+  // ベータ(原本ページ表示)が有効で、かつ PDF 由来でページ番号を持つときだけ出す。
+  const showOriginal = $derived(
+    isOriginalPageViewEnabled() && canShowOriginal(sourceMeta?.kind, chunk?.page),
+  );
+  // 原本タブで枠を出す対象は「いま選択している主張」の根拠。
+  // spans[0] を使うと、4-2 を押しても 4-1 の場所が囲まれてしまう。
+  const activeSpan = $derived(activeSpans[0]);
+  const activeQuote = $derived(activeSpan?.quote ?? '');
+
+  function chooseTab(next: 'text' | 'original') {
+    tabPreference = next;
+    tab = next;
+    saveViewerTab(next);
+  }
+
+  // チャンクが変わったら、原本を出せるなら好みを尊重し、出せないならテキストへ。
+  $effect(() => {
+    selectedChunkId;
+    tab = showOriginal ? tabPreference : 'text';
+  });
+
+  // --- 選択範囲翻訳 (Phase 5) ---------------------------------------------
+  let selection = $state<{ text: string; top: number; left: number } | null>(null);
+  let translation = $state<string | null>(null);
+  let translating = $state(false);
+
+  function onTextSelect() {
+    if (tab !== 'text') return;
+    const sel = window.getSelection();
+    const text = sel?.toString().trim() ?? '';
+    if (!text || !sel || sel.rangeCount === 0) {
+      selection = null;
+      return;
+    }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    selection = { text, top: rect.bottom + 4, left: rect.left };
+  }
+
+  async function runTranslate() {
+    if (!selection) return;
+    if (translation !== null) {
+      translation = null; // 再クリックで畳む
+      return;
+    }
+    translating = true;
+    translation = '';
+    await translateStream(
+      selection.text,
+      (t) => (translation = (translation ?? '') + t),
+      { conversationId: conversationStore.conversation?.id },
+    );
+    translating = false;
+  }
+
+  // チャンクやタブが変わったら訳文を捨てる(前の選択の訳が残らないように)。
+  $effect(() => {
+    selectedChunkId;
+    tab;
+    selection = null;
+    translation = null;
+  });
+  const segments = $derived(
+    chunk ? splitBySpans(chunk.text, activeSpans, selectedCitation?.answerOccurrence ?? null) : [],
+  );
+  // 引用は選ばれたのに根拠スパンが無い = 第1段(字句照合)で特定できなかった主張。
+  // 「この主張が」未特定かどうか。citation 全体で見ると、他の主張に根拠がある
+  // だけで「特定できた」ことになってしまう。
+  const unresolved = $derived(!!selectedCitation && activeSpans.length === 0);
+
+  $effect(() => {
+    void segments; // チャンク読み込み後に描き直された mark を対象にする
+    if (!textEl || !selectedCitation) return;
+    const target = textEl.querySelector('mark.ev.active');
+    target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
 </script>
 
 <div class="viewer">
@@ -320,6 +490,33 @@
     <div class="state err">エラー: {error}</div>
   {:else if chunk}
     <div class="chunk">
+      {#if showOriginal}
+        <div class="tabs">
+          <button type="button" class:on={tab === 'text'} onclick={() => chooseTab('text')}>テキスト</button>
+          <button type="button" class:on={tab === 'original'} onclick={() => chooseTab('original')}>
+            原本 p.{chunk.page}
+          </button>
+        </div>
+      {/if}
+      {#if tab === 'original' && showOriginal}
+        <OriginalPageView
+          {notebookId}
+          sourceId={resolvedSourceId ?? ''}
+          page={chunk.page ?? 1}
+          pageCount={sourceMeta?.page_count ?? 1}
+          chunkId={chunk.id}
+          quote={activeQuote}
+        />
+      {:else}
+      {#if resolving}
+        <p class="resolving"><Spinner /> 根拠箇所を探しています…</p>
+      {:else if isRelated}
+        <p class="unresolved">
+          根拠箇所は特定できませんでした。この主張に関連する箇所を示しています
+        </p>
+      {:else if unresolved}
+        <p class="unresolved">この主張の根拠箇所は特定できませんでした</p>
+      {/if}
       {#if sourceMeta?.kind === 'recording' && chunk.start_ms != null}
         <AudioCitationPlayer
           notebookId={notebookId}
@@ -352,7 +549,10 @@
             {/key}
           </div>
         {:else}
-          <pre class="text">{chunk.text}</pre>
+          <pre class="text" bind:this={textEl}>{#each segments as seg}{#if seg.span}<mark
+                class={`ev ${seg.span.method === 'embedding' ? 'related' : ''} ${seg.active ? 'active' : ''}`}
+                title={seg.span.method === 'embedding' ? 'この主張に関連する箇所(根拠の保証はありません)' : undefined}
+              >{seg.text}{#if seg.span.method === 'embedding'}<span class="rel-chip">関連</span>{/if}</mark>{:else}{seg.text}{/if}{/each}</pre>
         {/if}
       {:else}
         {#if chunk.heading_path}
@@ -361,10 +561,30 @@
         {#if chunk.page}
           <div class="page">p.{chunk.page}</div>
         {/if}
+        <div role="presentation" onmouseup={onTextSelect}>
         {#if tableAssetHtml}
+          <!-- 表アセットで本文を置換した経路。スパンのオフセットは置換前の
+               chunk.text 基準なので、ここではハイライトしない。 -->
           {@html tableHtmlToSafeMarkup(tableAssetHtml)}
         {:else}
-          <pre class="text">{chunk.text}</pre>
+          <pre class="text" bind:this={textEl}>{#each segments as seg}{#if seg.span}<mark
+                class={`ev ${seg.span.method === 'embedding' ? 'related' : ''} ${seg.active ? 'active' : ''}`}
+                title={seg.span.method === 'embedding' ? 'この主張に関連する箇所(根拠の保証はありません)' : undefined}
+              >{seg.text}{#if seg.span.method === 'embedding'}<span class="rel-chip">関連</span>{/if}</mark>{:else}{seg.text}{/if}{/each}</pre>
+        {/if}
+        </div>
+        {#if selection && tab === 'text'}
+          <button
+            class="translate-fab"
+            type="button"
+            style:top={`${selection.top}px`}
+            style:left={`${selection.left}px`}
+            onclick={runTranslate}>訳</button>
+        {/if}
+        {#if translation !== null}
+          <div class="translation">
+            {#if translating && !translation}翻訳中…{:else if translation}{translation}{:else}訳文を取得できませんでした{/if}
+          </div>
         {/if}
         {#if figureAssetIds.length > 0}
           <div class="figure-thumbs">
@@ -378,6 +598,7 @@
             {/each}
           </div>
         {/if}
+      {/if}
       {/if}
     </div>
   {:else if selectedChunkId === null && resolvedSourceId}
@@ -562,8 +783,8 @@
     margin-bottom: var(--space-2);
   }
   .text {
-    background: var(--color-citation-bg);
-    border-left: 3px solid var(--color-citation-border);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
     padding: var(--space-3);
     border-radius: var(--radius-sm);
     white-space: pre-wrap;
@@ -571,6 +792,72 @@
     font-size: 13px;
     line-height: 1.6;
     margin: 0;
+  }
+  /* 根拠スパン: 選択中は濃いマーカー、同一チャンクの他スパンは淡色。 */
+  .text :global(mark.ev) {
+    background: linear-gradient(transparent 62%, var(--color-evidence-faint) 62%);
+    border-bottom: 2px solid color-mix(in srgb, var(--color-evidence) 35%, transparent);
+    color: inherit;
+  }
+  .text :global(mark.ev.active) {
+    background: linear-gradient(transparent 62%, var(--color-evidence-soft) 62%);
+    border-bottom-color: var(--color-evidence);
+  }
+  /* 第2段(埋め込み類似)の箇所は破線で弱く示し、根拠と区別する。 */
+  .text :global(mark.ev.related) {
+    background: linear-gradient(transparent 62%, rgba(107, 107, 107, 0.12) 62%);
+    border-bottom: 2px dashed var(--color-fg-muted);
+  }
+  .text :global(.rel-chip) {
+    font-size: 9px;
+    color: var(--color-fg-muted);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0 3px;
+    margin-left: 3px;
+    vertical-align: 1px;
+  }
+  .unresolved,
+  .resolving {
+    margin: 0 0 var(--space-2);
+    font-size: 11px;
+    color: var(--color-fg-muted);
+  }
+  .translate-fab {
+    position: fixed;
+    z-index: 20;
+    border: 1px solid var(--color-evidence);
+    background: var(--color-bg);
+    color: var(--color-evidence);
+    border-radius: var(--radius-sm);
+    padding: 1px 8px;
+    font-size: 11px;
+  }
+  .translation {
+    margin-top: var(--space-2);
+    padding: var(--space-2);
+    border-left: 2px solid var(--color-evidence);
+    background: var(--color-bg-elevated);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: var(--space-2);
+  }
+  .tabs button {
+    border: none;
+    background: none;
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--color-fg-muted);
+    cursor: pointer;
+  }
+  .tabs button.on {
+    color: var(--color-fg);
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--color-evidence);
   }
   .figure-thumbs {
     display: flex;

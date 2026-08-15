@@ -34,6 +34,7 @@ from apps.api.routers import (  # noqa: E402
     slides,
     sources,
     stt,
+    translate,
     visual_index,
 )
 from apps.api.routers import (  # noqa: E402
@@ -321,12 +322,14 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(notebooks.router)
     app.include_router(sources.router)
+    app.include_router(translate.router)
     app.include_router(slides.router)
     app.include_router(links.router)
     app.include_router(recordings.router)
     app.include_router(recording_ws.router)
     app.include_router(audio.router)
     app.include_router(chat.router)
+    app.include_router(chat.messages_router)
     app.include_router(models_router.router)
     app.include_router(settings_router.router)
     app.include_router(stt.router)

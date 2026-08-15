@@ -27,6 +27,42 @@ REGISTRY: tuple[FeatureFlag, ...] = (
         since="2026-07-20",
         spec="docs/specs/2026-07-20-pdf-table-figure-sidecar-design.md",
     ),
+    FeatureFlag(
+        id="citation-quote-mode",
+        name="引用の根拠原文を併記(β)",
+        description=(
+            "回答に根拠原文を併記させ、根拠箇所を確実に特定する。言語跨ぎ"
+            "(英語ソースへの日本語回答)でも根拠を示せるが、出力トークンが増え"
+            "応答が遅くなる。"
+        ),
+        stage="beta",
+        since="2026-08-08",
+        spec="docs/specs/2026-08-07-citation-evidence-ui-design.md",
+    ),
+    FeatureFlag(
+        id="original-page-view",
+        name="原本ページ表示(β)",
+        description=(
+            "出典パネルに原本PDFのページ画像を表示し、根拠箇所を枠で囲う。"
+            "表・図の枠は「表・図検索強化」を有効にして取り込んだPDFでのみ"
+            "アセットのbboxを使い、そうでなければ原文検索で近似する。"
+        ),
+        stage="beta",
+        since="2026-08-08",
+        spec="docs/specs/2026-08-07-citation-evidence-ui-design.md",
+    ),
+    FeatureFlag(
+        id="citation-sentence-id",
+        name="引用を文番号で特定(β)",
+        description=(
+            "資料の各文に番号を振ってLLMに渡し、その番号で引用させる(LongCite方式)。"
+            "文字列照合が不要になり根拠位置が正確になるが、入力トークンが増えるため"
+            "コンテキストに載るチャンク数が減る可能性がある。"
+        ),
+        stage="beta",
+        since="2026-08-08",
+        spec="docs/specs/2026-08-07-citation-evidence-ui-design.md",
+    ),
 )
 
 

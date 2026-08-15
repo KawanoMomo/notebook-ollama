@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -10,10 +11,18 @@ from core.generation.citations import (
     CitationSpec,
     build_citations,
 )
+from core.generation.evidence_spans import attach_evidence_spans
+from core.generation.quote_spans import attach_quote_spans, strip_quote_tags
+from core.generation.sentence_ids import (
+    annotate_chunk_texts,
+    attach_sentence_id_spans,
+    normalize_tagged_citations,
+)
 from core.generation.locations import format_location
 from core.generation.prompts import (
     SYSTEM_PROMPT,
     SYSTEM_PROMPT_PIXEL_NATIVE,
+    build_system_prompt,
     PromptChunk,
     build_user_prompt,
 )
@@ -109,6 +118,8 @@ class GenerationService:
         source_ids: list[str] | None = None,
         auto_continue_max: int = 0,
         prefill_answer: str | None = None,
+        quote_mode: bool = False,
+        sentence_id_mode: bool = False,
     ) -> AsyncIterator[GenerationEvent]:
         hits = await self._deps.retrieval.search(
             notebook_id=notebook_id,
@@ -153,12 +164,26 @@ class GenerationService:
 
         prompt_chunks: list[PromptChunk] = []
         spec_by_n: dict[int, CitationSpec] = {}
+        # β: 文ID方式。プロンプト本文に <C1> を差し込み、モデルにはその番号で
+        # 引用させる。refs は「文ID → チャンク上のオフセット」の対応表。
+        sentence_refs: dict[int, Any] = {}
+        annotated_by_chunk: dict[str, str] = {}
+        if sentence_id_mode:
+            annotated, sentence_refs = annotate_chunk_texts(
+                [(h.chunk_id, h.text) for h in hits]
+            )
+            annotated_by_chunk = {h.chunk_id: a for h, a in zip(hits, annotated, strict=True)}
+
         for idx, hit in enumerate(hits, start=1):
             location = _hit_location(hit)
             prompt_text = hit.text
             chunk_assets = assets_by_chunk.get(hit.chunk_id)
             if chunk_assets:
                 prompt_text = substitute_table_html(hit.text, chunk_assets)
+            elif sentence_id_mode and hit.chunk_id in annotated_by_chunk:
+                # 表 HTML 置換とは併用しない(タグとHTMLが混ざると読みにくく、
+                # オフセットも合わなくなる)。表のあるチャンクは注釈しない。
+                prompt_text = annotated_by_chunk[hit.chunk_id]
             prompt_chunks.append(
                 PromptChunk(n=idx, title=hit.source_title, location=location, text=prompt_text)
             )
@@ -174,7 +199,13 @@ class GenerationService:
                 audio_channel=hit.channel,
             )
 
-        system_prompt = SYSTEM_PROMPT_PIXEL_NATIVE if is_pixel_native else SYSTEM_PROMPT
+        # quote_mode(β)は既定 OFF。OFF のとき build_system_prompt は SYSTEM_PROMPT を
+        # そのまま返すので、プロンプト文字列はバイト単位で従来と同一になる。
+        system_prompt = (
+            SYSTEM_PROMPT_PIXEL_NATIVE
+            if is_pixel_native
+            else build_system_prompt(quote_mode=quote_mode, sentence_id_mode=sentence_id_mode)
+        )
         budget = allocate_budget(
             BudgetInput(
                 num_ctx=num_ctx,
@@ -357,7 +388,35 @@ class GenerationService:
             )
 
         answer = "".join(answer_parts)
+        tagged: list[tuple[int, int, int]] = []
+        if sentence_id_mode:
+            # `[^1:C12]` を `[^1]` に戻してから既存パイプラインへ渡す
+            # (build_citations も表示も [^n] を前提にしている)。
+            answer, tagged = normalize_tagged_citations(answer)
         citations = build_citations(answer=answer, specs=spec_by_n)
+        chunk_texts = {h.chunk_id: h.text for h in hits}
+        if sentence_id_mode and tagged:
+            citations = attach_sentence_id_spans(
+                citations=citations, tagged=tagged, refs=sentence_refs
+            )
+        if quote_mode:
+            # β: LLM が併記した根拠原文を優先スパンにする。言語跨ぎで「根拠」を
+            # 示せる唯一の経路。見つからなかった出現は下の第1段が拾う。
+            citations = attach_quote_spans(
+                answer=answer, citations=citations, chunk_texts=chunk_texts
+            )
+            answer = strip_quote_tags(answer)  # 表示にタグを出さない
+        # 第1段(字句照合)。LLM 呼び出しも IO も無い純 CPU。通常の日本語回答では
+        # 数ms だが、上限は「引用出現1件あたり十数ms」の出現数倍(chunk は
+        # MAX_CHUNK_CHARS=20,000文字、一致ペアは MAX_MATCH_PAIRS=50,000 で頭打ち。
+        # 超えたら特定を諦める)。同期実行するとイベントループ全体を止めるため
+        # スレッドへ逃がす。
+        citations = await asyncio.to_thread(
+            attach_evidence_spans,
+            answer=answer,
+            citations=citations,
+            chunk_texts=chunk_texts,
+        )
         yield GenerationEvent(
             kind="done",
             data={

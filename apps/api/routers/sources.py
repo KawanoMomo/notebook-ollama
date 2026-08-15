@@ -10,7 +10,14 @@ from starlette.responses import FileResponse
 
 from apps.api.routers.audio import _resolve_audio_path
 from apps.api.routers.features import require_feature
-from apps.api.schemas.source import Source, SourceRename, SourceUrlCreate
+from apps.api.schemas.source import (
+    PageRect,
+    PageRectsRequest,
+    PageRectsResponse,
+    Source,
+    SourceRename,
+    SourceUrlCreate,
+)
 from apps.api.schemas.source_content import (
     DocumentContent,
     DocumentSection,
@@ -24,6 +31,12 @@ from core.ingestion.parsers import get_parser
 from core.ingestion.pptx_to_pdf import slides_pdf_path
 from core.logging import get_logger
 from core.storage import notebooks_repo, sources_repo
+from core.sources.page_rects import page_size_px, rects_from_asset_bbox, rects_from_quote
+from core.sources.page_render import (
+    UnsupportedDpiError,
+    purge_source_cache,
+    render_page_png,
+)
 from core.storage.assets_repo import delete_assets_for_source, list_assets_for_source
 from core.storage.chunks_repo import (
     delete_chunks_for_source,
@@ -265,6 +278,8 @@ async def delete_source(request: Request, notebook_id: str, source_id: str) -> R
     # (retry/reingest 用の _clear_source_derived_data には最初からあった処理)。
     delete_assets_for_source(ctx.conn, source_id)
     shutil.rmtree(ctx.config.assets_dir / source_id, ignore_errors=True)
+    # 原本ページ画像キャッシュ。残すとディスクを食い続ける(dpi ごとに1枚溜まる)。
+    purge_source_cache(_pages_cache_dir(ctx), source_id)
     ctx.conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
     ext = _EXT_BY_KIND.get(src.kind, ".bin")
     source_path = ctx.config.sources_dir / f"{src.id}{ext}"
@@ -581,6 +596,8 @@ def _clear_source_derived_data(ctx, source_id: str) -> None:
     ctx.vector_store.delete_by_source(source_id)
     delete_assets_for_source(ctx.conn, source_id)
     shutil.rmtree(ctx.config.assets_dir / source_id, ignore_errors=True)
+    # 再取込でページ内容が変わりうるので、ページ画像キャッシュも捨てる。
+    purge_source_cache(_pages_cache_dir(ctx), source_id)
     for store in ctx.visual_stores.values():
         store.delete_by_source(source_id)
     delete_indexed_source(ctx.conn, source_id)  # unit=None = 全単位削除(既定)
@@ -697,3 +714,84 @@ async def get_asset_image(
     if not path.exists():
         raise AppError(ErrorCode.STORAGE_NOT_FOUND, "asset image not found on disk")
     return FileResponse(path, media_type="image/png")
+
+
+def _original_pdf_path(ctx, rec):
+    """そのソースの原本 PDF(pptx は COM で併産した PDF)。無ければ None。"""
+    path = slides_pdf_path(ctx.config.sources_dir, rec.id, rec.kind)
+    return path if path is not None and path.exists() else None
+
+
+def _pages_cache_dir(ctx):
+    return ctx.config.data_dir / "cache" / "pages"
+
+
+@router.get(
+    "/{notebook_id}/sources/{source_id}/pages/{page}",
+    dependencies=[Depends(require_feature("original-page-view"))],
+)
+async def get_source_page(
+    request: Request, notebook_id: str, source_id: str, page: int, dpi: int = 150
+) -> Response:
+    """原本ページの PNG。リクエスト時に描画してディスクにキャッシュする。"""
+    ctx = request.app.state.ctx
+    rec = sources_repo.get_source(ctx.conn, source_id)
+    if rec is None or rec.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, f"source {source_id} not found")
+    pdf = _original_pdf_path(ctx, rec)
+    if pdf is None:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source has no original PDF")
+    try:
+        data = render_page_png(
+            pdf_path=pdf, page=page, dpi=dpi, cache_dir=_pages_cache_dir(ctx)
+        )
+    except UnsupportedDpiError as exc:
+        raise AppError(ErrorCode.INPUT_INVALID, str(exc)) from exc
+    except IndexError as exc:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, str(exc)) from exc
+    return Response(content=data, media_type="image/png")
+
+
+@router.post(
+    "/{notebook_id}/sources/{source_id}/pages/{page}/rects",
+    response_model=PageRectsResponse,
+    dependencies=[Depends(require_feature("original-page-view"))],
+)
+async def get_source_page_rects(
+    request: Request,
+    notebook_id: str,
+    source_id: str,
+    page: int,
+    body: PageRectsRequest,
+) -> PageRectsResponse:
+    """根拠箇所の矩形。表・図はアセットの bbox、通常テキストは search_for。"""
+    ctx = request.app.state.ctx
+    rec = sources_repo.get_source(ctx.conn, source_id)
+    if rec is None or rec.notebook_id != notebook_id:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, f"source {source_id} not found")
+    pdf = _original_pdf_path(ctx, rec)
+    if pdf is None:
+        raise AppError(ErrorCode.STORAGE_NOT_FOUND, "source has no original PDF")
+
+    # 表・図チャンクは取込時に Markdown 化され原本に存在しないので search_for は
+    # 原理的に空振りする。取込済みアセットの bbox を使う方が精度も高い。
+    page_w, page_h = page_size_px(pdf, page, body.dpi)
+
+    for asset in list_assets_for_source(ctx.conn, source_id):
+        if asset.chunk_id == body.chunk_id and asset.bbox_json:
+            rects = rects_from_asset_bbox(asset.bbox_json, body.dpi)
+            if rects:
+                return PageRectsResponse(
+                    rects=[PageRect(x=r.x, y=r.y, w=r.w, h=r.h) for r in rects],
+                    source="asset",
+                    page_width=page_w,
+                    page_height=page_h,
+                )
+
+    found = rects_from_quote(pdf, page=page, quote=body.quote, dpi=body.dpi)
+    return PageRectsResponse(
+        rects=[PageRect(x=r.x, y=r.y, w=r.w, h=r.h) for r in found],
+        source="quote" if found else "none",
+        page_width=page_w,
+        page_height=page_h,
+    )

@@ -3,12 +3,18 @@
   import ChatInput from './ChatInput.svelte';
   import { conversationStore } from '$lib/stores/conversation.svelte';
   import { currentNotebookStore } from '$lib/stores/currentNotebook.svelte';
+  import type { Citation } from '$lib/api/types';
 
   interface Props {
     notebookId: string;
-    onCitationClick: (chunkId: string, sourceId: string) => void;
+    activeOccurrence?: number | null;
+    onCitationClick: (
+      chunkId: string,
+      sourceId: string,
+      selection: { citation: Citation; answerOccurrence: number; messageId: string } | null,
+    ) => void;
   }
-  let { notebookId, onCitationClick }: Props = $props();
+  let { notebookId, activeOccurrence = null, onCitationClick }: Props = $props();
 
   function onSend(text: string) {
     conversationStore.send(
@@ -19,7 +25,7 @@
   }
 </script>
 
-<MessageList {onCitationClick} />
+<MessageList {activeOccurrence} {onCitationClick} />
 <ChatInput
   streaming={conversationStore.streaming}
   hint={conversationStore.messages.length > 0

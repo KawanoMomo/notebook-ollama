@@ -91,6 +91,15 @@ export interface Source {
   updated_at: string;
 }
 
+export interface EvidenceSpan {
+  answer_occurrence: number;
+  ordinal: number | null;
+  start: number;
+  end: number;
+  quote: string;
+  method: 'lexical' | 'embedding' | 'quote';
+}
+
 export interface Citation {
   n: number;
   chunk_id: string;
@@ -102,6 +111,7 @@ export interface Citation {
   audio_source_id: string | null;
   audio_start_ms: number | null;
   audio_channel: string | null;
+  spans?: EvidenceSpan[];
 }
 
 export interface Message {

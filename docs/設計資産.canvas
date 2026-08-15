@@ -711,6 +711,36 @@
       "color": "3"
     },
     {
+      "id": "1da991b2c8348128",
+      "type": "group",
+      "x": 1016,
+      "y": 3371,
+      "width": 292,
+      "height": 244,
+      "label": "ui  (基盤)",
+      "color": "1"
+    },
+    {
+      "id": "8ab9cb6d1cf634d9",
+      "type": "file",
+      "x": 1032,
+      "y": 3417,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-08-07-citation-evidence-ui-design.md",
+      "color": "1"
+    },
+    {
+      "id": "af0aa20233d2bff5",
+      "type": "file",
+      "x": 1032,
+      "y": 3514,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/code-region-parity-markdown-it-py.md",
+      "color": "3"
+    },
+    {
       "id": "d98b68bdbc84ba4d",
       "type": "group",
       "x": 300,
@@ -1043,6 +1073,15 @@
       "id": "d7420207d00c17e5",
       "fromNode": "98e11bff2639cc10",
       "toNode": "25186bee4e961802",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "9198964fb6560cfc",
+      "fromNode": "8ab9cb6d1cf634d9",
+      "toNode": "af0aa20233d2bff5",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",

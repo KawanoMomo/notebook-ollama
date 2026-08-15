@@ -1,0 +1,469 @@
+{
+  "note": "BE (core/generation/evidence_spans.mask_code_regions) と FE (markdown-it + injectCitationBadges) で、コード領域を除いた [^n] の並びが一致することを確認するための共有ケース。expected は markdown-it の実挙動 (CommonMark) を実測して決めた値。BE: tests/unit/test_evidence_spans_code_regions.py / FE: apps/web/tests/unit/citationCodeRegions.test.ts",
+  "cases": [
+    {
+      "name": "nested_bullet_4sp",
+      "why": "入れ子箇条書きの4スペースはコードではない",
+      "markdown": "- レベル1の説明[^1]\n    - 詳細な補足[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "lazy_paragraph_cont",
+      "why": "段落の遅延継続行 (空行なしの4スペース行) はコードではない",
+      "markdown": "本文はここに書かれている[^1]\n    遅延継続の行[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "ordered_list_indent",
+      "why": "入れ子の番号付きリストもコードではない",
+      "markdown": "1. 説明[^1]\n    1. 入れ子の項目[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "numbered_paren",
+      "why": "1) 形式のリストマーカー",
+      "markdown": "1) 説明[^1]\n    2) 入れ子[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "star_list",
+      "markdown": "* a[^1]\n    * b[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "plus_list",
+      "markdown": "+ a[^1]\n    + b[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "nested_bullet_8sp",
+      "why": "2段ネストでも content indent 基準では code にならない",
+      "markdown": "- a[^1]\n    - b[^2]\n        - c[^3]\n",
+      "expected": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "list_dash_wide",
+      "markdown": "-   項目[^1]\n    続き[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "list_multi_para",
+      "why": "リスト項目の2段落目はコードではない",
+      "markdown": "- 項目[^1]\n\n    二段落目[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "list_deep_code",
+      "why": "リスト内でも content indent +4 は本物のインデントコード",
+      "markdown": "- a[^1]\n\n      genuine code[^2]\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "list_then_para_then_code",
+      "why": "リストが段落で閉じたあとはインデントコードが復活する",
+      "markdown": "- 項目[^1]\n\n普通の段落[^2]。\n\n    code[^3]\n\nあと[^4]。\n",
+      "expected": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "name": "nested_list_then_para",
+      "markdown": "- a[^1]\n    - b[^2]\n\n段落[^3]。\n\n    code[^4]\n\n末[^5]。\n",
+      "expected": [
+        1,
+        2,
+        3,
+        5
+      ]
+    },
+    {
+      "name": "after_list_unindented_no_blank",
+      "why": "lazy continuation 中はリストが閉じない",
+      "markdown": "- a[^1]\nlazy[^2]\n    indent[^3]\n",
+      "expected": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "real_indent_code",
+      "why": "空行を挟んだ4スペースは本物のインデントコード",
+      "markdown": "本文はここに書かれている[^1]。\n\n    sample = data[^2]\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "indent_code_multiline",
+      "markdown": "本文[^1]。\n\n    a[^2]\n    b[^3]\n\nあと[^4]。\n",
+      "expected": [
+        1,
+        4
+      ]
+    },
+    {
+      "name": "indent_code_blank_inside",
+      "why": "インデントコードは内部の空行で切れない",
+      "markdown": "本文[^1]。\n\n    a[^2]\n\n    b[^3]\n\nあと[^4]。\n",
+      "expected": [
+        1,
+        4
+      ]
+    },
+    {
+      "name": "indent3_not_code",
+      "markdown": "本文[^1]。\n\n   三スペース[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "tab_indent",
+      "markdown": "本文[^1]。\n\n\tsample[^2]\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "heading_then_indent",
+      "why": "見出しの直後は段落ではないのでインデントコードが始まる",
+      "markdown": "# 見出し[^1]\n    code[^2]\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "heading_blank_indent",
+      "markdown": "# 見出し[^1]\n\n    code[^2]\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "fenced",
+      "markdown": "説明[^1]\n```python\nx = a[^2]\n```\n本文[^3]。\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "para_then_fence",
+      "why": "フェンスは段落を中断できる",
+      "markdown": "本文[^1]\n```\ncode[^2]\n```\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "tilde_fence",
+      "why": "~~~ フェンス",
+      "markdown": "本文[^1]。\n\n~~~\nsample = data[^2]\n~~~\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "tilde_info_ok",
+      "why": "~ フェンスの info 文字列には ~ を含められる",
+      "markdown": "本文[^1]\n~~~ ~x\ncode[^2]\n~~~\nあと[^3]\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "unclosed_fence",
+      "why": "閉じないフェンスは文書末までコード",
+      "markdown": "本文[^1]。\n\n```\nsample = data[^2]\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "fence_4backtick",
+      "why": "4本フェンスは3本では閉じない",
+      "markdown": "本文[^1]。\n\n````\n```\nsample[^2]\n```\n````\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "fence_close_longer",
+      "markdown": "本文[^1]\n```\ncode[^2]\n`````\nあと[^3]\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "fence_close_shorter",
+      "markdown": "本文[^1]\n````\ncode[^2]\n```\nまだcode[^3]\n````\nあと[^4]\n",
+      "expected": [
+        1,
+        4
+      ]
+    },
+    {
+      "name": "fence_info_backtick",
+      "why": "` を含む info 文字列はフェンスにならない",
+      "markdown": "本文[^1]\n``` a`b\ncode[^2]\n```\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "fence_in_list",
+      "markdown": "- 項目[^1]\n\n  ```\n  code[^2]\n  ```\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "fence_then_indent",
+      "why": "フェンス直後 (空行なし) の4スペースはインデントコード",
+      "markdown": "```\ncode[^1]\n```\n    indent[^2]\n",
+      "expected": []
+    },
+    {
+      "name": "crlf_fence",
+      "markdown": "本文[^1]\r\n```\r\ncode[^2]\r\n```\r\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "inline_simple",
+      "markdown": "前置き `[^9]` 後置き[^1]\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "inline_across_nl",
+      "why": "コードスパンは改行をまたげる",
+      "markdown": "本文[^1]。 `sample\n[^2]` あと。\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "inline_double_backtick",
+      "why": "同じ長さのバッククォート列でのみ閉じる",
+      "markdown": "本文 ``a`b[^1]`` あと[^2]\n",
+      "expected": [
+        2
+      ]
+    },
+    {
+      "name": "code_span_with_marker_ticks",
+      "markdown": "本文 `` [^1] `` あと[^2]\n",
+      "expected": [
+        2
+      ]
+    },
+    {
+      "name": "unmatched_backtick",
+      "why": "閉じないバッククォートはただの文字",
+      "markdown": "本文 `[^1] あと[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "backtick_across_blank",
+      "why": "コードスパンは空行 (段落境界) を越えない",
+      "markdown": "本文 `[^1]\n\nあと[^2]` 終わり[^3]\n",
+      "expected": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "blockquote_indent",
+      "markdown": "> 引用[^1]\n>\n>     code[^2]\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "bq_fence",
+      "markdown": "> 引用[^1]\n> ```\n> code[^2]\n> ```\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "quote_lazy",
+      "markdown": "> 引用[^1]\n    続き[^2]\n",
+      "expected": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "table_pipe",
+      "markdown": "|a[^1]|b[^2]|\n|--|--|\n|c[^3]|d[^4]|\n",
+      "expected": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "name": "misattribution_repro",
+      "why": "検証で誤帰属が再現した実例 (入れ子箇条書き × 同一引用番号)",
+      "markdown": "能力レベルについて説明する。\n\n- プロセス能力レベル1は…を示す[^3]\n    - なお詳細は規格本文を参照のこと[^3]\n- レベル2では作業成果物が適切に管理される[^3]\n",
+      "expected": [
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "name": "list_fence_4sp_blank_inside",
+      "why": "番号付きリスト(content indent 3)配下の4スペースフェンス。フェンス内に空行があると、絶対桁判定では崩れる",
+      "markdown": "1. 手順[^1]\n\n    ```python\n    x[^2]\n\n    y[^4]\n    ```\n\n2. 次[^3]",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "list_tilde_fence_4sp",
+      "why": "リスト内の4スペース ~~~ フェンス。バッククォート対による偶然の救済が効かない形状",
+      "markdown": "1. 手順[^1]\n\n    ~~~\n    x[^2]\n    ~~~\n\n2. 次[^3]",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "ordered_list_fence_4sp",
+      "why": "同上(フェンス内に空行なし)。従来はインラインコード側が偶然拾って一致していた",
+      "markdown": "1. 手順[^1]\n\n    ```\n    x[^2]\n    ```\n\n2. 次[^3]",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "list_then_col0_fence_blank",
+      "why": "リスト直後の列0フェンス(fence判定が有効コンテナで行われること)",
+      "markdown": "- a[^1]\n\n```\ncode[^2]\n```\nend[^3]\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "col0_tilde_after_list",
+      "why": "同上のチルダ版(インラインコードの偶然救済が効かない)",
+      "markdown": "- a[^1]\n\n~~~\ncode[^2]\n~~~\nend[^3]\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "nested_list_fence_between_levels",
+      "why": "ネスト2段の間のインデントのフェンスは外側リスト基準",
+      "markdown": "- a[^1]\n    - b[^2]\n\n    ```\n    code[^3]\n    ```\n\nend[^4]\n",
+      "expected": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "name": "fence_close_col0_in_list",
+      "why": "リスト内フェンスを列0の```が閉じ、同じ行が新フェンスの開きになる(close→reopen)",
+      "markdown": "- a[^1]\n\n  ```\n  code[^2]\n```\nmid[^3]\n```\nend[^4]\n",
+      "expected": [
+        1,
+        4
+      ]
+    },
+    {
+      "name": "list_tab_tilde_fence",
+      "why": "タブ(1文字=4桁)インデントのフェンス。桁数判定の回帰ガード",
+      "markdown": "- a[^1]\n\n\t~~~\n\tcode[^2]\n\t~~~\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "list_tab_fence_blank_inside",
+      "why": "タブインデント+内部空行。桁数判定の回帰ガード",
+      "markdown": "- a[^1]\n\n\t```\n\tcode[^2]\n\n\tmore[^3]\n\t```\n",
+      "expected": [
+        1
+      ]
+    },
+    {
+      "name": "list2sp_fence_blank_inside",
+      "why": "フェンス内の空行はフェンスを閉じない(インデントコード救済が効かない2スペース版)",
+      "markdown": "- a[^1]\n\n  ```\n  x[^2]\n\n  y[^3]\n  ```\nend[^4]\n",
+      "expected": [
+        1,
+        4
+      ]
+    },
+    {
+      "name": "fence_blank_then_close",
+      "why": "空行の直後に来る正規の閉じフェンス",
+      "markdown": "- a[^1]\n\n  ```\n  x[^2]\n\n  ```\nend[^3]\n",
+      "expected": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "fence_open_rel0_close_deeper",
+      "why": "コンテナ相対4桁以上の```は閉じではなく内容",
+      "markdown": "- a[^1]\n\n  ```\n  code[^2]\n      ```\n  x[^3]\n  ```\nend[^4]\n",
+      "expected": [
+        1,
+        4
+      ]
+    }
+  ]
+}

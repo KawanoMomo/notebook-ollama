@@ -63,3 +63,27 @@ class SlideUtterancePage(BaseModel):
     """ページ単位にグループ化した発言一覧。"""
     page: int
     items: list[SlideUtteranceItem]
+
+
+class PageRectsRequest(BaseModel):
+    """原本ページ上で根拠箇所の矩形を求めるリクエスト。"""
+    chunk_id: str
+    quote: str
+    dpi: int = 150
+
+
+class PageRect(BaseModel):
+    """PNG のピクセル座標系での矩形。"""
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class PageRectsResponse(BaseModel):
+    rects: list[PageRect]
+    source: str  # 'asset' | 'quote' | 'none'
+    # 同じ dpi でのページ全体のピクセル寸法。FE はこれで矩形を百分率に直す。
+    # 画像の naturalWidth を使うと、画像読み込みと矩形取得の競合でズレる。
+    page_width: float = 0.0
+    page_height: float = 0.0

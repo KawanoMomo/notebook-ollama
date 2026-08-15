@@ -42,6 +42,7 @@ tags:
 > - [[2026-06-19-rag-ux-improvements-design|RAG運用UX改善(群1)]] ✅
 > - [[2026-06-25-source-guide-design|Source Guide(ソースガイド)]] ✅
 > - [[2026-07-02-job-status-bar-optimistic-ui-design|ジョブ状態可視化 + Optimistic UI]] ✅
+> - [[2026-08-07-citation-evidence-ui-design|出典表示の刷新 — 根拠スパン/原本ページ/選択範囲翻訳]] ✏️
 
 > [!abstract] 取込・検索 (ingestion / retrieval)
 > - [[2026-07-20-pdf-table-figure-sidecar-design|PDF表・図サイドカー抽出 (Stage 1)]] ✅
@@ -73,7 +74,10 @@ tags:
 ## 🧭 ADR（採番済み）
 
 台帳は [[README|docs/adr/README.md]]、カテゴリ定義は [[categories]]。
-未採番のドラフトは `docs/adr/drafts/` に置く（**現在2件**）。採番・正式登録は承認後に `/adr` で行います。
+未採番のドラフトは `docs/adr/drafts/` に置く（**現在3件**）。採番・正式登録は承認後に `/adr` で行います。
+
+> [!note] 出典表示の刷新（未採番ドラフト）
+> - [[code-region-parity-markdown-it-py|BE/FE のコード領域判定を markdown-it-py で同一アルゴリズムに揃える]] ✏️ (2026-08-07)
 
 > [!note] 検索精度評価基盤（未採番ドラフト）
 > - [[ragas-metrics-layer-only|ADR-draft Ragas はメトリクス計算層に限定して使う]] — `external-dep`
