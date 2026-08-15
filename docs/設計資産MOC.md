@@ -50,6 +50,9 @@ tags:
 > - [[2026-07-20-visual-embedding-index-design|視覚埋め込み第2インデックス (Stage 3)]] ✅
 > - [[2026-07-29-pixelrag-tile-index-design|PixelRAG式タイル索引と検索戦略の選択 (Stage 4)]] ✅
 
+> [!abstract] 評価 (evaluation)
+> - [[2026-08-07-ragas-retrieval-eval-design|Ragas 検索精度オフライン評価基盤]] ✏️
+
 > [!abstract] 要約 (summary)
 > - [[2026-06-26-meeting-adr-templates|議事録テンプレ + ADR 抽出機能]] ✅
 > - [[2026-06-26-summary-prompt-tune|要約プロンプト改善 — 選定根拠]] ✅
@@ -71,10 +74,14 @@ tags:
 ## 🧭 ADR（採番済み）
 
 台帳は [[README|docs/adr/README.md]]、カテゴリ定義は [[categories]]。
-未採番のドラフトは `docs/adr/drafts/` に置く（**現在1件**）。採番・正式登録は承認後に `/adr` で行います。
+未採番のドラフトは `docs/adr/drafts/` に置く（**現在3件**）。採番・正式登録は承認後に `/adr` で行います。
 
-> [!note] 未採番ドラフト
+> [!note] 出典表示の刷新（未採番ドラフト）
 > - [[code-region-parity-markdown-it-py|BE/FE のコード領域判定を markdown-it-py で同一アルゴリズムに揃える]] ✏️ (2026-08-07)
+
+> [!note] 検索精度評価基盤（未採番ドラフト）
+> - [[ragas-metrics-layer-only|ADR-draft Ragas はメトリクス計算層に限定して使う]] — `external-dep`
+> - [[non-llm-retrieval-metrics|ADR-draft 検索精度の判定に judge LLM を使わない]] — `evaluation`
 
 > [!note] 発表モード / 音声入力 / ベータ基盤
 > - [[001-source-links-generic-parent-child|ADR-001 ソース間結合は汎用親子リンク基盤(source_links)]] — `data-model`

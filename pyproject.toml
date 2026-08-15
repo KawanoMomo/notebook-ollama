@@ -79,6 +79,17 @@ visual = [
     "sentence-transformers>=3.3",
     "pillow>=10.0",
 ]
+# 検索精度のオフライン評価 (spec: 2026-08-07-ragas-retrieval-eval-design.md)。
+# 開発者向け実験ツール専用で、本番インストールには含めない。Ragas は
+# メトリクス計算にのみ使い、フレームワーク全体には乗らない。
+#
+# langchain-community<0.4: ragas 0.4.3 は langchain_community.chat_models.vertexai を
+#   無条件 import するが、この module は langchain-community 0.4.x で削除された
+#   (ragas 側が版を固定していない上流バグ)。langchain* は ragas 経由の推移的依存
+#   のみで本体コードは使っていないため、この降格は eval extra 内で閉じる。
+# rapidfuzz: NonLLMContextRecall が内部で使う NonLLMStringSimilarity の要求。
+#   ragas は依存に含めていないので明示的に足す。
+eval = ["ragas>=0.2", "langchain-community<0.4", "rapidfuzz>=3.0"]
 
 [dependency-groups]
 dev = [

@@ -61,3 +61,6 @@ data/*
 .gate-data/
 .gate-shots/
 .verify-shots/
+
+# 評価コーパスと golden set (実文書を含むためコミットしない)
+data/eval/

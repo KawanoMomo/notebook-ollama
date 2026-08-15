@@ -601,9 +601,49 @@
       "color": "4"
     },
     {
-      "id": "16fc06a661ad6244",
+      "id": "f83601ee799564c1",
       "type": "group",
       "x": 20,
+      "y": 3371,
+      "width": 292,
+      "height": 341,
+      "label": "evaluation  (基盤)",
+      "color": "1"
+    },
+    {
+      "id": "7bc921cbe9a949be",
+      "type": "file",
+      "x": 36,
+      "y": 3417,
+      "width": 260,
+      "height": 85,
+      "file": "docs/specs/2026-08-07-ragas-retrieval-eval-design.md",
+      "color": "1"
+    },
+    {
+      "id": "eef302a64e84cc96",
+      "type": "file",
+      "x": 36,
+      "y": 3514,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/non-llm-retrieval-metrics.md",
+      "color": "3"
+    },
+    {
+      "id": "6230f48309db1fef",
+      "type": "file",
+      "x": 36,
+      "y": 3611,
+      "width": 260,
+      "height": 85,
+      "file": "docs/adr/drafts/ragas-metrics-layer-only.md",
+      "color": "3"
+    },
+    {
+      "id": "16fc06a661ad6244",
+      "type": "group",
+      "x": 352,
       "y": 3371,
       "width": 292,
       "height": 147,
@@ -613,7 +653,7 @@
     {
       "id": "f673989fb83659a8",
       "type": "file",
-      "x": 36,
+      "x": 368,
       "y": 3417,
       "width": 260,
       "height": 85,
@@ -623,7 +663,7 @@
     {
       "id": "41de75aca179bb72",
       "type": "group",
-      "x": 352,
+      "x": 684,
       "y": 3371,
       "width": 292,
       "height": 466,
@@ -633,7 +673,7 @@
     {
       "id": "98e11bff2639cc10",
       "type": "file",
-      "x": 368,
+      "x": 700,
       "y": 3417,
       "width": 260,
       "height": 85,
@@ -643,7 +683,7 @@
     {
       "id": "25186bee4e961802",
       "type": "file",
-      "x": 368,
+      "x": 700,
       "y": 3514,
       "width": 260,
       "height": 85,
@@ -653,7 +693,7 @@
     {
       "id": "4b4a1004d71db252",
       "type": "file",
-      "x": 368,
+      "x": 700,
       "y": 3625,
       "width": 260,
       "height": 85,
@@ -663,7 +703,7 @@
     {
       "id": "519d1b2f3b0b2638",
       "type": "file",
-      "x": 368,
+      "x": 700,
       "y": 3736,
       "width": 260,
       "height": 85,
@@ -673,7 +713,7 @@
     {
       "id": "1da991b2c8348128",
       "type": "group",
-      "x": 684,
+      "x": 1016,
       "y": 3371,
       "width": 292,
       "height": 244,
@@ -683,7 +723,7 @@
     {
       "id": "8ab9cb6d1cf634d9",
       "type": "file",
-      "x": 700,
+      "x": 1032,
       "y": 3417,
       "width": 260,
       "height": 85,
@@ -693,7 +733,7 @@
     {
       "id": "af0aa20233d2bff5",
       "type": "file",
-      "x": 700,
+      "x": 1032,
       "y": 3514,
       "width": 260,
       "height": 85,
@@ -1006,6 +1046,24 @@
       "id": "9a9669d893f0acdf",
       "fromNode": "48f791b3c7a05bb6",
       "toNode": "0efc99b32df63087",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "b199ceb786842485",
+      "fromNode": "7bc921cbe9a949be",
+      "toNode": "eef302a64e84cc96",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "起票"
+    },
+    {
+      "id": "8426765c58682a62",
+      "fromNode": "7bc921cbe9a949be",
+      "toNode": "6230f48309db1fef",
       "fromSide": "bottom",
       "toSide": "top",
       "toEnd": "arrow",
